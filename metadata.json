@@ -1,0 +1,6 @@
+{
+  "name": "Gestor de Almacenes La Taberna Lions Gold",
+  "description": "Sistema integral de inventario, punto de venta multidivisa (Bs/USD), control de fiados y almacén para tabernas y comercios en Venezuela. Por Smith Bussines Solutions 2026.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
