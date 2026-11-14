@@ -64,7 +64,11 @@ import {
   syncWarehouseProductToStorefront,
   updateWarehouseAndLinkedStorefrontStock,
 } from './services/saasService';
-import { syncFirebaseAuthLanguage } from './services/authService';
+import {
+  mirrorFirebaseUserToBackupServer,
+  resolveSupabaseSessionOnMount,
+  syncFirebaseAuthLanguage,
+} from './services/authService';
 import { Lock, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from './i18n/LanguageContext';
 import { VectorAssistantWidget } from './components/VectorAssistantWidget';
@@ -180,12 +184,16 @@ export default function App() {
     const unsubBilling = subscribePlatformBillingSettings(setPlatformBilling);
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setAuthUser(u);
-      if (u) setRedirectAuthError(null);
+      if (u) {
+        setRedirectAuthError(null);
+        mirrorFirebaseUserToBackupServer(u).catch(() => {});
+      }
     });
     resolveGoogleRedirectOnMount().then(({ user, error }) => {
       if (user) setAuthUser(user);
       if (error) setRedirectAuthError(error);
     });
+    resolveSupabaseSessionOnMount().catch(() => null);
     return () => {
       unsubBilling();
       unsubAuth();

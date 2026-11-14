@@ -20,6 +20,10 @@ import {
   handleStoreEmailDispatch,
   StoreEmailDispatchPayload,
 } from './lib/storeEmailServer';
+import {
+  AuthBackupSyncPayload,
+  handleAuthBackupSync,
+} from './lib/authSyncServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -369,6 +373,23 @@ app.post('/api/stores/send-email', async (req, res) => {
       ok: false,
       message: 'Error interno al enviar el correo desde el servidor.',
       error: err instanceof Error ? err.message : 'INTERNAL_ERROR',
+    });
+  }
+});
+
+// Self-Hosted Supabase User Directory Sync (Mirrors verified Firebase accounts server-side)
+app.post('/api/auth/sync-backup', async (req, res) => {
+  try {
+    const result = await handleAuthBackupSync(
+      req.headers.authorization,
+      (req.body || {}) as AuthBackupSyncPayload
+    );
+    return res.status(result.statusCode).json(result.body);
+  } catch (err) {
+    console.error('Server /api/auth/sync-backup error:', err);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error interno al sincronizar respaldo Supabase.',
     });
   }
 });

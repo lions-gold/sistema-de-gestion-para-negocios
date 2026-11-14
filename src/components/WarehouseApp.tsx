@@ -346,6 +346,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                   audits={audits}
                   activeStore={activeStore}
                   onOpenEmailConfig={() => setShowEmailPanel(true)}
+                  onGoToPOS={() => handleTabSelect('pos')}
                 />
               )}
             </>

@@ -35,6 +35,8 @@ jobs:
           GITHUB_PAGES: 'true'
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-SM1TH2026EC' }}
           VITE_GSC_VERIFICATION: ${{ vars.VITE_GSC_VERIFICATION || 'SmithSolutionsECommerce-GSC-2026-Verified' }}
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || '' }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || '' }}
         run: npm run build:gh
 
       - name: Setup GitHub Pages

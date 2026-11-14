@@ -1,54 +1,11 @@
-import fs from 'fs';
-import path from 'path';
 import nodemailer from 'nodemailer';
-import firebaseConfig from '../firebase-applet-config.json';
-
-function getFirebaseApiKey(): string {
-  if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
-  if (firebaseConfig && typeof firebaseConfig.apiKey === 'string' && firebaseConfig.apiKey) {
-    return firebaseConfig.apiKey;
-  }
-  try {
-    const cfgPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-    const raw = fs.readFileSync(cfgPath, 'utf8');
-    const parsed = JSON.parse(raw) as { apiKey?: string };
-    return parsed.apiKey || '';
-  } catch {
-    return '';
-  }
-}
+import { verifyUnifiedBearerToken } from './authSyncServer';
 
 async function verifyAuthenticatedUserBearerToken(
   authHeader?: string
 ): Promise<{ ok: boolean; email?: string; uid?: string }> {
-  const firebaseApiKey = getFirebaseApiKey();
-  if (!authHeader || !authHeader.startsWith('Bearer ') || !firebaseApiKey) {
-    return { ok: false };
-  }
-  const idToken = authHeader.slice('Bearer '.length).trim();
-  if (!idToken) return { ok: false };
-
-  try {
-    const resp = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseApiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      }
-    );
-    if (!resp.ok) return { ok: false };
-    const data = (await resp.json()) as {
-      users?: Array<{ localId?: string; email?: string; emailVerified?: boolean }>;
-    };
-    const user = data.users?.[0];
-    if (user && user.emailVerified === true && user.email) {
-      return { ok: true, email: user.email, uid: user.localId };
-    }
-    return { ok: false };
-  } catch {
-    return { ok: false };
-  }
+  const verified = await verifyUnifiedBearerToken(authHeader);
+  return { ok: verified.ok, email: verified.email, uid: verified.uid };
 }
 
 function escapeHtml(value: unknown): string {

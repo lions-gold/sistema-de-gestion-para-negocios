@@ -4,9 +4,11 @@ import { AlertTriangle, Check, Copy, ExternalLink, RefreshCw } from 'lucide-reac
 import {
   detectAuthEnvironment,
   GoogleAuthFriendlyError,
+  isSupabaseBackupConfigured,
   mapGoogleAuthError,
   signInWithGoogleRedirectDirect,
   signInWithGoogleResilient,
+  signInWithSupabaseGoogleBackup,
 } from '../services/authService';
 
 interface GoogleAuthButtonProps {
@@ -187,6 +189,22 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Continuar en esta pestaña</span>
+              </button>
+            )}
+
+            {isSupabaseBackupConfigured() && !env.isInIframe && !env.isInAppBrowser && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBusy(true);
+                  signInWithSupabaseGoogleBackup().catch((sbErr) => {
+                    setAuthError(mapGoogleAuthError(sbErr, env));
+                    setIsBusy(false);
+                  });
+                }}
+                className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/35 text-emerald-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <span>Usar respaldo Supabase</span>
               </button>
             )}
 

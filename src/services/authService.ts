@@ -7,6 +7,22 @@ import {
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, SUPER_ADMIN_EMAIL } from '../firebase';
+import {
+  isSupabaseBackupConfigured,
+  mirrorFirebaseUserToBackupServer,
+  resolveSupabaseSessionOnMount,
+  signInWithSupabaseGoogleBackup,
+  signOutSupabaseBackup,
+  SupabaseBackupSession,
+} from './supabaseAuthClient';
+
+export {
+  isSupabaseBackupConfigured,
+  mirrorFirebaseUserToBackupServer,
+  resolveSupabaseSessionOnMount,
+  signInWithSupabaseGoogleBackup,
+  type SupabaseBackupSession,
+};
 
 export interface AuthEnvironmentInfo {
   isIOS: boolean;
@@ -358,9 +374,31 @@ export async function signInWithGoogleResilient(options: SignInOptions = {}): Pr
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await syncAdminBootstrapIfMatch(result.user);
+      mirrorFirebaseUserToBackupServer(result.user).catch(() => {});
       return result.user;
     } catch (popupErr) {
       const code = (popupErr as { code?: string })?.code || '';
+
+      // Automatic failover switch: if Firebase Auth service/network is unreachable and self-hosted Supabase is configured
+      const isFirebaseServiceFailure =
+        code === 'auth/network-request-failed' ||
+        code === 'auth/internal-error' ||
+        code === 'auth/timeout' ||
+        code === 'auth/too-many-requests';
+
+      if (
+        isFirebaseServiceFailure &&
+        isSupabaseBackupConfigured() &&
+        !env.isInIframe &&
+        !env.isInAppBrowser
+      ) {
+        await signInWithSupabaseGoogleBackup();
+        throw new GoogleAuthFriendlyError({
+          code: 'auth/redirect-initiated',
+          message: 'Conmutando a respaldo Supabase...',
+        });
+      }
+
       const shouldFallbackToRedirect =
         allowRedirectFallback &&
         !env.isInIframe &&
@@ -431,6 +469,7 @@ export async function resolveGoogleRedirectOnMount(): Promise<{
     const result = await getRedirectResult(auth);
     if (result?.user) {
       await syncAdminBootstrapIfMatch(result.user);
+      mirrorFirebaseUserToBackupServer(result.user).catch(() => {});
       return { user: result.user, error: null };
     }
     return { user: auth.currentUser, error: null };
@@ -459,5 +498,5 @@ export async function signOutGoogleResilient(): Promise<void> {
   } catch {
     // ignore
   }
-  await signOut(auth);
+  await Promise.allSettled([signOut(auth), signOutSupabaseBackup()]);
 }
