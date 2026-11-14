@@ -22,7 +22,16 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 export const SUPER_ADMIN_EMAIL = 'empresaalhadiqainvest@gmail.com';
 
-const app = initializeApp(firebaseConfig);
+const useSameOriginAuth =
+  typeof window !== 'undefined' &&
+  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_USE_SAME_ORIGIN_AUTH === 'true' &&
+  window.location.protocol === 'https:';
+
+const resolvedFirebaseConfig = useSameOriginAuth
+  ? { ...firebaseConfig, authDomain: window.location.host }
+  : firebaseConfig;
+
+const app = initializeApp(resolvedFirebaseConfig);
 
 let firestoreInstance: Firestore;
 try {

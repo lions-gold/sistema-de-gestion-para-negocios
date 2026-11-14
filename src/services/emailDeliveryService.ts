@@ -1,5 +1,6 @@
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { getFreshFirebaseIdToken } from './authService';
 import { Product, Sale, StockAlertEmailLog, StoreEmailConfig } from '../types';
 import { playAlertNotificationSound, triggerMobileVibration } from '../utils/alertNotifications';
 
@@ -312,7 +313,7 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
 
   let idToken = '';
   try {
-    idToken = await currentUser.getIdToken();
+    idToken = await getFreshFirebaseIdToken(currentUser, false);
   } catch {
     const log = buildLog('Error de Envío', undefined, 'No se pudo obtener token de sesión.');
     return { ok: false, message: 'No se pudo autenticar el envío.', log };
@@ -339,44 +340,60 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
       }
     : salesSummary;
 
+  const requestBody = JSON.stringify({
+    action,
+    storeId,
+    storeName,
+    exchangeRate,
+    triggerEvent,
+    config: {
+      provider: config.provider,
+      recipientEmail: config.recipientEmail,
+      secondaryEmail: config.secondaryEmail,
+      fromName: config.fromName,
+      fromEmail: config.fromEmail,
+      resendApiKey: config.resendApiKey,
+      smtpHost: config.smtpHost,
+      smtpPort: config.smtpPort,
+      smtpSecure: config.smtpSecure,
+      smtpUser: config.smtpUser,
+      smtpPass: config.smtpPass,
+    },
+    products: products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      stock: p.stock,
+      minStock: p.minStock,
+      unit: p.unit,
+      costUSD: p.costUSD,
+    })),
+    salesReport: reportPayload,
+  });
+
   try {
-    const resp = await fetch('/api/stores/send-email', {
+    let resp = await fetch('/api/stores/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`,
       },
-      body: JSON.stringify({
-        action,
-        storeId,
-        storeName,
-        exchangeRate,
-        triggerEvent,
-        config: {
-          provider: config.provider,
-          recipientEmail: config.recipientEmail,
-          secondaryEmail: config.secondaryEmail,
-          fromName: config.fromName,
-          fromEmail: config.fromEmail,
-          resendApiKey: config.resendApiKey,
-          smtpHost: config.smtpHost,
-          smtpPort: config.smtpPort,
-          smtpSecure: config.smtpSecure,
-          smtpUser: config.smtpUser,
-          smtpPass: config.smtpPass,
-        },
-        products: products.map((p) => ({
-          id: p.id,
-          name: p.name,
-          sku: p.sku,
-          stock: p.stock,
-          minStock: p.minStock,
-          unit: p.unit,
-          costUSD: p.costUSD,
-        })),
-        salesReport: reportPayload,
-      }),
+      body: requestBody,
     });
+
+    if (resp.status === 401 || resp.status === 403) {
+      const refreshedToken = await getFreshFirebaseIdToken(currentUser, true).catch(() => '');
+      if (refreshedToken && refreshedToken !== idToken) {
+        resp = await fetch('/api/stores/send-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshedToken}`,
+          },
+          body: requestBody,
+        });
+      }
+    }
 
     const data = (await resp.json()) as {
       ok?: boolean;

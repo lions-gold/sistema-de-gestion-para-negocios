@@ -10,7 +10,15 @@
   },
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/__/auth/:path*",
+      "destination": "https://banded-avatar-w7cvm.firebaseapp.com/__/auth/:path*"
+    },
+    {
+      "source": "/__/firebase/:path*",
+      "destination": "https://banded-avatar-w7cvm.firebaseapp.com/__/firebase/:path*"
+    },
+    {
+      "source": "/((?!api/|__/).*)",
       "destination": "/index.html"
     }
   ],

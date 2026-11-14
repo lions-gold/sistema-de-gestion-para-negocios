@@ -258,6 +258,7 @@ export function mapGoogleAuthError(
   }
 
   if (rawCode === 'auth/unauthorized-domain') {
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
     return new GoogleAuthFriendlyError({
       code: rawCode,
       message:
@@ -266,7 +267,7 @@ export function mapGoogleAuthError(
           : lang === 'zh'
             ? '当前域名尚未在 Firebase 身份验证中授权。'
             : 'Este dominio aún no está autorizado en Firebase Authentication.',
-      hint: `Agrega "${typeof window !== 'undefined' ? window.location.hostname : ''}" en Firebase Console → Authentication → Settings → Authorized domains.`,
+      hint: `Agrega "${host || 'sistema-de-gestion-para-negocios.vercel.app'}" en Firebase Console → Authentication → Settings → Authorized domains.`,
     });
   }
 
@@ -438,6 +439,17 @@ export async function resolveGoogleRedirectOnMount(): Promise<{
       return { user: null, error: mapGoogleAuthError(err) };
     }
     return { user: auth.currentUser, error: null };
+  }
+}
+
+export async function getFreshFirebaseIdToken(
+  user: User,
+  forceRefresh = false
+): Promise<string> {
+  try {
+    return await user.getIdToken(forceRefresh);
+  } catch {
+    return user.getIdToken(true);
   }
 }
 
