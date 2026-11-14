@@ -72,7 +72,6 @@ import {
   registerStoreTenant,
   resolveReferralCode,
   saveStoreProduct,
-  signInWithGoogleAccount,
   signOutAccount,
   StoreProductInput,
   submitSubscriptionPayment,
@@ -86,6 +85,7 @@ import {
   updateStoreOrderStatus,
   updateStoreTenantByOwner,
 } from '../services/saasService';
+import { GoogleAuthButton } from './GoogleAuthButton';
 import {
   exportStoreOrderInvoicePDF,
   exportStoreSalesLedgerPDF,
@@ -699,12 +699,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               {t.merchant.gateDesc}
             </p>
           </div>
-          <button
-            onClick={() => signInWithGoogleAccount()}
-            className="px-6 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-zinc-950 font-bold text-sm inline-flex items-center gap-3 shadow-xl transition-transform hover:scale-[1.02] min-h-[48px]"
-          >
-            <span>{t.merchant.gateBtn}</span>
-          </button>
+          <div className="flex justify-center">
+            <GoogleAuthButton label={t.merchant.gateBtn} variant="primary" />
+          </div>
           <p className="text-[11px] text-zinc-400">
             {t.merchant.gateFooter}
           </p>
@@ -722,7 +719,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-4 bg-[#111114] border border-white/[0.08] rounded-2xl p-4">
           <div className="flex items-center gap-3">
             {user.photoURL && (
-              <img src={user.photoURL} alt={user.displayName || ''} className="w-10 h-10 rounded-full" />
+              <img
+                src={user.photoURL}
+                alt={user.displayName || ''}
+                className="w-10 h-10 rounded-full object-cover shrink-0"
+                referrerPolicy="no-referrer"
+              />
             )}
             <div>
               <div className="text-sm font-bold text-white">{user.displayName || user.email}</div>
@@ -733,14 +735,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {activeStore && (
               <button
                 onClick={() => setIsCreatingNewStore(false)}
-                className="px-3 py-2 rounded-lg bg-zinc-900 text-xs text-white"
+                className="px-3.5 py-2 min-h-[44px] rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs text-white"
               >
                 {t.common.cancel}
               </button>
             )}
             <button
               onClick={() => signOutAccount()}
-              className="px-3 py-2 rounded-lg bg-[#09090b] border border-white/[0.1] text-xs text-zinc-300 flex items-center gap-1.5"
+              className="px-3.5 py-2 min-h-[44px] rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-xs text-zinc-300 flex items-center gap-1.5"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>{t.common.signOut}</span>

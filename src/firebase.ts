@@ -1,5 +1,14 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  getAuth,
+  GoogleAuthProvider,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  inMemoryPersistence,
+  Auth,
+} from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -30,9 +39,31 @@ try {
   firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 }
 
+let authInstance: Auth;
+try {
+  authInstance = initializeAuth(app, {
+    persistence: [
+      indexedDBLocalPersistence,
+      browserLocalPersistence,
+      inMemoryPersistence,
+    ],
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+} catch {
+  authInstance = getAuth(app);
+}
+
+try {
+  authInstance.useDeviceLanguage();
+} catch {
+  // ignore in SSR / restricted contexts
+}
+
 export const db: Firestore = firestoreInstance;
-export const auth = getAuth(app);
+export const auth: Auth = authInstance;
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {

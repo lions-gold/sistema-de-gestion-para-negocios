@@ -94,7 +94,7 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,gif,woff2}'],
           maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
           navigateFallback: 'index.html',
-          navigateFallbackDenylist: [/^\/api\//],
+          navigateFallbackDenylist: [/^\/api\//, /^\/__\//],
           runtimeCaching: [
             {
               urlPattern: /^\/api\/bcv$/i,

@@ -40,7 +40,17 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
     if (!isOnline || isSyncing) return;
     if (!user || !user.emailVerified) {
       if (onRequestLogin) {
-        await onRequestLogin();
+        setIsSyncing(true);
+        setSyncResultNote(null);
+        try {
+          await onRequestLogin();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google.';
+          setSyncResultNote(msg);
+          setTimeout(() => setSyncResultNote(null), 6500);
+        } finally {
+          setIsSyncing(false);
+        }
       }
       return;
     }

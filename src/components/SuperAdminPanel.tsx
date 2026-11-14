@@ -44,7 +44,6 @@ import {
   isSuperAdminUser,
   savePlatformBillingSettings,
   sendAdminEmailsToOwners,
-  signInWithGoogleAccount,
   signOutAccount,
   subscribeAdminEmails,
   subscribeAllCouponsForAdmin,
@@ -52,6 +51,7 @@ import {
   subscribeAllReferralsForAdmin,
   subscribeAllStoresForAdmin,
 } from '../services/saasService';
+import { GoogleAuthButton } from './GoogleAuthButton';
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface SuperAdminPanelProps {
@@ -315,12 +315,11 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <span className="font-mono text-amber-300">{SUPER_ADMIN_EMAIL}</span>
             </p>
           </div>
-          <button
-            onClick={() => signInWithGoogleAccount()}
-            className="w-full py-3.5 rounded-xl bg-white hover:bg-slate-100 text-zinc-950 font-bold text-sm shadow-lg min-h-[48px]"
-          >
-            {t.admin.gateBtn} ({SUPER_ADMIN_EMAIL})
-          </button>
+          <GoogleAuthButton
+            label={`${t.admin.gateBtn} (${SUPER_ADMIN_EMAIL})`}
+            variant="primary"
+            fullWidth
+          />
         </div>
       </section>
     );
@@ -338,19 +337,20 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <span className="font-mono text-amber-300">{SUPER_ADMIN_EMAIL}</span>)
             </p>
           </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            <button
-              onClick={() => signInWithGoogleAccount()}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs"
-            >
-              {t.admin.switchGoogle}
-            </button>
-            <button
-              onClick={() => signOutAccount()}
-              className="px-4 py-2.5 rounded-xl bg-[#111114] border border-white/[0.1] text-zinc-300 text-xs"
-            >
-              {t.admin.closeSession}
-            </button>
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
+              <GoogleAuthButton
+                label={t.admin.switchGoogle}
+                variant="amber"
+                showDeviceNotice={false}
+              />
+              <button
+                onClick={() => signOutAccount()}
+                className="px-4 py-2.5 min-h-[48px] rounded-xl bg-[#111114] border border-white/[0.1] text-zinc-300 text-xs"
+              >
+                {t.admin.closeSession}
+              </button>
+            </div>
           </div>
         </div>
       </section>

@@ -35,6 +35,8 @@ import {
   subscribeActiveStores,
   subscribePublicStoreProducts,
 } from '../services/saasService';
+import { mapGoogleAuthError } from '../services/authService';
+import { GoogleAuthButton } from './GoogleAuthButton';
 import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
@@ -377,8 +379,14 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         try {
           activeUser = await signInWithGoogleAccount();
           setUser(activeUser);
-        } catch {
-          setOrderError(t.marketplace.errLoginRequired);
+        } catch (authErr) {
+          const friendly = mapGoogleAuthError(authErr);
+          if (friendly.code === 'auth/redirect-initiated') {
+            return;
+          }
+          setOrderError(
+            friendly.hint ? `${friendly.message} ${friendly.hint}` : friendly.message || t.marketplace.errLoginRequired
+          );
           setIsSubmittingOrder(false);
           return;
         }
@@ -815,17 +823,19 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
                   {/* Google sign-in option for cloud persistence */}
                   {!user && (
-                    <div className="bg-[#111114] border border-amber-500/30 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="bg-[#111114] border border-amber-500/30 rounded-xl p-3 space-y-2.5">
                       <div className="text-[11px] text-zinc-300">
                         {t.marketplace.googlePrompt}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => signInWithGoogleAccount()}
-                        className="px-3 py-1.5 rounded-lg bg-white text-zinc-950 text-xs font-bold shrink-0"
-                      >
-                        {t.marketplace.googleLoginBtn}
-                      </button>
+                      <GoogleAuthButton
+                        label={t.marketplace.googleLoginBtn}
+                        variant="compact"
+                        fullWidth
+                        onSuccess={(signedUser) => {
+                          setUser(signedUser);
+                          setOrderError(null);
+                        }}
+                      />
                     </div>
                   )}
 

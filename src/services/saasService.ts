@@ -14,15 +14,21 @@ import {
   writeBatch,
   Unsubscribe,
 } from 'firebase/firestore';
-import { signInWithPopup, signOut, User } from 'firebase/auth';
+import { User } from 'firebase/auth';
 import {
-  auth,
   db,
-  googleProvider,
   handleFirestoreError,
   OperationType,
   SUPER_ADMIN_EMAIL,
 } from '../firebase';
+import {
+  detectAuthEnvironment,
+  GoogleAuthFriendlyError,
+  resolveGoogleRedirectOnMount,
+  signInWithGoogleRedirectDirect,
+  signInWithGoogleResilient,
+  signOutGoogleResilient,
+} from './authService';
 import {
   AdminEmailDispatch,
   CashClosingRecord,
@@ -49,6 +55,13 @@ import {
   SubscriptionPaymentMethod,
 } from '../types';
 
+export {
+  detectAuthEnvironment,
+  GoogleAuthFriendlyError,
+  resolveGoogleRedirectOnMount,
+  signInWithGoogleRedirectDirect,
+};
+
 export const DEFAULT_BILLING_SETTINGS: PlatformBillingSettings = {
   monthlyPriceUSD: 25,
   bankTransfers:
@@ -70,16 +83,12 @@ export function isSuperAdminUser(user: User | null | undefined): boolean {
   );
 }
 
-export async function signInWithGoogleAccount(): Promise<User> {
-  const result = await signInWithPopup(auth, googleProvider);
-  if (isSuperAdminUser(result.user)) {
-    await ensureSuperAdminRecord(result.user);
-  }
-  return result.user;
+export function signInWithGoogleAccount(): Promise<User> {
+  return signInWithGoogleResilient();
 }
 
-export async function signOutAccount(): Promise<void> {
-  await signOut(auth);
+export function signOutAccount(): Promise<void> {
+  return signOutGoogleResilient();
 }
 
 export function slugifyStoreName(name: string): string {

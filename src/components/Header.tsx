@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Globe, Camera, Store, ShieldCheck, ShoppingBag, Package, Menu, X } from 'lucide-react';
+import { User } from 'firebase/auth';
+import { Globe, Camera, Store, ShieldCheck, ShoppingBag, Package, Menu, X, LogOut } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 import { PWAInstallButton } from './PWAInstallButton';
+import { GoogleAuthButton } from './GoogleAuthButton';
 
 interface HeaderProps {
   currentView: AppMainView;
@@ -13,6 +15,8 @@ interface HeaderProps {
   onOpenGitHub: () => void;
   onOpenScanner?: () => void;
   showWarehousePos?: boolean;
+  authUser?: User | null;
+  onSignOut?: () => Promise<void>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,6 +24,8 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onOpenScanner,
   showWarehousePos = false,
+  authUser = null,
+  onSignOut,
 }) => {
   const { t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -45,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-50 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/[0.08] safe-area-top transition-colors">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-6">
         {/* Zone 1: Brand Wordmark */}
         <button
           onClick={() => handleMobileNav('landing')}
@@ -56,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Zone 2: Clean single-line navigation links (Desktop/Tablet) */}
-        <nav className="hidden md:flex items-center gap-6 lg:gap-7">
+        <nav className="hidden md:flex items-center gap-5 lg:gap-6">
           <button
             onClick={() => onNavigate('marketplace')}
             className={navLinkClass(currentView === 'marketplace')}
@@ -91,10 +97,51 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Language Switcher + Install App + Mobile Drawer / Primary Action */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Zone 3: Language Switcher + Install App + Google Account + Mobile Drawer */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <PWAInstallButton />
           <LanguageSwitcher compact />
+
+          {authUser ? (
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#111114] border border-white/[0.08] max-w-[190px]">
+              {authUser.photoURL ? (
+                <img
+                  src={authUser.photoURL}
+                  alt={authUser.displayName || authUser.email || 'Google'}
+                  className="w-6 h-6 rounded-full object-cover shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="w-6 h-6 rounded-full bg-amber-400/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
+                  {(authUser.displayName || authUser.email || 'U').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="text-xs text-zinc-200 truncate font-medium">
+                {authUser.displayName?.split(' ')[0] || authUser.email?.split('@')[0]}
+              </span>
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSignOut().catch(() => {});
+                  }}
+                  className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
+                  title="Cerrar sesión de Google"
+                  aria-label="Cerrar sesión de Google"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="hidden lg:block">
+              <GoogleAuthButton
+                label="Acceder"
+                variant="compact"
+                showDeviceNotice={false}
+              />
+            </div>
+          )}
 
           {onOpenScanner && (
             <button
@@ -124,7 +171,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Mobile Menu Toggle (ensures 1-tap access on small 360px+ phones to all views including Admin & Scanner) */}
+          {/* Mobile Menu Toggle */}
           <button
             type="button"
             onClick={() => setMobileMenuOpen((prev) => !prev)}
@@ -139,7 +186,55 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Full Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-white/[0.08] bg-[#09090b]/98 backdrop-blur-2xl px-4 py-4 space-y-2.5 max-h-[75dvh] overflow-y-auto">
+        <div className="md:hidden border-t border-white/[0.08] bg-[#09090b]/98 backdrop-blur-2xl px-4 py-4 space-y-2.5 max-h-[78dvh] overflow-y-auto">
+          {/* Google Account Card / Quick Sign-In inside mobile drawer */}
+          <div className="p-3 rounded-xl bg-[#111114] border border-white/[0.08]">
+            {authUser ? (
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {authUser.photoURL ? (
+                    <img
+                      src={authUser.photoURL}
+                      alt={authUser.displayName || ''}
+                      className="w-9 h-9 rounded-full object-cover shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <span className="w-9 h-9 rounded-full bg-amber-400/20 text-amber-300 font-bold text-sm flex items-center justify-center shrink-0">
+                      {(authUser.displayName || authUser.email || 'U').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-white truncate">
+                      {authUser.displayName || 'Cuenta Google'}
+                    </div>
+                    <div className="text-[11px] text-zinc-400 truncate">{authUser.email}</div>
+                  </div>
+                </div>
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSignOut().catch(() => {});
+                      setMobileMenuOpen(false);
+                    }}
+                    className="px-3 py-2 min-h-[40px] rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs text-zinc-300 font-medium flex items-center gap-1.5 shrink-0"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Salir</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <GoogleAuthButton
+                label="Iniciar sesión / Registrarse con Google"
+                variant="primary"
+                fullWidth
+                onSuccess={() => setMobileMenuOpen(false)}
+              />
+            )}
+          </div>
+
           <button onClick={() => handleMobileNav('landing')} className={mobileDrawerItemClass(currentView === 'landing')}>
             <Globe className="w-5 h-5 text-amber-400 shrink-0" />
             <span>{t.header.home}</span>

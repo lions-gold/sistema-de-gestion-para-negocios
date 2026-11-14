@@ -46,11 +46,14 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, SUPER_ADMIN_EMAIL } from './firebase';
 import {
   DEFAULT_BILLING_SETTINGS,
+  GoogleAuthFriendlyError,
   importWarehouseProductsBatchInCloud,
   isSuperAdminUser,
+  resolveGoogleRedirectOnMount,
   saveStoreWarehouseLedgerInCloud,
   saveWarehouseProductInCloud,
   signInWithGoogleAccount,
+  signOutAccount,
   subscribeAllStoresForAdmin,
   subscribeOwnerStoreProducts,
   subscribeOwnerStores,
@@ -61,7 +64,8 @@ import {
   syncWarehouseProductToStorefront,
   updateWarehouseAndLinkedStorefrontStock,
 } from './services/saasService';
-import { Lock, MessageCircle, ShieldCheck } from 'lucide-react';
+import { syncFirebaseAuthLanguage } from './services/authService';
+import { Lock, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from './i18n/LanguageContext';
 import { VectorAssistantWidget } from './components/VectorAssistantWidget';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
@@ -124,6 +128,7 @@ export default function App() {
 
   // Admin-controlled Almacén & POS access state
   const [authUser, setAuthUser] = useState<User | null>(auth.currentUser);
+  const [redirectAuthError, setRedirectAuthError] = useState<GoogleAuthFriendlyError | null>(null);
   const [platformBilling, setPlatformBilling] = useState<PlatformBillingSettings>(
     DEFAULT_BILLING_SETTINGS
   );
@@ -168,9 +173,18 @@ export default function App() {
   });
 
   useEffect(() => {
+    syncFirebaseAuthLanguage(lang);
+  }, [lang]);
+
+  useEffect(() => {
     const unsubBilling = subscribePlatformBillingSettings(setPlatformBilling);
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setAuthUser(u);
+      if (u) setRedirectAuthError(null);
+    });
+    resolveGoogleRedirectOnMount().then(({ user, error }) => {
+      if (user) setAuthUser(user);
+      if (error) setRedirectAuthError(error);
     });
     return () => {
       unsubBilling();
@@ -934,7 +948,33 @@ export default function App() {
         onOpenGitHub={() => setIsGitHubModalOpen(true)}
         onOpenScanner={() => setIsScannerOpen(true)}
         showWarehousePos={canAccessWarehousePos}
+        authUser={authUser}
+        onSignOut={signOutAccount}
       />
+
+      {redirectAuthError && (
+        <div
+          role="alert"
+          className="bg-red-950/60 border-b border-red-500/40 px-4 py-2.5 text-xs text-red-100"
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div>
+              <span className="font-semibold">{redirectAuthError.message}</span>
+              {redirectAuthError.hint && (
+                <span className="ml-2 text-red-200/85">{redirectAuthError.hint}</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setRedirectAuthError(null)}
+              className="p-1.5 rounded-lg hover:bg-red-900/50 text-red-200 shrink-0"
+              aria-label="Cerrar alerta de sesión"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* GitHub Connection Modal */}
       <GitHubModal

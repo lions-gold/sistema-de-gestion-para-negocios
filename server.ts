@@ -54,10 +54,11 @@ app.use((req, res, next) => {
     return res.redirect(301, `https://${host}${req.originalUrl || req.url}`);
   }
 
-  // Security headers & HSTS
+  // Security headers, HSTS & Google Auth Popup compatibility across Safari/Mac/iOS/Android
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
   next();
 });
 
