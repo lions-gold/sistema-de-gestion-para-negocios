@@ -4,18 +4,18 @@ import { InventoryModule } from './InventoryModule';
 import { POSModule } from './POSModule';
 import { FiadosModule } from './FiadosModule';
 import { CashierModule } from './CashierModule';
-import { 
-  Package, 
-  Receipt, 
-  BookOpen, 
-  Coins, 
-  ArrowLeft, 
-  History, 
+import { AnalyticsModule } from './AnalyticsModule';
+import {
+  Package,
+  Receipt,
+  BookOpen,
+  Coins,
+  ArrowLeft,
   Store,
-  DollarSign,
   TrendingUp,
-  Download
+  Camera
 } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface WarehouseAppProps {
   products: Product[];
@@ -26,11 +26,15 @@ interface WarehouseAppProps {
   initialTab?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales';
   onUpdateProductStock: (id: string, delta: number) => void;
   onAddProduct: (product: Omit<Product, 'id'>) => void;
+  onImportProducts?: (products: Omit<Product, 'id'>[], mergeBySku?: boolean) => void;
   onCompleteSale: (sale: Sale) => void;
   onAddDebtor: (debtor: Omit<Debtor, 'id' | 'history'>) => void;
   onRecordPayment: (debtorId: string, amountUSD: number, description: string) => void;
   onAddMovement: (movement: Omit<CashMovement, 'id' | 'date'>) => void;
   onBackToLanding: () => void;
+  onOpenScanner: () => void;
+  activeTab?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales';
+  onTabChange?: (tab: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => void;
 }
 
 export const WarehouseApp: React.FC<WarehouseAppProps> = ({
@@ -42,44 +46,65 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
   initialTab = 'inventory',
   onUpdateProductStock,
   onAddProduct,
+  onImportProducts,
   onCompleteSale,
   onAddDebtor,
   onRecordPayment,
   onAddMovement,
   onBackToLanding,
+  onOpenScanner,
+  activeTab: controlledTab,
+  onTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
+  const { t } = useLanguage();
+  const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
+  const activeTab = controlledTab || internalTab;
+
+  const handleTabSelect = (tab: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => {
+    setInternalTab(tab);
+    if (onTabChange) {
+      onTabChange(tab);
+    }
+  };
 
   const totalSalesUSD = sales.reduce((acc, s) => acc + s.subtotalUSD, 0);
+  const lowStockCount = products.filter((p) => p.stock <= p.minStock).length;
+
+  const tabClass = (active: boolean) =>
+    `px-4 py-2 rounded-lg font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap shrink-0 transition-colors ${
+      active
+        ? 'bg-amber-400 text-zinc-950 font-semibold shadow-sm'
+        : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04]'
+    }`;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pb-16">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 pb-24 md:pb-16">
       {/* Top App Subheader */}
-      <div className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 lg:px-8 py-3">
+      <div className="bg-[#111114] border-b border-white/[0.08] px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
               onClick={onBackToLanding}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium"
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Volver a la Web</span>
+              <span>{t.warehouse.backToWeb}</span>
             </button>
-            <div className="h-4 w-px bg-slate-700" />
-            <span className="font-bold text-white text-sm font-display flex items-center gap-1.5">
+            <div className="h-4 w-px bg-white/[0.1]" />
+            <span className="font-semibold text-zinc-100 text-sm font-display flex items-center gap-1.5">
               <Store className="w-4 h-4 text-amber-400" />
-              Panel Operativo: La Taberna Lions Gold
+              {t.warehouse.panelTitle}
             </span>
           </div>
 
           <div className="flex items-center gap-3 text-xs">
-            <span className="text-slate-400">Tasa:</span>
-            <span className="font-mono font-bold text-amber-400 tabular-nums">
+            <span className="text-zinc-400">{t.warehouse.rateLabel}</span>
+            <span className="font-mono font-semibold text-amber-400 tabular-nums">
               {exchangeRate.toFixed(2)} Bs / USD
             </span>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-400">Ventas Hoy:</span>
-            <span className="font-mono font-bold text-emerald-400 tabular-nums">
+            <span className="text-zinc-700" aria-hidden="true">|</span>
+            <span className="text-zinc-400">{t.warehouse.salesToday}</span>
+            <span className="font-mono font-semibold text-emerald-400 tabular-nums">
               ${totalSalesUSD.toFixed(2)} USD
             </span>
           </div>
@@ -88,65 +113,50 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
 
       {/* Tabs navigation */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-800">
-          <button
-            onClick={() => setActiveTab('inventory')}
-            className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all ${
-              activeTab === 'inventory'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-3 border-b border-white/[0.08]">
+          <button onClick={() => handleTabSelect('inventory')} className={tabClass(activeTab === 'inventory')}>
             <Package className="w-4 h-4" />
-            <span>Almacén e Inventario</span>
+            <span>{t.warehouse.tabInventory}</span>
+            {lowStockCount > 0 && (
+              <span
+                className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold rounded-full tabular-nums ${
+                  activeTab === 'inventory'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                }`}
+              >
+                {lowStockCount}
+              </span>
+            )}
           </button>
 
-          <button
-            onClick={() => setActiveTab('pos')}
-            className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all ${
-              activeTab === 'pos'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
+          <button onClick={() => handleTabSelect('pos')} className={tabClass(activeTab === 'pos')}>
             <Receipt className="w-4 h-4" />
-            <span>Punto de Venta (POS)</span>
+            <span>{t.warehouse.tabPos}</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('debtors')}
-            className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all ${
-              activeTab === 'debtors'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
+          <button onClick={() => handleTabSelect('debtors')} className={tabClass(activeTab === 'debtors')}>
             <BookOpen className="w-4 h-4" />
-            <span>Libreta de Fiados (WhatsApp)</span>
+            <span>{t.warehouse.tabDebtors}</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('cashier')}
-            className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all ${
-              activeTab === 'cashier'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
+          <button onClick={() => handleTabSelect('cashier')} className={tabClass(activeTab === 'cashier')}>
             <Coins className="w-4 h-4" />
-            <span>Caja Chica & Gastos</span>
+            <span>{t.warehouse.tabCashier}</span>
+          </button>
+
+          <button onClick={() => handleTabSelect('sales')} className={tabClass(activeTab === 'sales')}>
+            <TrendingUp className="w-4 h-4" />
+            <span>{t.warehouse.tabSales}</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('sales')}
-            className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap transition-all ${
-              activeTab === 'sales'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
+            onClick={onOpenScanner}
+            className="px-3.5 py-2 rounded-lg font-semibold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-400/25 transition-colors shrink-0 ml-auto"
+            title={t.header.scannerTitle}
           >
-            <History className="w-4 h-4" />
-            <span>Historial de Ventas ({sales.length})</span>
+            <Camera className="w-4 h-4" />
+            <span className="hidden sm:inline">{t.warehouse.scanCamera}</span>
           </button>
         </div>
 
@@ -157,7 +167,10 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               products={products}
               onUpdateProductStock={onUpdateProductStock}
               onAddProduct={onAddProduct}
+              onImportProducts={onImportProducts}
               exchangeRate={exchangeRate}
+              onOpenScanner={onOpenScanner}
+              sales={sales}
             />
           )}
 
@@ -166,6 +179,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               products={products}
               exchangeRate={exchangeRate}
               onCompleteSale={onCompleteSale}
+              onOpenScanner={onOpenScanner}
             />
           )}
 
@@ -183,79 +197,16 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               movements={movements}
               exchangeRate={exchangeRate}
               onAddMovement={onAddMovement}
+              sales={sales}
             />
           )}
 
           {activeTab === 'sales' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-white text-base font-display">
-                    Registro de Comprobantes de Venta
-                  </h3>
-                  <span className="text-xs text-slate-400">
-                    Historial de órdenes emitidas en La Taberna Lions Gold
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400 block">Facturación acumulada</span>
-                  <span className="font-mono font-bold text-amber-400 text-lg tabular-nums">
-                    ${totalSalesUSD.toFixed(2)} USD
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs sm:text-sm">
-                    <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
-                      <tr>
-                        <th className="py-3 px-4">Recibo #</th>
-                        <th className="py-3 px-4">Fecha</th>
-                        <th className="py-3 px-4">Cliente</th>
-                        <th className="py-3 px-4">Productos</th>
-                        <th className="py-3 px-4">Método</th>
-                        <th className="py-3 px-4 text-right">Total (USD)</th>
-                        <th className="py-3 px-4 text-right">Total (Bs.)</th>
-                        <th className="py-3 px-4 text-center">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80">
-                      {sales.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-amber-400">
-                            {sale.receiptNumber}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-slate-400 text-xs">
-                            {sale.date}
-                          </td>
-                          <td className="py-3 px-4 text-white font-medium">
-                            {sale.customerName}
-                          </td>
-                          <td className="py-3 px-4 text-slate-300">
-                            {sale.items.map((it) => `${it.quantity}x ${it.product.name}`).join(', ')}
-                          </td>
-                          <td className="py-3 px-4 text-slate-300">
-                            {sale.paymentMethod}
-                          </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-white tabular-nums">
-                            ${sale.subtotalUSD.toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-right font-mono text-slate-400 tabular-nums text-xs">
-                            {sale.subtotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              {sale.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <AnalyticsModule
+              sales={sales}
+              products={products}
+              exchangeRate={exchangeRate}
+            />
           )}
         </div>
       </div>

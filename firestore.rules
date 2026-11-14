@@ -1,0 +1,780 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 1: Global Default-Deny Catch-All Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidReferralCode(code) {
+      return code is string && code.size() >= 4 && code.size() <= 40 && code.matches('^[A-Z0-9\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isSuperAdminEmail() {
+      return isVerifiedUser() && request.auth.token.email == 'empresaalhadiqainvest@gmail.com';
+    }
+
+    function isAdmin() {
+      return isSuperAdminEmail() ||
+        (isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidSlug(slug) {
+      return slug is string && slug.size() >= 2 && slug.size() <= 80 && slug.matches('^[a-z0-9\\-]+$');
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints (Anti-Update-Gap)
+    // -------------------------------------------------------------------------
+    function isValidAdminUser(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'role', 'createdAt']) &&
+        data.uid == uid &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 5 && data.email.size() <= 160 &&
+        data.role == 'superadmin' &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPlatformBilling(data) {
+      return data.keys().hasAll([
+          'monthlyPriceUSD', 'bankTransfers', 'pagoMovil',
+          'binancePay', 'bybitPay', 'supportWhatsapp', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'monthlyPriceUSD', 'bankTransfers', 'pagoMovil',
+          'binancePay', 'bybitPay', 'supportWhatsapp',
+          'warehousePosEnabled', 'referralRewardUSD', 'updatedAt'
+        ]) &&
+        data.monthlyPriceUSD is number && data.monthlyPriceUSD >= 1 && data.monthlyPriceUSD <= 1000 &&
+        data.bankTransfers is string && data.bankTransfers.size() <= 1000 &&
+        data.pagoMovil is string && data.pagoMovil.size() <= 500 &&
+        data.binancePay is string && data.binancePay.size() <= 300 &&
+        data.bybitPay is string && data.bybitPay.size() <= 300 &&
+        data.supportWhatsapp is string && data.supportWhatsapp.size() >= 7 && data.supportWhatsapp.size() <= 40 &&
+        (!('warehousePosEnabled' in data) || data.warehousePosEnabled is bool) &&
+        (!('referralRewardUSD' in data) || (data.referralRewardUSD is number && data.referralRewardUSD >= 0 && data.referralRewardUSD <= 1000)) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreTenant(data, storeId) {
+      return data.keys().hasAll([
+          'id', 'slug', 'ownerUid', 'storeName', 'registeredOwnerName',
+          'businessWhatsapp', 'status', 'subscriptionPriceUSD',
+          'nationalShippingEnabled', 'localDeliveryEnabled', 'pickupEnabled',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'slug', 'ownerUid', 'storeName', 'registeredOwnerName',
+          'rif', 'logoUrl', 'businessWhatsapp', 'category', 'description',
+          'status', 'subscriptionPriceUSD',
+          'nationalShippingEnabled', 'nationalCouriers',
+          'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
+          'pickupEnabled', 'warehousePosEnabled',
+          'referralCode', 'referredByCode', 'referredByStoreId', 'referredByStoreName', 'referralRewardGranted',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.id == storeId &&
+        isValidId(data.id) &&
+        isValidSlug(data.slug) &&
+        isValidId(data.ownerUid) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        data.registeredOwnerName is string && data.registeredOwnerName.size() >= 2 && data.registeredOwnerName.size() <= 100 &&
+        (!('rif' in data) || (data.rif is string && data.rif.size() <= 30)) &&
+        (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 150000)) &&
+        data.businessWhatsapp is string && data.businessWhatsapp.size() >= 7 && data.businessWhatsapp.size() <= 25 &&
+        (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+        data.status in ['pending', 'active', 'suspended'] &&
+        data.subscriptionPriceUSD is number && data.subscriptionPriceUSD == 25 &&
+        data.nationalShippingEnabled is bool &&
+        (!('nationalCouriers' in data) || (data.nationalCouriers is string && data.nationalCouriers.size() <= 200)) &&
+        data.localDeliveryEnabled is bool &&
+        (!('localDeliveryFeeUSD' in data) || (data.localDeliveryFeeUSD is number && data.localDeliveryFeeUSD >= 0 && data.localDeliveryFeeUSD <= 500)) &&
+        (!('localDeliveryZone' in data) || (data.localDeliveryZone is string && data.localDeliveryZone.size() <= 150)) &&
+        data.pickupEnabled is bool &&
+        (!('warehousePosEnabled' in data) || data.warehousePosEnabled is bool) &&
+        (!('referralCode' in data) || isValidReferralCode(data.referralCode)) &&
+        (!('referredByCode' in data) || isValidReferralCode(data.referredByCode)) &&
+        (!('referredByStoreId' in data) || isValidId(data.referredByStoreId)) &&
+        (!('referredByStoreName' in data) || (data.referredByStoreName is string && data.referredByStoreName.size() <= 100)) &&
+        (!('referralRewardGranted' in data) || data.referralRewardGranted is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStorePrivateAccount(data, storeId) {
+      return data.keys().hasAll(['storeId', 'ownerUid', 'ownerEmail', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['storeId', 'ownerUid', 'ownerEmail', 'createdAt', 'updatedAt']) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerEmail is string && data.ownerEmail.size() >= 5 && data.ownerEmail.size() <= 160 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSubscriptionPayment(data, paymentId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeName', 'ownerUid', 'ownerEmail',
+          'amountUSD', 'paymentMethod', 'referenceNumber', 'status',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeName', 'ownerUid', 'ownerEmail',
+          'amountUSD', 'paymentMethod', 'referenceNumber', 'payerInfo', 'notes',
+          'couponId', 'couponCode', 'discountUSD',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == paymentId &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        isValidId(data.ownerUid) &&
+        data.ownerEmail is string && data.ownerEmail.size() >= 5 && data.ownerEmail.size() <= 160 &&
+        data.amountUSD is number && data.amountUSD >= 0 && data.amountUSD <= 1000 &&
+        data.paymentMethod in ['Transferencia Bancaria', 'Pago Móvil', 'Binance Pay', 'Bybit', 'Cupón Referido'] &&
+        data.referenceNumber is string && data.referenceNumber.size() >= 4 && data.referenceNumber.size() <= 80 &&
+        (!('payerInfo' in data) || (data.payerInfo is string && data.payerInfo.size() <= 120)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 400)) &&
+        (!('couponId' in data) || isValidId(data.couponId)) &&
+        (!('couponCode' in data) || isValidReferralCode(data.couponCode)) &&
+        (!('discountUSD' in data) || (data.discountUSD is number && data.discountUSD >= 0 && data.discountUSD <= 1000)) &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreProduct(data, storeId, productId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'ownerUid', 'name', 'description',
+          'priceUSD', 'rating', 'stock', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'ownerUid', 'name', 'description',
+          'priceUSD', 'costUSD', 'rating', 'reviewCount', 'imageUrl',
+          'category', 'sku', 'stock', 'minStock', 'unit',
+          'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == productId &&
+        isValidId(data.id) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.description is string && data.description.size() <= 1000 &&
+        data.priceUSD is number && data.priceUSD >= 0 && data.priceUSD <= 1000000 &&
+        (!('costUSD' in data) || (data.costUSD is number && data.costUSD >= 0 && data.costUSD <= 1000000)) &&
+        data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+        (!('reviewCount' in data) || (data.reviewCount is number && data.reviewCount >= 0 && data.reviewCount <= 1000000)) &&
+        (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 150000)) &&
+        (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
+        (!('sku' in data) || (data.sku is string && data.sku.size() <= 60)) &&
+        data.stock is number && data.stock >= 0 && data.stock <= 1000000 &&
+        (!('minStock' in data) || (data.minStock is number && data.minStock >= 0 && data.minStock <= 1000000)) &&
+        (!('unit' in data) || (data.unit is string && data.unit.size() <= 30)) &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreOrder(data, storeId, orderId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeOwnerUid', 'customerUid', 'invoiceNumber',
+          'customerName', 'customerPhone', 'shippingType', 'shippingFeeUSD',
+          'paymentMethod', 'subtotalUSD', 'totalUSD', 'totalBs', 'exchangeRate',
+          'itemsSummary', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeOwnerUid', 'customerUid', 'invoiceNumber',
+          'customerName', 'customerRif', 'customerPhone', 'customerEmail',
+          'shippingType', 'shippingDetails', 'shippingFeeUSD',
+          'paymentMethod', 'subtotalUSD', 'totalUSD', 'totalBs', 'exchangeRate',
+          'itemsSummary', 'itemsCount', 'estimatedCostUSD', 'estimatedProfitUSD',
+          'stockDeducted', 'saleChannel', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == orderId &&
+        isValidId(data.id) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.storeOwnerUid) &&
+        isValidId(data.customerUid) &&
+        data.invoiceNumber is string && data.invoiceNumber.size() >= 3 && data.invoiceNumber.size() <= 40 &&
+        data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100 &&
+        (!('customerRif' in data) || (data.customerRif is string && data.customerRif.size() <= 30)) &&
+        data.customerPhone is string && data.customerPhone.size() >= 7 && data.customerPhone.size() <= 25 &&
+        (!('customerEmail' in data) || (data.customerEmail is string && data.customerEmail.size() <= 160)) &&
+        data.shippingType in ['Envío Nacional', 'Delivery Local', 'Retiro en Tienda'] &&
+        (!('shippingDetails' in data) || (data.shippingDetails is string && data.shippingDetails.size() <= 300)) &&
+        data.shippingFeeUSD is number && data.shippingFeeUSD >= 0 && data.shippingFeeUSD <= 1000 &&
+        data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 60 &&
+        data.subtotalUSD is number && data.subtotalUSD >= 0 && data.subtotalUSD <= 1000000 &&
+        data.totalUSD is number && data.totalUSD >= 0 && data.totalUSD <= 1000000 &&
+        data.totalBs is number && data.totalBs >= 0 && data.totalBs <= 1000000000 &&
+        data.exchangeRate is number && data.exchangeRate > 0 && data.exchangeRate <= 1000000 &&
+        data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 2000 &&
+        (!('itemsCount' in data) || (data.itemsCount is number && data.itemsCount >= 1 && data.itemsCount <= 100000)) &&
+        (!('estimatedCostUSD' in data) || (data.estimatedCostUSD is number && data.estimatedCostUSD >= 0 && data.estimatedCostUSD <= 1000000)) &&
+        (!('estimatedProfitUSD' in data) || (data.estimatedProfitUSD is number && data.estimatedProfitUSD >= -1000000 && data.estimatedProfitUSD <= 1000000)) &&
+        (!('stockDeducted' in data) || data.stockDeducted is bool) &&
+        (!('saleChannel' in data) || data.saleChannel in ['Carrito Web', 'Venta Directa Tienda']) &&
+        data.status in ['pending', 'confirmed', 'shipped', 'completed', 'cancelled'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreOrderItem(data, storeId, orderId, itemId) {
+      return data.keys().hasAll([
+          'id', 'orderId', 'storeId', 'storeOwnerUid', 'customerUid',
+          'productId', 'productName', 'quantity', 'unitPriceUSD', 'subtotalUSD'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'orderId', 'storeId', 'storeOwnerUid', 'customerUid',
+          'productId', 'productName', 'sku', 'unit',
+          'quantity', 'unitPriceUSD', 'unitCostUSD', 'subtotalUSD'
+        ]) &&
+        data.id == itemId &&
+        isValidId(data.id) &&
+        data.orderId == orderId &&
+        isValidId(data.orderId) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.storeOwnerUid) &&
+        isValidId(data.customerUid) &&
+        isValidId(data.productId) &&
+        data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 140 &&
+        (!('sku' in data) || (data.sku is string && data.sku.size() <= 60)) &&
+        (!('unit' in data) || (data.unit is string && data.unit.size() <= 30)) &&
+        data.quantity is number && data.quantity > 0 && data.quantity <= 100000 &&
+        data.unitPriceUSD is number && data.unitPriceUSD >= 0 && data.unitPriceUSD <= 1000000 &&
+        (!('unitCostUSD' in data) || (data.unitCostUSD is number && data.unitCostUSD >= 0 && data.unitCostUSD <= 1000000)) &&
+        data.subtotalUSD is number && data.subtotalUSD >= 0 && data.subtotalUSD <= 1000000;
+    }
+
+    function isValidReferralCodeLookup(data, code) {
+      return data.keys().hasAll(['code', 'storeId', 'storeName', 'ownerUid', 'createdAt']) &&
+        data.keys().hasOnly(['code', 'storeId', 'storeName', 'ownerUid', 'createdAt']) &&
+        data.code == code &&
+        isValidReferralCode(data.code) &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        isValidId(data.ownerUid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidStoreReferral(data, referralId) {
+      return data.keys().hasAll([
+          'id', 'referrerStoreId', 'referrerStoreName', 'referrerOwnerUid', 'referrerCode',
+          'referredStoreId', 'referredStoreName', 'referredOwnerUid',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'referrerStoreId', 'referrerStoreName', 'referrerOwnerUid', 'referrerCode',
+          'referredStoreId', 'referredStoreName', 'referredOwnerUid',
+          'status', 'rewardCouponId', 'rewardCouponCode', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == referralId &&
+        isValidId(data.id) &&
+        isValidId(data.referrerStoreId) &&
+        data.referrerStoreName is string && data.referrerStoreName.size() >= 2 && data.referrerStoreName.size() <= 100 &&
+        isValidId(data.referrerOwnerUid) &&
+        isValidReferralCode(data.referrerCode) &&
+        isValidId(data.referredStoreId) &&
+        data.referredStoreName is string && data.referredStoreName.size() >= 2 && data.referredStoreName.size() <= 100 &&
+        isValidId(data.referredOwnerUid) &&
+        data.referrerOwnerUid != data.referredOwnerUid &&
+        data.referrerStoreId != data.referredStoreId &&
+        data.status in ['registered', 'rewarded'] &&
+        (!('rewardCouponId' in data) || isValidId(data.rewardCouponId)) &&
+        (!('rewardCouponCode' in data) || isValidReferralCode(data.rewardCouponCode)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReferralCoupon(data, couponId) {
+      return data.keys().hasAll([
+          'id', 'code', 'storeId', 'storeName', 'ownerUid',
+          'discountUSD', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'code', 'storeId', 'storeName', 'ownerUid',
+          'discountUSD', 'sourceReferralId', 'referredStoreName',
+          'status', 'appliedPaymentId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == couponId &&
+        isValidId(data.id) &&
+        isValidReferralCode(data.code) &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        isValidId(data.ownerUid) &&
+        data.discountUSD is number && data.discountUSD > 0 && data.discountUSD <= 1000 &&
+        (!('sourceReferralId' in data) || isValidId(data.sourceReferralId)) &&
+        (!('referredStoreName' in data) || (data.referredStoreName is string && data.referredStoreName.size() <= 100)) &&
+        (!('appliedPaymentId' in data) || isValidId(data.appliedPaymentId)) &&
+        data.status in ['available', 'applied', 'redeemed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminEmailDispatch(data, emailId) {
+      return data.keys().hasAll([
+          'id', 'mode', 'subject', 'body', 'recipientCount',
+          'recipientEmailsSummary', 'sentByEmail', 'deliveryChannel', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'mode', 'subject', 'body', 'recipientCount',
+          'recipientEmailsSummary', 'targetStoreNames', 'sentByEmail',
+          'deliveryChannel', 'createdAt'
+        ]) &&
+        data.id == emailId &&
+        isValidId(data.id) &&
+        data.mode in ['individual', 'collective'] &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 180 &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 5000 &&
+        data.recipientCount is number && data.recipientCount >= 1 && data.recipientCount <= 5000 &&
+        data.recipientEmailsSummary is string && data.recipientEmailsSummary.size() <= 2000 &&
+        (!('targetStoreNames' in data) || (data.targetStoreNames is string && data.targetStoreNames.size() <= 1000)) &&
+        data.sentByEmail is string && data.sentByEmail.size() >= 5 && data.sentByEmail.size() <= 160 &&
+        data.deliveryChannel in ['smtp', 'resend', 'cloud_inbox_mailto'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidStoreInboxMessage(data, storeId, messageId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeOwnerUid', 'subject', 'body',
+          'senderEmail', 'category', 'isRead', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeOwnerUid', 'subject', 'body',
+          'senderEmail', 'category', 'isRead', 'createdAt'
+        ]) &&
+        data.id == messageId &&
+        isValidId(data.id) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.storeOwnerUid) &&
+        data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 180 &&
+        data.body is string && data.body.size() >= 1 && data.body.size() <= 5000 &&
+        data.senderEmail is string && data.senderEmail.size() >= 5 && data.senderEmail.size() <= 160 &&
+        data.category in ['admin_email', 'referral_reward', 'system'] &&
+        data.isRead is bool &&
+        data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Match Rules
+    // -------------------------------------------------------------------------
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isVerifiedUser() && (request.auth.uid == uid || isAdmin());
+      allow list: if isSuperAdminEmail();
+      allow create: if isValidId(uid) && isSuperAdminEmail() &&
+        isValidAdminUser(incoming(), uid) &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(uid) && isSuperAdminEmail() &&
+        isValidAdminUser(incoming(), uid) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if false;
+    }
+
+    match /platformSettings/{settingId} {
+      allow get: if settingId == 'billing';
+      allow list: if isSuperAdminEmail();
+      allow create: if settingId == 'billing' && isAdmin() &&
+        isValidPlatformBilling(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow update: if settingId == 'billing' && isAdmin() &&
+        isValidPlatformBilling(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /stores/{storeId} {
+      allow get: if isValidId(storeId) && (
+        existing().status == 'active' ||
+        isAdmin() ||
+        (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+      );
+      allow list: if resource.data.status == 'active' ||
+        isSuperAdminEmail() ||
+        (isVerifiedUser() && resource.data.ownerUid == request.auth.uid);
+
+      allow create: if isValidId(storeId) && isVerifiedUser() &&
+        isValidStoreTenant(incoming(), storeId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        (!('warehousePosEnabled' in incoming()) || incoming().warehousePosEnabled == false) &&
+        (!('referralRewardGranted' in incoming()) || incoming().referralRewardGranted == false) &&
+        (!('referredByStoreId' in incoming()) || incoming().referredByStoreId != storeId) &&
+        (!('referredByCode' in incoming()) || (
+          exists(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)) &&
+          get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.ownerUid != request.auth.uid &&
+          'referredByStoreId' in incoming() &&
+          incoming().referredByStoreId == get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.storeId
+        )) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isValidId(storeId) && isVerifiedUser() &&
+        isValidStoreTenant(incoming(), storeId) &&
+        incoming().id == existing().id &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            incoming().status == existing().status &&
+            incoming().subscriptionPriceUSD == existing().subscriptionPriceUSD &&
+            ((!('warehousePosEnabled' in incoming()) && !('warehousePosEnabled' in existing())) ||
+             (('warehousePosEnabled' in incoming()) && ('warehousePosEnabled' in existing()) && incoming().warehousePosEnabled == existing().warehousePosEnabled)) &&
+            (!('referralCode' in existing()) || ('referralCode' in incoming() && incoming().referralCode == existing().referralCode)) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'storeName', 'slug', 'registeredOwnerName', 'rif', 'logoUrl',
+              'businessWhatsapp', 'category', 'description',
+              'nationalShippingEnabled', 'nationalCouriers',
+              'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
+              'pickupEnabled', 'referralCode', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(storeId) && isAdmin();
+
+      // Split Collection PII: Store owner's email isolated from public storefront
+      match /private/{docId} {
+        allow get: if isValidId(storeId) && docId == 'account' && isVerifiedUser() && (
+          isAdmin() || existing().ownerUid == request.auth.uid
+        );
+        allow list: if false;
+        allow create: if isValidId(storeId) && docId == 'account' && isVerifiedUser() &&
+          isValidStorePrivateAccount(incoming(), storeId) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid;
+        allow update: if isValidId(storeId) && docId == 'account' && isVerifiedUser() &&
+          isValidStorePrivateAccount(incoming(), storeId) &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (existing().ownerUid == request.auth.uid &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['ownerEmail', 'updatedAt']))
+          );
+        allow delete: if isValidId(storeId) && isAdmin();
+      }
+
+      // Official Store Owner Inbox (Admin broadcasts, individual messages, coupon reward alerts)
+      match /inbox/{messageId} {
+        allow get: if isValidId(storeId) && isValidId(messageId) && isVerifiedUser() && (
+          isAdmin() || existing().storeOwnerUid == request.auth.uid
+        );
+        allow list: if isVerifiedUser() && (
+          isSuperAdminEmail() || resource.data.storeOwnerUid == request.auth.uid
+        );
+        allow create: if isValidId(storeId) && isValidId(messageId) && isAdmin() &&
+          isValidStoreInboxMessage(incoming(), storeId, messageId) &&
+          incoming().createdAt == request.time;
+        allow update: if isValidId(storeId) && isValidId(messageId) && isVerifiedUser() &&
+          isValidStoreInboxMessage(incoming(), storeId, messageId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().storeOwnerUid == existing().storeOwnerUid &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            isAdmin() ||
+            (
+              existing().storeOwnerUid == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+            )
+          );
+        allow delete: if isValidId(storeId) && isValidId(messageId) && isAdmin();
+      }
+
+      // Per-Store Product Catalog
+      match /products/{productId} {
+        allow get: if isValidId(storeId) && isValidId(productId) && (
+          existing().isActive == true ||
+          isAdmin() ||
+          (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+        );
+        allow list: if resource.data.isActive == true ||
+          isSuperAdminEmail() ||
+          (isVerifiedUser() && resource.data.ownerUid == request.auth.uid);
+
+        allow create: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() &&
+          isValidStoreProduct(incoming(), storeId, productId) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid;
+
+        allow update: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() &&
+          isValidStoreProduct(incoming(), storeId, productId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().ownerUid == request.auth.uid &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name', 'description', 'priceUSD', 'costUSD', 'rating',
+                'reviewCount', 'imageUrl', 'category', 'sku', 'stock',
+                'minStock', 'unit', 'isActive', 'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() && (
+          isAdmin() ||
+          (existing().ownerUid == request.auth.uid &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
+        );
+      }
+
+      // Per-Store Customer Orders (Contains Customer PII)
+      match /orders/{orderId} {
+        allow get: if isValidId(storeId) && isValidId(orderId) && isVerifiedUser() && (
+          isAdmin() ||
+          existing().storeOwnerUid == request.auth.uid ||
+          existing().customerUid == request.auth.uid
+        );
+        allow list: if isVerifiedUser() && (
+          isSuperAdminEmail() ||
+          resource.data.storeOwnerUid == request.auth.uid ||
+          resource.data.customerUid == request.auth.uid
+        );
+
+        allow create: if isValidId(storeId) && isValidId(orderId) && isVerifiedUser() &&
+          isValidStoreOrder(incoming(), storeId, orderId) &&
+          incoming().customerUid == request.auth.uid &&
+          (
+            incoming().status == 'pending' ||
+            (incoming().storeOwnerUid == request.auth.uid && incoming().status in ['pending', 'confirmed', 'completed'])
+          ) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          (
+            get(/databases/$(database)/documents/stores/$(storeId)).data.status == 'active' ||
+            get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+          ) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == incoming().storeOwnerUid;
+
+        allow update: if isValidId(storeId) && isValidId(orderId) && isVerifiedUser() &&
+          isValidStoreOrder(incoming(), storeId, orderId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().storeOwnerUid == existing().storeOwnerUid &&
+          incoming().customerUid == existing().customerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().status != 'completed' &&
+              existing().status != 'cancelled' &&
+              existing().storeOwnerUid == request.auth.uid &&
+              (!('stockDeducted' in existing()) || existing().stockDeducted == false || incoming().stockDeducted == true) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'stockDeducted', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isValidId(storeId) && isValidId(orderId) && isAdmin();
+
+        // Structured Line Items per Order
+        match /items/{itemId} {
+          allow get: if isValidId(storeId) && isValidId(orderId) && isValidId(itemId) && isVerifiedUser() && (
+            isAdmin() ||
+            existing().storeOwnerUid == request.auth.uid ||
+            existing().customerUid == request.auth.uid
+          );
+          allow list: if isVerifiedUser() && (
+            isSuperAdminEmail() ||
+            resource.data.storeOwnerUid == request.auth.uid ||
+            resource.data.customerUid == request.auth.uid
+          );
+          allow create: if isValidId(storeId) && isValidId(orderId) && isValidId(itemId) && isVerifiedUser() &&
+            isValidStoreOrderItem(incoming(), storeId, orderId, itemId) &&
+            incoming().customerUid == request.auth.uid &&
+            exists(/databases/$(database)/documents/stores/$(storeId)) &&
+            (
+              get(/databases/$(database)/documents/stores/$(storeId)).data.status == 'active' ||
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+            ) &&
+            get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == incoming().storeOwnerUid &&
+            existsAfter(/databases/$(database)/documents/stores/$(storeId)/orders/$(orderId));
+          allow update, delete: if isValidId(storeId) && isValidId(orderId) && isValidId(itemId) && isAdmin();
+        }
+      }
+    }
+
+    // Monthly $25 Subscription Payments (and Renewal Coupon Submissions)
+    match /subscriptionPayments/{paymentId} {
+      allow get: if isValidId(paymentId) && isVerifiedUser() && (
+        isAdmin() || existing().ownerUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() || resource.data.ownerUid == request.auth.uid
+      );
+
+      allow create: if isValidId(paymentId) && isVerifiedUser() &&
+        isValidSubscriptionPayment(incoming(), paymentId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/stores/$(incoming().storeId)) &&
+        get(/databases/$(database)/documents/stores/$(incoming().storeId)).data.ownerUid == request.auth.uid &&
+        (!('couponId' in incoming()) || (
+          exists(/databases/$(database)/documents/coupons/$(incoming().couponId)) &&
+          get(/databases/$(database)/documents/coupons/$(incoming().couponId)).data.ownerUid == request.auth.uid &&
+          get(/databases/$(database)/documents/coupons/$(incoming().couponId)).data.status == 'available' &&
+          'discountUSD' in incoming() &&
+          incoming().discountUSD == get(/databases/$(database)/documents/coupons/$(incoming().couponId)).data.discountUSD
+        ));
+
+      allow update: if isValidId(paymentId) && isAdmin() &&
+        isValidSubscriptionPayment(incoming(), paymentId) &&
+        incoming().id == existing().id &&
+        incoming().storeId == existing().storeId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt']);
+
+      allow delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    // Non-PII Public Referral Code Lookup Directory
+    match /referralCodes/{code} {
+      allow get: if isValidReferralCode(code);
+      allow list: if isSuperAdminEmail();
+      allow create: if isValidReferralCode(code) && isVerifiedUser() &&
+        isValidReferralCodeLookup(incoming(), code) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        existsAfter(/databases/$(database)/documents/stores/$(incoming().storeId)) &&
+        getAfter(/databases/$(database)/documents/stores/$(incoming().storeId)).data.ownerUid == request.auth.uid;
+      allow update, delete: if isValidReferralCode(code) && isAdmin();
+    }
+
+    // Store Referrals Attribution Ledger
+    match /referrals/{referralId} {
+      allow get: if isValidId(referralId) && isVerifiedUser() && (
+        isAdmin() ||
+        existing().referrerOwnerUid == request.auth.uid ||
+        existing().referredOwnerUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() ||
+        resource.data.referrerOwnerUid == request.auth.uid ||
+        resource.data.referredOwnerUid == request.auth.uid
+      );
+      allow create: if isValidId(referralId) && isVerifiedUser() &&
+        isValidStoreReferral(incoming(), referralId) &&
+        incoming().referredOwnerUid == request.auth.uid &&
+        incoming().status == 'registered' &&
+        !('rewardCouponId' in incoming()) &&
+        !('rewardCouponCode' in incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        existsAfter(/databases/$(database)/documents/stores/$(incoming().referredStoreId)) &&
+        getAfter(/databases/$(database)/documents/stores/$(incoming().referredStoreId)).data.ownerUid == request.auth.uid &&
+        exists(/databases/$(database)/documents/referralCodes/$(incoming().referrerCode)) &&
+        get(/databases/$(database)/documents/referralCodes/$(incoming().referrerCode)).data.storeId == incoming().referrerStoreId &&
+        get(/databases/$(database)/documents/referralCodes/$(incoming().referrerCode)).data.ownerUid == incoming().referrerOwnerUid;
+      allow update: if isValidId(referralId) && isAdmin() &&
+        isValidStoreReferral(incoming(), referralId) &&
+        incoming().id == existing().id &&
+        incoming().referrerStoreId == existing().referrerStoreId &&
+        incoming().referredStoreId == existing().referredStoreId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(referralId) && isAdmin();
+    }
+
+    // Service Renewal Coupons Earned from Referrals
+    match /coupons/{couponId} {
+      allow get: if isValidId(couponId) && isVerifiedUser() && (
+        isAdmin() || existing().ownerUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() || resource.data.ownerUid == request.auth.uid
+      );
+      allow create: if isValidId(couponId) && isAdmin() &&
+        isValidReferralCoupon(incoming(), couponId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(couponId) && isVerifiedUser() &&
+        isValidReferralCoupon(incoming(), couponId) &&
+        incoming().id == existing().id &&
+        incoming().code == existing().code &&
+        incoming().storeId == existing().storeId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().discountUSD == existing().discountUSD &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            existing().status == 'available' &&
+            incoming().status == 'applied' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'appliedPaymentId', 'updatedAt']) &&
+            'appliedPaymentId' in incoming() &&
+            existsAfter(/databases/$(database)/documents/subscriptionPayments/$(incoming().appliedPaymentId)) &&
+            getAfter(/databases/$(database)/documents/subscriptionPayments/$(incoming().appliedPaymentId)).data.ownerUid == request.auth.uid &&
+            getAfter(/databases/$(database)/documents/subscriptionPayments/$(incoming().appliedPaymentId)).data.couponId == couponId
+          )
+        );
+      allow delete: if isValidId(couponId) && isAdmin();
+    }
+
+    // Super Admin Sent Email Logs
+    match /adminEmails/{emailId} {
+      allow get: if isValidId(emailId) && isAdmin();
+      allow list: if isSuperAdminEmail();
+      allow create: if isValidId(emailId) && isAdmin() &&
+        isValidAdminEmailDispatch(incoming(), emailId) &&
+        incoming().createdAt == request.time;
+      allow update, delete: if isValidId(emailId) && isAdmin();
+    }
+  }
+}

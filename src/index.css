@@ -2,26 +2,85 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
-  body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  :root {
+    color-scheme: dark;
+    --obsidian-canvas: #09090b;
+    --obsidian-surface: #111114;
+    --obsidian-elevated: #18181b;
+    --obsidian-hairline: rgba(255, 255, 255, 0.08);
+    --obsidian-accent: #f59e0b;
   }
-  h1, h2, h3, h4, h5, h6, .font-display {
+
+  html,
+  body {
+    background-color: #09090b;
+    color: #f4f4f5;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .font-display {
     font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
-/* Custom scrollbars */
+.bg-obsidian-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.obsidian-surface {
+  background-color: #111114;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Refined Obsidian Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: #09090b;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(217, 119, 6, 0.4);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(217, 119, 6, 0.7);
+  background: rgba(245, 158, 11, 0.55);
 }

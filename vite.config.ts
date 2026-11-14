@@ -1,11 +1,36 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig, loadEnv, Plugin } from 'vite';
 
-export default defineConfig(() => {
+function analyticsHtmlPlugin(gaId: string, gscToken: string): Plugin {
   return {
-    plugins: [react(), tailwindcss()],
+    name: 'smith-solutions-analytics-html',
+    transformIndexHtml(html) {
+      return html
+        .replace(/__VITE_GA_MEASUREMENT_ID__/g, gaId)
+        .replace(/__VITE_GSC_VERIFICATION__/g, gscToken);
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const gaMeasurementId =
+    env.VITE_GA_MEASUREMENT_ID ||
+    process.env.VITE_GA_MEASUREMENT_ID ||
+    'G-SM1TH2026EC';
+  const gscVerification =
+    env.VITE_GSC_VERIFICATION ||
+    process.env.VITE_GSC_VERIFICATION ||
+    'SmithSolutionsECommerce-GSC-2026-Verified';
+
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      analyticsHtmlPlugin(gaMeasurementId, gscVerification),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

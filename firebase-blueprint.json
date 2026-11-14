@@ -1,0 +1,458 @@
+{
+  "entities": {
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized Super Admin identity document for platform governance.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 160 },
+        "role": { "type": "string", "enum": ["superadmin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "PlatformBillingSettings": {
+      "title": "PlatformBillingSettings",
+      "description": "Global $25/month SaaS subscription payment instructions and referral coupon reward configured by Super Admin.",
+      "type": "object",
+      "properties": {
+        "monthlyPriceUSD": { "type": "number" },
+        "bankTransfers": { "type": "string", "maxLength": 1000 },
+        "pagoMovil": { "type": "string", "maxLength": 500 },
+        "binancePay": { "type": "string", "maxLength": 300 },
+        "bybitPay": { "type": "string", "maxLength": 300 },
+        "supportWhatsapp": { "type": "string", "maxLength": 40 },
+        "warehousePosEnabled": { "type": "boolean" },
+        "referralRewardUSD": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "monthlyPriceUSD",
+        "bankTransfers",
+        "pagoMovil",
+        "binancePay",
+        "bybitPay",
+        "supportWhatsapp",
+        "updatedAt"
+      ]
+    },
+    "StoreTenant": {
+      "title": "StoreTenant",
+      "description": "Multi-SaaS merchant storefront account with business profile, RIF, logo, shipping config, referral code, and activation status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slug": { "type": "string", "maxLength": 80, "pattern": "^[a-z0-9\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "registeredOwnerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "rif": { "type": "string", "maxLength": 30 },
+        "logoUrl": { "type": "string", "maxLength": 150000 },
+        "businessWhatsapp": { "type": "string", "minLength": 7, "maxLength": 25 },
+        "category": { "type": "string", "maxLength": 60 },
+        "description": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended"] },
+        "subscriptionPriceUSD": { "type": "number" },
+        "nationalShippingEnabled": { "type": "boolean" },
+        "nationalCouriers": { "type": "string", "maxLength": 200 },
+        "localDeliveryEnabled": { "type": "boolean" },
+        "localDeliveryFeeUSD": { "type": "number" },
+        "localDeliveryZone": { "type": "string", "maxLength": 150 },
+        "pickupEnabled": { "type": "boolean" },
+        "warehousePosEnabled": { "type": "boolean" },
+        "referralCode": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
+        "referredByCode": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
+        "referredByStoreId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referredByStoreName": { "type": "string", "maxLength": 100 },
+        "referralRewardGranted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "slug",
+        "ownerUid",
+        "storeName",
+        "registeredOwnerName",
+        "businessWhatsapp",
+        "status",
+        "subscriptionPriceUSD",
+        "nationalShippingEnabled",
+        "localDeliveryEnabled",
+        "pickupEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StorePrivateAccount": {
+      "title": "StorePrivateAccount",
+      "description": "Isolated PII document for a store owner (owner email and internal billing metadata).",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["storeId", "ownerUid", "ownerEmail", "createdAt", "updatedAt"]
+    },
+    "SubscriptionPayment": {
+      "title": "SubscriptionPayment",
+      "description": "Monthly $25 USD subscription payment report submitted by store owners via Venezuelan Banks, Pago Movil, Binance Pay, Bybit, or Referral Coupon.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "maxLength": 100 },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "amountUSD": { "type": "number" },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["Transferencia Bancaria", "Pago Móvil", "Binance Pay", "Bybit", "Cupón Referido"]
+        },
+        "referenceNumber": { "type": "string", "minLength": 4, "maxLength": 80 },
+        "payerInfo": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 400 },
+        "couponId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "couponCode": { "type": "string", "maxLength": 40 },
+        "discountUSD": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeName",
+        "ownerUid",
+        "ownerEmail",
+        "amountUSD",
+        "paymentMethod",
+        "referenceNumber",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StoreProduct": {
+      "title": "StoreProduct",
+      "description": "Product catalog item belonging to a Multi-SaaS store with photo, description, price, and star rating.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "priceUSD": { "type": "number" },
+        "costUSD": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "imageUrl": { "type": "string", "maxLength": 150000 },
+        "category": { "type": "string", "maxLength": 60 },
+        "sku": { "type": "string", "maxLength": 60 },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "ownerUid",
+        "name",
+        "description",
+        "priceUSD",
+        "rating",
+        "stock",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StoreOrder": {
+      "title": "StoreOrder",
+      "description": "Customer purchase order placed on a store cart with custom invoice data, shipping choice, and WhatsApp dispatch.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "invoiceNumber": { "type": "string", "maxLength": 40 },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "customerRif": { "type": "string", "maxLength": 30 },
+        "customerPhone": { "type": "string", "minLength": 7, "maxLength": 25 },
+        "customerEmail": { "type": "string", "maxLength": 160 },
+        "shippingType": {
+          "type": "string",
+          "enum": ["Envío Nacional", "Delivery Local", "Retiro en Tienda"]
+        },
+        "shippingDetails": { "type": "string", "maxLength": 300 },
+        "shippingFeeUSD": { "type": "number" },
+        "paymentMethod": { "type": "string", "maxLength": 60 },
+        "subtotalUSD": { "type": "number" },
+        "totalUSD": { "type": "number" },
+        "totalBs": { "type": "number" },
+        "exchangeRate": { "type": "number" },
+        "itemsSummary": { "type": "string", "maxLength": 2000 },
+        "itemsCount": { "type": "number" },
+        "estimatedCostUSD": { "type": "number" },
+        "estimatedProfitUSD": { "type": "number" },
+        "stockDeducted": { "type": "boolean" },
+        "saleChannel": {
+          "type": "string",
+          "enum": ["Carrito Web", "Venta Directa Tienda"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "confirmed", "shipped", "completed", "cancelled"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeOwnerUid",
+        "customerUid",
+        "invoiceNumber",
+        "customerName",
+        "customerPhone",
+        "shippingType",
+        "shippingFeeUSD",
+        "paymentMethod",
+        "subtotalUSD",
+        "totalUSD",
+        "totalBs",
+        "exchangeRate",
+        "itemsSummary",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StoreOrderItem": {
+      "title": "StoreOrderItem",
+      "description": "Line item belonging to a customer order or direct sale inside a Multi-SaaS store.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "sku": { "type": "string", "maxLength": 60 },
+        "unit": { "type": "string", "maxLength": 30 },
+        "quantity": { "type": "number" },
+        "unitPriceUSD": { "type": "number" },
+        "unitCostUSD": { "type": "number" },
+        "subtotalUSD": { "type": "number" }
+      },
+      "required": [
+        "id",
+        "orderId",
+        "storeId",
+        "storeOwnerUid",
+        "customerUid",
+        "productId",
+        "productName",
+        "quantity",
+        "unitPriceUSD",
+        "subtotalUSD"
+      ]
+    },
+    "ReferralCodeLookup": {
+      "title": "ReferralCodeLookup",
+      "description": "Non-PII public referral code directory mapping a store referral code to its referring store.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "storeId", "storeName", "ownerUid", "createdAt"]
+    },
+    "StoreReferral": {
+      "title": "StoreReferral",
+      "description": "Tracks a store referral when an invited friend registers a store using a referral code and unlocks a renewal coupon upon payment approval.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referrerStoreId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referrerStoreName": { "type": "string", "maxLength": 100 },
+        "referrerOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referrerCode": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
+        "referredStoreId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referredStoreName": { "type": "string", "maxLength": 100 },
+        "referredOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["registered", "rewarded"] },
+        "rewardCouponId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "rewardCouponCode": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "referrerStoreId",
+        "referrerStoreName",
+        "referrerOwnerUid",
+        "referrerCode",
+        "referredStoreId",
+        "referredStoreName",
+        "referredOwnerUid",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ReferralCoupon": {
+      "title": "ReferralCoupon",
+      "description": "Service renewal discount coupon granted to a referring store when an invited store pays its subscription.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "maxLength": 40, "pattern": "^[A-Z0-9\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "maxLength": 100 },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "discountUSD": { "type": "number" },
+        "sourceReferralId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "referredStoreName": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["available", "applied", "redeemed"] },
+        "appliedPaymentId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "code",
+        "storeId",
+        "storeName",
+        "ownerUid",
+        "discountUSD",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminEmailDispatch": {
+      "title": "AdminEmailDispatch",
+      "description": "Super Admin individual or collective email dispatch log.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mode": { "type": "string", "enum": ["individual", "collective"] },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "recipientCount": { "type": "number" },
+        "recipientEmailsSummary": { "type": "string", "maxLength": 2000 },
+        "targetStoreNames": { "type": "string", "maxLength": 1000 },
+        "sentByEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "deliveryChannel": { "type": "string", "enum": ["smtp", "resend", "cloud_inbox_mailto"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "mode",
+        "subject",
+        "body",
+        "recipientCount",
+        "recipientEmailsSummary",
+        "sentByEmail",
+        "deliveryChannel",
+        "createdAt"
+      ]
+    },
+    "StoreInboxMessage": {
+      "title": "StoreInboxMessage",
+      "description": "Direct email / notification delivered from Super Admin or Referral system to a store owner's portal inbox.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "senderEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "category": { "type": "string", "enum": ["admin_email", "referral_reward", "system"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeOwnerUid",
+        "subject",
+        "body",
+        "senderEmail",
+        "category",
+        "isRead",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized Super Admin registry documents."
+    },
+    "/platformSettings/billing": {
+      "schema": { "$ref": "#/entities/PlatformBillingSettings" },
+      "description": "Global $25/mo SaaS billing methods and referral reward configured by Super Admin."
+    },
+    "/stores/{storeId}": {
+      "schema": { "$ref": "#/entities/StoreTenant" },
+      "description": "Multi-SaaS public storefront profile, shipping configuration, and referral code."
+    },
+    "/stores/{storeId}/private/account": {
+      "schema": { "$ref": "#/entities/StorePrivateAccount" },
+      "description": "Isolated store owner PII (email and private billing info)."
+    },
+    "/stores/{storeId}/inbox/{messageId}": {
+      "schema": { "$ref": "#/entities/StoreInboxMessage" },
+      "description": "Store owner official inbox for Admin emails and referral reward notifications."
+    },
+    "/stores/{storeId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/StoreProduct" },
+      "description": "Store product catalog with photo, description, price, and star ratings."
+    },
+    "/stores/{storeId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/StoreOrder" },
+      "description": "Store customer orders and sales registry with shipping choice and customized invoice details."
+    },
+    "/stores/{storeId}/orders/{orderId}/items/{itemId}": {
+      "schema": { "$ref": "#/entities/StoreOrderItem" },
+      "description": "Structured itemized lines for each store order and personalized sales invoice."
+    },
+    "/subscriptionPayments/{paymentId}": {
+      "schema": { "$ref": "#/entities/SubscriptionPayment" },
+      "description": "Monthly $25 subscription payment reports (and coupon renewals) submitted by store owners."
+    },
+    "/referralCodes/{code}": {
+      "schema": { "$ref": "#/entities/ReferralCodeLookup" },
+      "description": "Public non-PII referral code directory for attributing new store registrations."
+    },
+    "/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/StoreReferral" },
+      "description": "Store referral attribution records connecting referrer store and invited store."
+    },
+    "/coupons/{couponId}": {
+      "schema": { "$ref": "#/entities/ReferralCoupon" },
+      "description": "Service renewal discount coupons issued upon referral subscription payment approval."
+    },
+    "/adminEmails/{emailId}": {
+      "schema": { "$ref": "#/entities/AdminEmailDispatch" },
+      "description": "Super Admin email broadcast & individual dispatch log."
+    }
+  }
+}

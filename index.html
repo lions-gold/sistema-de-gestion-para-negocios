@@ -1,21 +1,142 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gestor de Almacenes La Taberna Lions Gold | Smith Bussines Solutions 2026</title>
-    <meta name="description" content="Gestor de Almacenes La Taberna Lions Gold: Control total de inventario, punto de venta multidivisa (Bs/USD), libreta de fiados y WhatsApp para comercios en Venezuela. Desarrollado por Smith Bussines Solutions 2026." />
-    <meta property="og:title" content="Gestor de Almacenes La Taberna Lions Gold | Smith Bussines Solutions 2026" />
-    <meta property="og:description" content="Control de inventario de bebidas y víveres, punto de venta con tasa BCV, libreta de fiados y tienda en Venezuela. Contacto: +58 422 027 3766." />
+    
+    <!-- Forzar HTTPS: Content Security Policy Upgrade & Protocol Enforcement -->
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests" />
+    <script>
+      // Force HTTPS in production environments if accessed via plain HTTP
+      (function() {
+        if (location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1' && !location.hostname.endsWith('.local')) {
+          location.replace('https:' + window.location.href.substring(window.location.protocol.length));
+        }
+      })();
+
+      // Suppress Vite HMR WebSocket connection errors in sandbox iframe environment (HMR is disabled in AI Studio)
+      window.addEventListener('unhandledrejection', function (e) {
+        var reason = e.reason || '';
+        var msg = String(reason.message || reason);
+        var stack = String(reason.stack || '');
+        if (msg.includes('WebSocket') || stack.includes('createWebSocketModuleRunnerTransport') || stack.includes('@vite/client')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+      window.addEventListener('error', function (e) {
+        var msg = String(e.message || '');
+        if (msg.includes('WebSocket') || msg.includes('@vite/client')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, true);
+    </script>
+
+    <!-- Google Search Console Verification -->
+    <meta name="google-site-verification" content="__VITE_GSC_VERIFICATION__" />
+
+    <!-- Page Title & Meta Descripciones Optimizadas -->
+    <title>Smith Solutions E-Commerce | Tienda, Almacenes y POS en Venezuela</title>
+    <meta name="description" content="Plataforma Smith Solutions E-Commerce con diseño Material Assemble: gestiona almacenes, punto de venta multidivisa (Bs/USD), tasa oficial BCV en vivo, libreta de fiados y cobros por WhatsApp." />
+    <meta name="keywords" content="Smith Solutions E-Commerce, ecommerce Venezuela, tasa BCV en vivo, punto de venta multidivisa, control de inventario, almacenes Venezuela, Material Assemble, facturación fiscal SENIAT, libreta de fiados" />
+    <meta name="author" content="Smith Bussines Solutions 2026" />
+    <meta name="theme-color" content="#020617" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app/" />
+
+    <!-- OpenGraph Social Metadata -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Smith Solutions E-Commerce" />
+    <meta property="og:title" content="Smith Solutions E-Commerce | Tienda, Almacenes y POS en Venezuela" />
+    <meta property="og:description" content="Comercio electrónico y gestión de almacenes con tasa BCV en tiempo real, punto de venta multidivisa y control de inventario en Venezuela. Diseño Material Assemble." />
+    <meta property="og:image" content="/favicon.svg" />
+    <meta property="og:url" content="https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app/" />
+    <meta property="og:locale" content="es_VE" />
+
+    <!-- Twitter / X Cards -->
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="twitter:title" content="Smith Solutions E-Commerce | Venezuela" />
+    <meta name="twitter:description" content="E-Commerce, Almacenes y Punto de Venta con tasa oficial BCV y cobro multidivisa en Venezuela. Creado por Smith Bussines Solutions 2026." />
+    <meta name="twitter:image" content="/favicon.svg" />
+
+    <!-- Favicon & Icons: Material Assemble -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Web Prelinks: Preconnect & DNS-Prefetch -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="dns-prefetch" href="https://ve.dolarapi.com" />
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+    <link rel="dns-prefetch" href="https://www.google-analytics.com" />
+    
+    <!-- Typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Google Analytics 4 (GA4) with Consent Mode v2 -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+
+      // Check existing cookie consent saved by Smith Solutions CookieBanner
+      var savedConsent = null;
+      try {
+        savedConsent = JSON.parse(localStorage.getItem('smith_solutions_cookie_consent'));
+      } catch (e) {}
+
+      gtag('consent', 'default', {
+        'analytics_storage': (savedConsent && savedConsent.analytics === false) ? 'denied' : 'granted',
+        'functionality_storage': (savedConsent && savedConsent.preferences === false) ? 'denied' : 'granted',
+        'personalization_storage': (savedConsent && savedConsent.preferences === false) ? 'denied' : 'granted',
+        'ad_storage': 'denied',
+        'ad_user_data': 'denied',
+        'ad_personalization': 'denied'
+      });
+
+      gtag('js', new Date());
+      gtag('config', '__VITE_GA_MEASUREMENT_ID__', {
+        send_page_view: false,
+        anonymize_ip: true
+      });
+    </script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=__VITE_GA_MEASUREMENT_ID__"></script>
+
+    <!-- Schema.org Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebApplication",
+          "name": "Smith Solutions E-Commerce",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web, Android, iOS",
+          "description": "Sistema de comercio electrónico, control de almacén, punto de venta multidivisa (Bs/USD) y sincronización con la tasa oficial BCV en Venezuela.",
+          "author": {
+            "@type": "Organization",
+            "name": "Smith Bussines Solutions 2026",
+            "email": "empresaalhadiqainvest@gmail.com",
+            "telephone": "+584220273766"
+          }
+        },
+        {
+          "@type": "OnlineStore",
+          "name": "Smith Solutions E-Commerce",
+          "description": "Tienda en línea y catálogo de inventario comercial con soporte multidivisa y fiscal en Venezuela.",
+          "currenciesAccepted": "USD, VES",
+          "paymentAccepted": "Efectivo USD, Efectivo Bs, Pago Móvil, Zelle, Punto de Venta",
+          "priceRange": "$$"
+        }
+      ]
+    }
+    </script>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-amber-500/30 selection:text-amber-300">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

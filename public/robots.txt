@@ -1,0 +1,17 @@
+# Robots.txt — Smith Solutions E-Commerce (Venezuela)
+# Optimizado para indexación en Google Search Console y rastreadores web
+
+User-agent: *
+Allow: /
+Allow: /almacen
+Allow: /pos
+Allow: /fiados
+Allow: /caja
+Allow: /rentabilidad
+
+# Bloquear endpoints privados de API y rutas de error
+Disallow: /api/
+Disallow: /404
+
+# Sitemap XML Oficial
+Sitemap: https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app/sitemap.xml
