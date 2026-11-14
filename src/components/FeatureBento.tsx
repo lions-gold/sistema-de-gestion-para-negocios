@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Package,
   Receipt,
@@ -8,6 +8,8 @@ import {
   Coins,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import inventoryShowcaseImg from '../assets/images/inventory_bottles_showcase_1793999560657.jpg';
+import posCellarImg from '../assets/images/pos_retail_cellar_1793999560459.jpg';
 
 interface FeatureBentoProps {
   onOpenApp: (module?: 'inventory' | 'pos' | 'debtors' | 'cashier') => void;
@@ -16,6 +18,8 @@ interface FeatureBentoProps {
 
 export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeRate }) => {
   const { t } = useLanguage();
+  const [invImgError, setInvImgError] = useState(false);
+  const [posImgError, setPosImgError] = useState(false);
   const bsFormatted = (145 * exchangeRate).toLocaleString('es-VE', {
     minimumFractionDigits: 2,
   });
@@ -45,12 +49,19 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
           </div>
 
           <div className="rounded-xl overflow-hidden border border-white/[0.08] relative group bg-[#09090b]">
-            <img
-              src="/src/assets/images/inventory_bottles_showcase_1793999560657.jpg"
-              alt={t.bento.mod1Title}
-              referrerPolicy="no-referrer"
-              className="w-full h-48 sm:h-56 object-cover object-center group-hover:scale-[1.03] transition-transform duration-500"
-            />
+            {!invImgError ? (
+              <img
+                src={inventoryShowcaseImg}
+                alt={t.bento.mod1Title}
+                referrerPolicy="no-referrer"
+                onError={() => setInvImgError(true)}
+                className="w-full h-48 sm:h-56 object-cover object-center group-hover:scale-[1.03] transition-transform duration-500"
+              />
+            ) : (
+              <div className="w-full h-48 sm:h-56 bg-zinc-900/90 flex items-center justify-center text-zinc-500">
+                <Package className="w-10 h-10 text-amber-400/50" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/45 to-transparent flex items-end p-4">
               <div className="flex items-center justify-between gap-3 w-full text-xs">
                 <span className="text-zinc-100 font-medium">{t.bento.mod1Footer}</span>
@@ -83,12 +94,19 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
           </div>
 
           <div className="rounded-xl overflow-hidden border border-white/[0.08] relative group bg-[#09090b]">
-            <img
-              src="/src/assets/images/pos_retail_cellar_1793999560459.jpg"
-              alt={t.bento.mod2Title}
-              referrerPolicy="no-referrer"
-              className="w-full h-44 object-cover object-center group-hover:scale-[1.03] transition-transform duration-500"
-            />
+            {!posImgError ? (
+              <img
+                src={posCellarImg}
+                alt={t.bento.mod2Title}
+                referrerPolicy="no-referrer"
+                onError={() => setPosImgError(true)}
+                className="w-full h-44 object-cover object-center group-hover:scale-[1.03] transition-transform duration-500"
+              />
+            ) : (
+              <div className="w-full h-44 bg-zinc-900/90 flex items-center justify-center text-zinc-500">
+                <Receipt className="w-10 h-10 text-emerald-400/50" />
+              </div>
+            )}
             <div className="p-3.5 bg-[#09090b]/95 border-t border-white/[0.08] flex items-center justify-between gap-2 text-xs">
               <span className="text-zinc-300">{t.bento.mod2Footer}</span>
               <button

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Smith Solutions E-Commerce · Redirigiendo</title>
+    <script>
+      (function () {
+        var l = window.location;
+        var pathParts = l.pathname.split('/').filter(Boolean);
+        var isGitHubPagesSubpath = l.hostname.endsWith('.github.io') && pathParts.length > 0;
+        var baseSegments = isGitHubPagesSubpath ? 1 : 0;
+        var base = baseSegments > 0 ? '/' + pathParts.slice(0, baseSegments).join('/') : '';
+        var spaRoute = '/' + pathParts.slice(baseSegments).join('/');
+        var searchParams = new URLSearchParams(l.search);
+        searchParams.set('__spa', spaRoute + l.hash);
+        l.replace(l.protocol + '//' + l.host + base + '/?' + searchParams.toString());
+      })();
+    </script>
+  </head>
+  <body style="background:#09090b;color:#f4f4f5;font-family:sans-serif;padding:24px">
+    Cargando Smith Solutions E-Commerce...
+  </body>
+</html>

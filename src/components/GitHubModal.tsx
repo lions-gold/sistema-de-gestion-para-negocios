@@ -5,8 +5,6 @@ import {
   Copy, 
   ExternalLink, 
   GitBranch, 
-  GitCommit, 
-  ShieldCheck, 
   Terminal,
   X,
   Sparkles
@@ -29,13 +27,16 @@ export const GitHubModal: React.FC<GitHubModalProps> = ({ isOpen, onClose, userE
     setTimeout(() => setCopiedStep(null), 2500);
   };
 
-  const gitCommands = `# 1. En tu GitHub, crea un nuevo repositorio llamado:
-# gestor-almacenes-la-taberna-lions-gold
-
-# 2. Conecta y sube el repositorio local ya inicializado:
-git remote add origin https://github.com/TU_USUARIO/gestor-almacenes-la-taberna-lions-gold.git
+  const gitCommands = `# 1. Sube el proyecto a tu repositorio en GitHub:
+git remote add origin https://github.com/TU_USUARIO/smith-solutions-ecommerce.git
 git branch -M main
-git push -u origin main`;
+git push -u origin main
+
+# 2. Publicar en GitHub Pages (o deja que GitHub Actions lo haga en cada push):
+npm run deploy:gh
+
+# 3. Conectar con Vercel App:
+# Importa el repo en vercel.com/new (detecta vercel.json y /api/* automáticamente)`;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -48,7 +49,7 @@ git push -u origin main`;
             </div>
             <div>
               <h3 className="font-bold text-white text-base font-display">
-                Conectar Repositorio de GitHub
+                Conectar GitHub Pages & Vercel App
               </h3>
               <span className="text-zinc-400 text-xs">
                 Cuenta: {userEmail}
@@ -68,10 +69,10 @@ git push -u origin main`;
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-white flex items-center gap-1.5">
               <GitBranch className="w-4 h-4 text-amber-400" />
-              Estado del Repositorio Local:
+              Estado de Despliegue:
             </span>
             <span className="font-mono text-emerald-400 font-bold">
-              Inicializado & Sincronizado
+              GitHub Pages + Vercel Listos
             </span>
           </div>
 
@@ -81,16 +82,16 @@ git push -u origin main`;
               <span className="text-white font-mono font-medium">main</span>
             </div>
             <div>
-              <span>Autor configurado:</span>{' '}
-              <span className="text-white font-mono font-medium">Smith Bussines</span>
+              <span>Workflow CI:</span>{' '}
+              <span className="text-white font-mono font-medium">.github/workflows/deploy-pages.yml</span>
             </div>
             <div>
               <span>Correo Git:</span>{' '}
               <span className="text-white font-mono font-medium truncate block">{userEmail}</span>
             </div>
             <div>
-              <span>Archivos comiteados:</span>{' '}
-              <span className="text-white font-mono font-medium">Todos (30 archivos)</span>
+              <span>Serverless Vercel:</span>{' '}
+              <span className="text-white font-mono font-medium">vercel.json + /api/*</span>
             </div>
           </div>
         </div>

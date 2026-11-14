@@ -633,12 +633,10 @@ export async function adminResolveSubscriptionPayment(
       }
     }
 
+    const storeUpdates: Record<string, unknown> = {};
     if (nextStatus === 'approved') {
       if (activateStoreToo) {
-        batch.update(doc(db, 'stores', payment.storeId), {
-          status: 'active',
-          updatedAt: serverTimestamp(),
-        });
+        storeUpdates.status = 'active';
       }
 
       // Check if this store was referred and hasn't unlocked the referrer's coupon yet
@@ -689,10 +687,7 @@ export async function adminResolveSubscriptionPayment(
               updatedAt: serverTimestamp(),
             });
 
-            batch.update(doc(db, 'stores', storeData.id), {
-              referralRewardGranted: true,
-              updatedAt: serverTimestamp(),
-            });
+            storeUpdates.referralRewardGranted = true;
 
             // Notify referrer store's inbox automatically
             const inboxMsgId = makeSafeDocId('msg');
@@ -712,6 +707,11 @@ export async function adminResolveSubscriptionPayment(
             referrerStoreName = matchingRef.referrerStoreName;
           }
         }
+      }
+
+      if (Object.keys(storeUpdates).length > 0) {
+        storeUpdates.updatedAt = serverTimestamp();
+        batch.update(doc(db, 'stores', payment.storeId), storeUpdates);
       }
     }
 

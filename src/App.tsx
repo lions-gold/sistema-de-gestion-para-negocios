@@ -229,8 +229,13 @@ export default function App() {
       nextPath = ROUTE_SEO_MAP[nextTab].path;
     }
 
-    if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
-      window.history.pushState({}, '', nextPath);
+    if (typeof window !== 'undefined') {
+      const basePrefix = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+      const prefixedPath =
+        basePrefix && basePrefix !== '.' ? `${basePrefix}${nextPath === '/' ? '/' : nextPath}` : nextPath;
+      if (window.location.pathname !== prefixedPath) {
+        window.history.pushState({}, '', prefixedPath);
+      }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };

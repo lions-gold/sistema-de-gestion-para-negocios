@@ -275,7 +275,12 @@ export function resolvePathToRoute(pathname: string): {
   routeKey: AppRouteKey;
   storeSlug?: string;
 } {
-  const clean = pathname.replace(/\/+$/, '') || '/';
+  const baseUrl = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  let normalized = pathname;
+  if (baseUrl && baseUrl !== '.' && normalized.startsWith(baseUrl)) {
+    normalized = normalized.slice(baseUrl.length) || '/';
+  }
+  const clean = normalized.replace(/\/+$/, '') || '/';
 
   if (clean.startsWith('/tienda/')) {
     const slug = clean.replace('/tienda/', '').trim();

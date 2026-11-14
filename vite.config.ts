@@ -14,6 +14,17 @@ function analyticsHtmlPlugin(gaId: string, gscToken: string): Plugin {
   };
 }
 
+function resolveViteBase(): string {
+  if (process.env.VITE_BASE_PATH) {
+    return process.env.VITE_BASE_PATH;
+  }
+  if (process.env.GITHUB_PAGES === 'true') {
+    const repo = process.env.GITHUB_REPOSITORY?.split('/')[1];
+    return repo ? `/${repo}/` : './';
+  }
+  return '/';
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const gaMeasurementId =
@@ -26,6 +37,7 @@ export default defineConfig(({ mode }) => {
     'SmithSolutionsECommerce-GSC-2026-Verified';
 
   return {
+    base: resolveViteBase(),
     plugins: [
       react(),
       tailwindcss(),
@@ -33,7 +45,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {

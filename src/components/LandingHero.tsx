@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ArrowRight, Store, ShoppingBag } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 
 interface LandingHeroProps {
   onOpenApp: () => void;
@@ -18,6 +19,8 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   exchangeRate,
 }) => {
   const { t } = useLanguage();
+  const [gifError, setGifError] = useState(false);
+  const logoGifSrc = `${import.meta.env.BASE_URL}smith-logo-animated.gif`;
 
   return (
     <section className="relative overflow-hidden pt-10 pb-16 lg:pt-16 lg:pb-24 border-b border-white/[0.08] bg-obsidian-grid">
@@ -105,17 +108,24 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             </div>
           </div>
 
+          {/* Animated Platform Logo GIF Showcase */}
           <div className="lg:col-span-5 relative flex">
-            <div className="relative w-full min-h-[380px] lg:h-full rounded-2xl overflow-hidden border border-white/[0.1] bg-[#111114] shadow-2xl shadow-black/90 group">
-              <img
-                src="/src/assets/images/hero_tavern_warehouse_1793999559722.jpg"
-                alt="Smith Solutions E-Commerce"
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-700"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/45 to-transparent" />
+            <div className="relative w-full min-h-[380px] lg:h-full rounded-2xl overflow-hidden border border-white/[0.1] bg-[#0b0b0e] shadow-2xl shadow-black/90 flex flex-col justify-between p-5 sm:p-6">
+              <div className="flex-1 flex items-center justify-center py-2">
+                {!gifError ? (
+                  <img
+                    src={logoGifSrc}
+                    alt="Smith Solutions E-Commerce Animated Platform Logo"
+                    referrerPolicy="no-referrer"
+                    onError={() => setGifError(true)}
+                    className="w-60 h-60 sm:w-72 sm:h-72 object-contain rounded-3xl select-none"
+                  />
+                ) : (
+                  <MaterialAssembleLogo size="xl" showText={false} useAnimatedGif={false} />
+                )}
+              </div>
 
-              <div className="absolute bottom-4 left-4 right-4 p-4 rounded-xl bg-[#111114]/90 backdrop-blur-md border border-white/[0.1] text-xs space-y-2.5">
+              <div className="p-4 rounded-xl bg-[#111114]/95 border border-white/[0.08] text-xs space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-zinc-100">{t.hero.overlayTitle}</span>
                   <span className="text-amber-400 font-mono tabular-nums">{t.hero.overlayItems}</span>

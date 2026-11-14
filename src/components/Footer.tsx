@@ -128,7 +128,7 @@ export const Footer: React.FC<FooterProps> = ({
               )}
               <li className="pt-2 flex items-center gap-2 text-[11px] font-mono text-zinc-500">
                 <a
-                  href="/sitemap.xml"
+                  href={`${import.meta.env.BASE_URL}sitemap.xml`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-amber-400 transition-colors underline underline-offset-2"
@@ -137,7 +137,7 @@ export const Footer: React.FC<FooterProps> = ({
                 </a>
                 <span aria-hidden="true">·</span>
                 <a
-                  href="/robots.txt"
+                  href={`${import.meta.env.BASE_URL}robots.txt`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-amber-400 transition-colors underline underline-offset-2"
