@@ -1,25 +1,36 @@
 import React, { useState } from 'react';
-import { Mail, MessageCircle, Send, CheckCircle2, Shield } from 'lucide-react';
+import { Mail, MessageCircle, Send, CheckCircle2, Shield, Database } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { saveOfflineLead } from '../services/offlineSyncService';
 
 export const ContactSection: React.FC = () => {
   const { t } = useLanguage();
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [whatsappHref, setWhatsappHref] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) return;
 
+    saveOfflineLead({
+      name: name.trim(),
+      businessName: businessName.trim() || 'Comercio',
+      phone: phone.trim(),
+      city: city.trim() || undefined,
+      message: message.trim() || 'Solicitud de demostración',
+    });
+
     const text = `Hola Smith Bussines Solutions 2026, mi nombre es ${encodeURIComponent(
-      name
-    )} del negocio ${encodeURIComponent(businessName || 'Comercio')}. Deseo implementar Smith Solutions E-Commerce. Mi consulta: ${encodeURIComponent(
-      message || 'Solicitud de demostración'
+      name.trim()
+    )} del negocio ${encodeURIComponent(businessName.trim() || 'Comercio')}. Deseo implementar Smith Solutions E-Commerce. Mi consulta: ${encodeURIComponent(
+      message.trim() || 'Solicitud de demostración'
     )}`;
-    window.open(`https://wa.me/584220273766?text=${text}`, '_blank');
+    setWhatsappHref(`https://wa.me/584220273766?text=${text}`);
     setIsSubmitted(true);
   };
 
@@ -86,7 +97,7 @@ export const ContactSection: React.FC = () => {
 
           <div className="lg:col-span-7 obsidian-surface rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/60">
             {isSubmitted ? (
-              <div className="py-12 text-center space-y-4">
+              <div className="py-10 text-center space-y-4">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
@@ -94,12 +105,29 @@ export const ContactSection: React.FC = () => {
                   {t.contact.successTitle}
                 </h3>
                 <p className="text-sm text-zinc-400 max-w-md mx-auto">{t.contact.successDesc}</p>
-                <button
-                  onClick={() => setIsSubmitted(false)}
-                  className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-zinc-200 rounded-lg text-xs font-semibold"
-                >
-                  {t.contact.successAgain}
-                </button>
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-amber-300 bg-amber-400/10 border border-amber-400/25 rounded-lg px-3 py-1.5">
+                  <Database className="w-3.5 h-3.5" />
+                  <span>Registro guardado en respaldo local offline</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  {whatsappHref && (
+                    <a
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-2"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Abrir WhatsApp</span>
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setIsSubmitted(false)}
+                    className="px-5 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-zinc-200 rounded-lg text-xs font-semibold"
+                  >
+                    {t.contact.successAgain}
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4 text-xs sm:text-sm">
@@ -158,6 +186,8 @@ export const ContactSection: React.FC = () => {
                     </label>
                     <input
                       type="text"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
                       placeholder={t.contact.cityPlaceholder}
                       className={inputClass}
                     />

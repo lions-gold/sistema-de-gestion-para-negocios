@@ -33,7 +33,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
             onClick={() => setLang(opt.code as SupportedLanguage)}
             aria-pressed={active}
             title={opt.nativeName}
-            className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all duration-150 min-h-[28px] whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${
+            className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all duration-150 min-h-[34px] sm:min-h-[30px] whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 ${
               active
                 ? 'bg-zinc-100 text-zinc-950 font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05]'

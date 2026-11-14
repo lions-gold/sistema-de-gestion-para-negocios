@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Material Assemble Gradients -->
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="50%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#B45309" />
+    </linearGradient>
+    <linearGradient id="blue-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60A5FA" />
+      <stop offset="50%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </linearGradient>
+    <linearGradient id="emerald-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="50%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#064E3B" />
+    </linearGradient>
+    <linearGradient id="dark-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle (Material You container) -->
+  <rect width="128" height="128" rx="28" fill="url(#dark-bg)" stroke="#334155" stroke-width="2"/>
+  
+  <!-- Subtle interior ambient glow -->
+  <circle cx="64" cy="64" r="48" fill="#F59E0B" opacity="0.08" />
+
+  <!-- Material Assemble Isometric S Block System -->
+  <g filter="url(#shadow)" transform="translate(64, 64) scale(0.92) translate(-64, -64)">
+    <!-- Top-Right Isometric Block (Golden Assemble) -->
+    <path d="M 64 24 L 96 42 L 64 60 L 32 42 Z" fill="url(#gold-grad)" stroke="#FEF08A" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M 64 60 L 96 42 L 96 66 L 64 84 Z" fill="#D97706" opacity="0.95"/>
+    <path d="M 32 42 L 64 60 L 64 84 L 32 66 Z" fill="#B45309" opacity="0.9"/>
+
+    <!-- Bottom-Left Isometric Block (Cobalt Assemble) -->
+    <path d="M 64 68 L 96 86 L 64 104 L 32 86 Z" fill="url(#blue-grad)" stroke="#93C5FD" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M 64 104 L 96 86 L 96 98 L 64 116 Z" fill="#1D4ED8" opacity="0.95"/>
+    <path d="M 32 86 L 64 104 L 64 116 L 32 98 Z" fill="#1E3A8A" opacity="0.9"/>
+
+    <!-- Dynamic Interlocking Central S Crest Accent -->
+    <path d="M 52 38 L 76 38 L 76 48 L 56 48 L 56 58 L 76 64 L 76 90 L 52 90 L 52 80 L 72 80 L 72 70 L 52 64 Z" 
+          fill="#FFFFFF" 
+          opacity="0.96" 
+          stroke="#F59E0B" 
+          stroke-width="1.2"
+          stroke-linejoin="round"/>
+    
+    <!-- Modern Assembly Dots -->
+    <circle cx="64" cy="24" r="3" fill="#FDE047"/>
+    <circle cx="96" cy="42" r="3" fill="#F59E0B"/>
+    <circle cx="32" cy="86" r="3" fill="#60A5FA"/>
+    <circle cx="64" cy="104" r="3" fill="#38BDF8"/>
+  </g>
+</svg>

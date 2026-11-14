@@ -25,10 +25,18 @@ import {
 } from '../firebase';
 import {
   AdminEmailDispatch,
+  CashClosingRecord,
+  CashMovement,
+  Debtor,
   EmailDeliveryChannel,
+  InventoryAuditLog,
   PlatformBillingSettings,
+  Product,
+  ProductBatchTrace,
+  PurchaseInvoice,
   ReferralCodeLookup,
   ReferralCoupon,
+  Sale,
   StoreCartItem,
   StoreInboxMessage,
   StoreOrder,
@@ -544,9 +552,11 @@ export async function submitSubscriptionPayment(
     referenceNumber: string;
     payerInfo?: string;
     notes?: string;
+    proofImageUrl?: string;
+    ownerWhatsapp?: string;
     coupon?: ReferralCoupon | null;
   }
-): Promise<void> {
+): Promise<SubscriptionPayment> {
   const paymentId = makeSafeDocId('pay');
   const path = `subscriptionPayments/${paymentId}`;
   const basePrice = Math.max(1, Number(data.amountUSD) || 25);
@@ -555,6 +565,12 @@ export async function submitSubscriptionPayment(
     ? Math.max(0, Number((basePrice - coupon.discountUSD).toFixed(2)))
     : basePrice;
 
+  const cleanRef = (data.referenceNumber || coupon?.code || `CUPON-${Date.now()}`)
+    .trim()
+    .slice(0, 80);
+  const cleanMethod: SubscriptionPaymentMethod =
+    netAmountUSD === 0 && coupon ? 'Cupón Referido' : data.paymentMethod;
+
   const payload: Record<string, unknown> = {
     id: paymentId,
     storeId: store.id,
@@ -562,18 +578,25 @@ export async function submitSubscriptionPayment(
     ownerUid: user.uid,
     ownerEmail: user.email || '',
     amountUSD: netAmountUSD,
-    paymentMethod: netAmountUSD === 0 && coupon ? 'Cupón Referido' : data.paymentMethod,
-    referenceNumber:
-      (data.referenceNumber || coupon?.code || `CUPON-${Date.now()}`).trim().slice(0, 80),
+    paymentMethod: cleanMethod,
+    referenceNumber: cleanRef,
     status: 'pending',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
+  if (data.ownerWhatsapp && data.ownerWhatsapp.trim()) {
+    payload.ownerWhatsapp = data.ownerWhatsapp.trim().slice(0, 30);
+  } else if (store.businessWhatsapp && store.businessWhatsapp.trim()) {
+    payload.ownerWhatsapp = store.businessWhatsapp.trim().slice(0, 30);
+  }
   if (data.payerInfo && data.payerInfo.trim()) {
     payload.payerInfo = data.payerInfo.trim().slice(0, 120);
   }
   if (data.notes && data.notes.trim()) {
     payload.notes = data.notes.trim().slice(0, 400);
+  }
+  if (data.proofImageUrl && data.proofImageUrl.trim()) {
+    payload.proofImageUrl = data.proofImageUrl.trim().slice(0, 150000);
   }
   if (coupon) {
     payload.couponId = coupon.id;
@@ -592,9 +615,142 @@ export async function submitSubscriptionPayment(
       });
     }
     await batch.commit();
+    return {
+      ...payload,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as SubscriptionPayment;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
+}
+
+export interface PaymentVoucherDispatchResult {
+  emailSent: boolean;
+  deliveryChannel: 'smtp' | 'resend' | 'client_mailto';
+  message: string;
+  whatsappHref: string;
+  mailtoHref: string;
+}
+
+export function buildPaymentVoucherLinks(params: {
+  payment: SubscriptionPayment;
+  store: StoreTenant;
+  exchangeRate?: number;
+  supportWhatsapp?: string;
+}): { whatsappHref: string; mailtoHref: string; voucherText: string } {
+  const { payment, store, exchangeRate, supportWhatsapp } = params;
+  const cleanWa =
+    (supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp).replace(/\D/g, '') ||
+    '584220273766';
+  const amountBs =
+    exchangeRate && exchangeRate > 0
+      ? (payment.amountUSD * exchangeRate).toLocaleString('es-VE', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      : null;
+
+  const lines = [
+    '*COMPROBANTE DE PAGO DE SUSCRIPCIÓN*',
+    'Plataforma: Smith Solutions E-Commerce',
+    '-----------------------------------',
+    `Tienda: ${payment.storeName} (ID: ${payment.storeId})`,
+    `Propietario: ${store.registeredOwnerName}`,
+    `Correo cuenta: ${payment.ownerEmail}`,
+    payment.ownerWhatsapp || store.businessWhatsapp
+      ? `WhatsApp tienda: ${payment.ownerWhatsapp || store.businessWhatsapp}`
+      : '',
+    `Comprobante ID: ${payment.id}`,
+    `Método de pago: ${payment.paymentMethod}`,
+    `Referencia / TxID: ${payment.referenceNumber}`,
+    `Monto reportado: $${Number(payment.amountUSD).toFixed(2)} USD${amountBs ? ` (≈ ${amountBs} Bs.)` : ''}`,
+    payment.couponCode
+      ? `Cupón aplicado: ${payment.couponCode} (-$${Number(payment.discountUSD || 0).toFixed(2)} USD)`
+      : '',
+    payment.payerInfo ? `Datos pagador: ${payment.payerInfo}` : '',
+    payment.notes ? `Notas: ${payment.notes}` : '',
+    payment.proofImageUrl ? 'Captura adjunta: Sí (adjunta imagen en este chat si es necesario)' : '',
+    '-----------------------------------',
+    `Fecha: ${new Date().toLocaleString('es-VE')}`,
+    'Solicito verificación y activación de cuenta.',
+  ].filter(Boolean);
+
+  const voucherText = lines.join('\n');
+  const subject = `[COMPROBANTE PAGO] ${payment.storeName} · $${Number(payment.amountUSD).toFixed(2)} USD · Ref: ${payment.referenceNumber}`;
+  const whatsappHref = `https://wa.me/${cleanWa}?text=${encodeURIComponent(voucherText)}`;
+  const mailtoHref = `mailto:${SUPER_ADMIN_EMAIL}?subject=${encodeURIComponent(
+    subject
+  )}&body=${encodeURIComponent(voucherText.replace(/\*/g, ''))}`;
+
+  return { whatsappHref, mailtoHref, voucherText };
+}
+
+export async function dispatchSubscriptionPaymentProof(params: {
+  user: User;
+  store: StoreTenant;
+  payment: SubscriptionPayment;
+  exchangeRate?: number;
+  supportWhatsapp?: string;
+}): Promise<PaymentVoucherDispatchResult> {
+  const { user, store, payment, exchangeRate, supportWhatsapp } = params;
+  const fallback = buildPaymentVoucherLinks({
+    payment,
+    store,
+    exchangeRate,
+    supportWhatsapp,
+  });
+
+  try {
+    const idToken = await user.getIdToken();
+    const resp = await fetch('/api/payments/notify-proof', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        paymentId: payment.id,
+        storeId: store.id,
+        storeName: store.storeName,
+        ownerName: store.registeredOwnerName,
+        ownerEmail: payment.ownerEmail || user.email || '',
+        ownerWhatsapp: payment.ownerWhatsapp || store.businessWhatsapp,
+        paymentMethod: payment.paymentMethod,
+        referenceNumber: payment.referenceNumber,
+        amountUSD: payment.amountUSD,
+        exchangeRate,
+        payerInfo: payment.payerInfo,
+        notes: payment.notes,
+        couponCode: payment.couponCode,
+        discountUSD: payment.discountUSD,
+        proofImageUrl: payment.proofImageUrl,
+        supportWhatsapp: supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp,
+      }),
+    });
+
+    if (resp.ok) {
+      const json = (await resp.json()) as Partial<PaymentVoucherDispatchResult>;
+      return {
+        emailSent: Boolean(json.emailSent),
+        deliveryChannel: json.deliveryChannel || 'client_mailto',
+        message: json.message || 'Comprobante procesado.',
+        whatsappHref: json.whatsappHref || fallback.whatsappHref,
+        mailtoHref: json.mailtoHref || fallback.mailtoHref,
+      };
+    }
+  } catch {
+    // Offline or static GitHub Pages host: return client-side mailto + WhatsApp links
+  }
+
+  return {
+    emailSent: false,
+    deliveryChannel: 'client_mailto',
+    message:
+      'Comprobante registrado en la nube. Envía la confirmación directa por WhatsApp y Correo con los botones de abajo.',
+    whatsappHref: fallback.whatsappHref,
+    mailtoHref: fallback.mailtoHref,
+  };
 }
 
 export async function adminResolveSubscriptionPayment(
@@ -1764,5 +1920,360 @@ export async function sendAdminEmailsToOwners(params: {
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'adminEmails');
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Per-Store Isolated Warehouse & POS Cloud Persistence + Storefront Sync
+// -----------------------------------------------------------------------------
+
+export type WarehouseLedgerKey =
+  | 'debtors'
+  | 'movements'
+  | 'sales'
+  | 'audits'
+  | 'traces'
+  | 'purchases'
+  | 'closings';
+
+export interface StoreWarehouseLedgersState {
+  debtors: Debtor[];
+  movements: CashMovement[];
+  sales: Sale[];
+  audits: InventoryAuditLog[];
+  traces: ProductBatchTrace[];
+  purchases: PurchaseInvoice[];
+  closings: CashClosingRecord[];
+}
+
+function buildWarehouseProductDoc(
+  storeId: string,
+  ownerUid: string,
+  product: Product,
+  existingCreatedAt?: unknown
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    id: product.id,
+    storeId,
+    ownerUid,
+    name: (product.name || 'Producto').trim().slice(0, 140),
+    category: (product.category || 'General').trim().slice(0, 60),
+    sku: (product.sku || `SKU-${Date.now().toString().slice(-4)}`).trim().slice(0, 60),
+    stock: Math.max(0, Number(product.stock) || 0),
+    minStock: Math.max(0, Number(product.minStock) || 0),
+    costUSD: Math.max(0, Number(product.costUSD) || 0),
+    priceUSD: Math.max(0, Number(product.priceUSD) || 0),
+    unit: (product.unit || 'Unidad').trim().slice(0, 30),
+    barcode: (product.barcode || '').trim().slice(0, 80),
+    createdAt: existingCreatedAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (product.image && product.image.trim()) {
+    payload.image = product.image.trim().slice(0, 150000);
+  }
+  if (product.description && product.description.trim()) {
+    payload.description = product.description.trim().slice(0, 1000);
+  }
+  if (typeof product.rating === 'number' && !Number.isNaN(product.rating)) {
+    payload.rating = Math.max(1, Math.min(5, Number(product.rating.toFixed(1))));
+  }
+  if (product.turnoverRate) {
+    payload.turnoverRate = product.turnoverRate;
+  }
+  if (product.batchNumber && product.batchNumber.trim()) {
+    payload.batchNumber = product.batchNumber.trim().slice(0, 60);
+  }
+  if (product.supplier && product.supplier.trim()) {
+    payload.supplier = product.supplier.trim().slice(0, 120);
+  }
+  if (product.location && product.location.trim()) {
+    payload.location = product.location.trim().slice(0, 60);
+  }
+  if (product.expirationDate && product.expirationDate.trim()) {
+    payload.expirationDate = product.expirationDate.trim().slice(0, 30);
+  }
+  if (product.storefrontProductId && product.storefrontProductId.trim()) {
+    payload.storefrontProductId = product.storefrontProductId.trim().slice(0, 128);
+  }
+
+  return payload;
+}
+
+export function subscribeStoreWarehouseProducts(
+  storeId: string,
+  ownerUid: string,
+  onData: (products: Product[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, 'stores', storeId, 'warehouseProducts'),
+    where('ownerUid', '==', ownerUid)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as Product);
+      onData(list);
+    },
+    (error) => {
+      console.warn(`Error leyendo warehouseProducts para ${storeId}:`, error);
+    }
+  );
+}
+
+export async function saveWarehouseProductInCloud(
+  storeId: string,
+  ownerUid: string,
+  product: Product,
+  existingCreatedAt?: unknown
+): Promise<void> {
+  const path = `stores/${storeId}/warehouseProducts/${product.id}`;
+  try {
+    await setDoc(
+      doc(db, 'stores', storeId, 'warehouseProducts', product.id),
+      buildWarehouseProductDoc(storeId, ownerUid, product, existingCreatedAt)
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function importWarehouseProductsBatchInCloud(
+  storeId: string,
+  ownerUid: string,
+  products: Product[]
+): Promise<void> {
+  if (products.length === 0) return;
+  const path = `stores/${storeId}/warehouseProducts`;
+  try {
+    for (let i = 0; i < products.length; i += 400) {
+      const chunk = products.slice(i, i + 400);
+      const batch = writeBatch(db);
+      for (const prod of chunk) {
+        batch.set(
+          doc(db, 'stores', storeId, 'warehouseProducts', prod.id),
+          buildWarehouseProductDoc(storeId, ownerUid, prod)
+        );
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function updateWarehouseAndLinkedStorefrontStock(
+  storeId: string,
+  product: Product,
+  nextStock: number
+): Promise<void> {
+  const safeStock = Math.max(0, Number(nextStock) || 0);
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'stores', storeId, 'warehouseProducts', product.id), {
+      stock: safeStock,
+      updatedAt: serverTimestamp(),
+    });
+    if (product.storefrontProductId) {
+      batch.update(doc(db, 'stores', storeId, 'products', product.storefrontProductId), {
+        stock: safeStock,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  } catch (error) {
+    console.warn(`Error actualizando stock en nube (${storeId}/${product.id}):`, error);
+  }
+}
+
+export function subscribeStoreWarehouseLedgers(
+  storeId: string,
+  ownerUid: string,
+  onData: (ledgers: Partial<StoreWarehouseLedgersState>) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, 'stores', storeId, 'warehouseLedgers'),
+    where('ownerUid', '==', ownerUid)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const parsed: Partial<StoreWarehouseLedgersState> = {};
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data() as { id?: WarehouseLedgerKey; entriesJson?: string };
+        if (data.id && typeof data.entriesJson === 'string') {
+          try {
+            const arr = JSON.parse(data.entriesJson);
+            if (Array.isArray(arr)) {
+              parsed[data.id] = arr;
+            }
+          } catch {
+            // ignore corrupted JSON
+          }
+        }
+      });
+      onData(parsed);
+    },
+    (error) => {
+      console.warn(`Error leyendo warehouseLedgers para ${storeId}:`, error);
+    }
+  );
+}
+
+export async function saveStoreWarehouseLedgerInCloud(
+  storeId: string,
+  ownerUid: string,
+  ledgerKey: WarehouseLedgerKey,
+  entries: unknown[]
+): Promise<void> {
+  const path = `stores/${storeId}/warehouseLedgers/${ledgerKey}`;
+  try {
+    let serialized = JSON.stringify(entries);
+    // Respect Firestore doc limits cleanly (cap oldest history if ledger grows very large)
+    if (serialized.length > 740000) {
+      serialized = JSON.stringify(entries.slice(0, Math.max(20, Math.floor(entries.length * 0.7))));
+    }
+    await setDoc(doc(db, 'stores', storeId, 'warehouseLedgers', ledgerKey), {
+      id: ledgerKey,
+      storeId,
+      ownerUid,
+      entriesJson: serialized.slice(0, 750000),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn(`Error guardando ledger ${path} en nube:`, error);
+  }
+}
+
+export async function syncWarehouseProductToStorefront(
+  store: StoreTenant,
+  ownerUid: string,
+  product: Product,
+  existingStorefrontProduct?: StoreProduct
+): Promise<string> {
+  const storefrontId =
+    product.storefrontProductId || existingStorefrontProduct?.id || makeSafeDocId('prod');
+  const path = `stores/${store.id}/products/${storefrontId}`;
+
+  const sfDoc = buildProductFirestoreDoc(
+    store.id,
+    ownerUid,
+    storefrontId,
+    {
+      id: storefrontId,
+      name: product.name,
+      description:
+        product.description?.trim() ||
+        `${product.name} · Disponible en ${store.storeName} (${product.unit || 'und'})`,
+      priceUSD: product.priceUSD,
+      costUSD: product.costUSD,
+      rating: product.rating ?? 5,
+      imageUrl: product.image,
+      category: product.category || 'General',
+      sku: product.sku,
+      stock: product.stock,
+      minStock: product.minStock,
+      unit: product.unit || 'und',
+      isActive: true,
+    },
+    existingStorefrontProduct?.createdAt
+  );
+
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'stores', store.id, 'products', storefrontId), sfDoc);
+    batch.set(
+      doc(db, 'stores', store.id, 'warehouseProducts', product.id),
+      buildWarehouseProductDoc(store.id, ownerUid, {
+        ...product,
+        storefrontProductId: storefrontId,
+      })
+    );
+    await batch.commit();
+    return storefrontId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function syncAllWarehouseProductsToStorefront(
+  store: StoreTenant,
+  ownerUid: string,
+  warehouseProducts: Product[],
+  existingStoreProducts: StoreProduct[]
+): Promise<{ syncedCount: number; updatedWarehouseProducts: Product[] }> {
+  if (warehouseProducts.length === 0) {
+    return { syncedCount: 0, updatedWarehouseProducts: warehouseProducts };
+  }
+
+  const updatedWarehouseProducts: Product[] = [];
+  const pairs: Array<{
+    wh: Product;
+    sfId: string;
+    sfDoc: Record<string, unknown>;
+  }> = [];
+
+  for (const prod of warehouseProducts) {
+    const matchedBySku =
+      !prod.storefrontProductId && prod.sku
+        ? existingStoreProducts.find(
+            (sp) => sp.sku && sp.sku.trim().toLowerCase() === prod.sku.trim().toLowerCase()
+          )
+        : undefined;
+    const matchedExisting =
+      existingStoreProducts.find((sp) => sp.id === prod.storefrontProductId) || matchedBySku;
+
+    const sfId = prod.storefrontProductId || matchedExisting?.id || makeSafeDocId('prod');
+    const updatedWh: Product = { ...prod, storefrontProductId: sfId };
+    updatedWarehouseProducts.push(updatedWh);
+
+    const sfDoc = buildProductFirestoreDoc(
+      store.id,
+      ownerUid,
+      sfId,
+      {
+        id: sfId,
+        name: prod.name,
+        description:
+          prod.description?.trim() ||
+          `${prod.name} · Disponible en ${store.storeName} (${prod.unit || 'und'})`,
+        priceUSD: prod.priceUSD,
+        costUSD: prod.costUSD,
+        rating: prod.rating ?? 5,
+        imageUrl: prod.image,
+        category: prod.category || 'General',
+        sku: prod.sku,
+        stock: prod.stock,
+        minStock: prod.minStock,
+        unit: prod.unit || 'und',
+        isActive: true,
+      },
+      matchedExisting?.createdAt
+    );
+
+    pairs.push({ wh: updatedWh, sfId, sfDoc });
+  }
+
+  const path = `stores/${store.id}/products`;
+  try {
+    // 200 pairs = 400 writes per Firestore batch (< 500 limit)
+    for (let i = 0; i < pairs.length; i += 200) {
+      const chunk = pairs.slice(i, i + 200);
+      const batch = writeBatch(db);
+      for (const pair of chunk) {
+        batch.set(doc(db, 'stores', store.id, 'products', pair.sfId), pair.sfDoc);
+        batch.set(
+          doc(db, 'stores', store.id, 'warehouseProducts', pair.wh.id),
+          buildWarehouseProductDoc(store.id, ownerUid, pair.wh)
+        );
+      }
+      await batch.commit();
+    }
+    return {
+      syncedCount: pairs.length,
+      updatedWarehouseProducts,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 }

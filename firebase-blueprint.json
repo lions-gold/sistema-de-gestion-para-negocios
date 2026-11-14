@@ -108,6 +108,7 @@
         "storeName": { "type": "string", "maxLength": 100 },
         "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "ownerEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "ownerWhatsapp": { "type": "string", "maxLength": 30 },
         "amountUSD": { "type": "number" },
         "paymentMethod": {
           "type": "string",
@@ -116,6 +117,7 @@
         "referenceNumber": { "type": "string", "minLength": 4, "maxLength": 80 },
         "payerInfo": { "type": "string", "maxLength": 120 },
         "notes": { "type": "string", "maxLength": 400 },
+        "proofImageUrl": { "type": "string", "maxLength": 150000 },
         "couponId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "couponCode": { "type": "string", "maxLength": 40 },
         "discountUSD": { "type": "number" },
@@ -399,6 +401,245 @@
         "isRead",
         "createdAt"
       ]
+    },
+    "VectorBrandConfig": {
+      "title": "VectorBrandConfig",
+      "description": "Per-brand Vector Commercial Assistant Section 13 configuration (strict multi-brand isolation).",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "brandName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "idiomaPrincipal": { "type": "string", "enum": ["es", "en", "zh"] },
+        "tratamientoEs": { "type": "string", "enum": ["usted", "tu"] },
+        "tratamientoZh": { "type": "string", "enum": ["您", "你"] },
+        "emojiMax": { "type": "number" },
+        "politicaEnvios": { "type": "string", "maxLength": 600 },
+        "politicaDevoluciones": { "type": "string", "maxLength": 600 },
+        "slaHumano": { "type": "string", "maxLength": 80 },
+        "horarioAtencion": { "type": "string", "maxLength": 100 },
+        "zonaHoraria": { "type": "string", "maxLength": 40 },
+        "slaCriticaMin": { "type": "number" },
+        "slaAltaMin": { "type": "number" },
+        "slaMediaMin": { "type": "number" },
+        "nivel1Cola": { "type": "string", "maxLength": 100 },
+        "nivel2Cobros": { "type": "string", "maxLength": 100 },
+        "nivel2Logistica": { "type": "string", "maxLength": 100 },
+        "nivel3Supervisor": { "type": "string", "maxLength": 100 },
+        "nivel4Admin": { "type": "string", "maxLength": 100 },
+        "autoEscalarPorVencimiento": { "type": "boolean" },
+        "maxIntentosBot": { "type": "number" },
+        "canalOfertas": { "type": "string", "enum": ["email", "whatsapp", "ambos"] },
+        "frecuenciaMaximaSemanal": { "type": "number" },
+        "palancasSummary": { "type": "string", "maxLength": 240 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["storeId", "brandName", "idiomaPrincipal", "tratamientoEs", "emojiMax", "updatedAt"]
+    },
+    "VectorTicket": {
+      "title": "VectorTicket",
+      "description": "Vector N0-N4 escalation ticket with Section 7 handoff packet and Section 5 Admin report.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ticketNumber": { "type": "string", "minLength": 3, "maxLength": 40 },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requesterUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "customerContact": { "type": "string", "maxLength": 160 },
+        "channel": { "type": "string", "enum": ["web_chat", "whatsapp", "instagram", "email"] },
+        "language": { "type": "string", "enum": ["es", "en", "zh"] },
+        "triggerId": { "type": "number" },
+        "triggerMotivo": { "type": "string", "maxLength": 120 },
+        "level": { "type": "string", "enum": ["N0", "N1", "N2", "N3", "N4"] },
+        "priority": { "type": "string", "enum": ["media", "alta", "critica"] },
+        "slaMinutes": { "type": "number" },
+        "summary": { "type": "string", "minLength": 3, "maxLength": 600 },
+        "botAttempts": { "type": "number" },
+        "lastProposal": { "type": "string", "maxLength": 400 },
+        "orderRef": { "type": "string", "maxLength": 80 },
+        "evidence": { "type": "string", "maxLength": 400 },
+        "requiredHumanAction": { "type": "string", "maxLength": 300 },
+        "clientCommitment": { "type": "string", "maxLength": 300 },
+        "offerConsent": { "type": "string", "enum": ["si", "no", "solo_importante", "no_preguntado"] },
+        "risk": { "type": "string", "enum": ["ninguno", "reembolso", "legal", "fraude", "reputacional"] },
+        "threadId": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["open", "in_progress", "escalated", "resolved"] },
+        "handoffPacket": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "adminReport": { "type": "string", "maxLength": 1500 },
+        "reEscalatedCount": { "type": "number" },
+        "contextLeakReported": { "type": "boolean" },
+        "csatScore": { "type": "number" },
+        "dueAtMs": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "ticketNumber",
+        "storeId",
+        "storeName",
+        "storeOwnerUid",
+        "requesterUid",
+        "level",
+        "priority",
+        "slaMinutes",
+        "summary",
+        "status",
+        "handoffPacket",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VectorConsentRecord": {
+      "title": "VectorConsentRecord",
+      "description": "Persistent opt-in/opt-out record for buyer offers and store owner campaigns (Section 4).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userEmail": { "type": "string", "maxLength": 160 },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "maxLength": 100 },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "scope": { "type": "string", "enum": ["buyer_offers", "merchant_campaigns"] },
+        "status": { "type": "string", "enum": ["si", "no", "solo_importante"] },
+        "channel": { "type": "string", "enum": ["web_chat", "whatsapp", "email", "portal"] },
+        "hardBounced": { "type": "boolean" },
+        "recentComplaint": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userUid", "storeId", "storeOwnerUid", "scope", "status", "channel", "updatedAt"]
+    },
+    "VectorCampaign": {
+      "title": "VectorCampaign",
+      "description": "Admin-approved Vector campaign to store owners with ES/EN/ZH A/B variants and opt-out monitoring.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "segment": { "type": "string", "enum": ["all", "active", "pending", "low_activity"] },
+        "objective": { "type": "string", "maxLength": 300 },
+        "realOffer": { "type": "string", "maxLength": 300 },
+        "validUntil": { "type": "string", "minLength": 4, "maxLength": 40 },
+        "primaryLanguage": { "type": "string", "enum": ["es", "en", "zh"] },
+        "variantsJson": { "type": "string", "maxLength": 12000 },
+        "approvedByAdmin": { "type": "boolean" },
+        "approvedAtIso": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["draft", "approved", "sent"] },
+        "sentCount": { "type": "number" },
+        "excludedCount": { "type": "number" },
+        "openCount": { "type": "number" },
+        "clickCount": { "type": "number" },
+        "attributedSalesCount": { "type": "number" },
+        "optOutCount": { "type": "number" },
+        "bounceCount": { "type": "number" },
+        "createdByEmail": { "type": "string", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "title",
+        "segment",
+        "objective",
+        "realOffer",
+        "validUntil",
+        "primaryLanguage",
+        "approvedByAdmin",
+        "status",
+        "createdByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "VectorConversationStat": {
+      "title": "VectorConversationStat",
+      "description": "Vector bot containment vs escalation control telemetry for Section 10 KPIs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "language": { "type": "string", "enum": ["es", "en", "zh"] },
+        "turnsCount": { "type": "number" },
+        "botAttemptsOnIssue": { "type": "number" },
+        "containedByBot": { "type": "boolean" },
+        "escalated": { "type": "boolean" },
+        "escalationAccurate": { "type": "boolean" },
+        "triggerId": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeOwnerUid",
+        "userUid",
+        "language",
+        "turnsCount",
+        "containedByBot",
+        "escalated",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserLanguagePreference": {
+      "title": "UserLanguagePreference",
+      "description": "Private per-user UI language preference (es, en, zh) isolated per UID so each user selects their language without affecting other users.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "language": { "type": "string", "enum": ["es", "en", "zh"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "language", "updatedAt"]
+    },
+    "WarehouseProduct": {
+      "title": "WarehouseProduct",
+      "description": "Private per-store Warehouse & POS inventory item isolated per StoreTenant with optional link to storefront catalog.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "category": { "type": "string", "maxLength": 60 },
+        "sku": { "type": "string", "maxLength": 60 },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "costUSD": { "type": "number" },
+        "priceUSD": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 30 },
+        "barcode": { "type": "string", "maxLength": 80 },
+        "image": { "type": "string", "maxLength": 150000 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "rating": { "type": "number" },
+        "turnoverRate": { "type": "string", "enum": ["Alta", "Media", "Baja"] },
+        "batchNumber": { "type": "string", "maxLength": 60 },
+        "supplier": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 60 },
+        "expirationDate": { "type": "string", "maxLength": 30 },
+        "storefrontProductId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "storeId", "ownerUid", "name", "category", "sku", "stock", "minStock", "costUSD", "priceUSD", "unit", "barcode", "createdAt", "updatedAt"]
+    },
+    "WarehouseLedger": {
+      "title": "WarehouseLedger",
+      "description": "Private per-store Warehouse & POS serialized ledger (sales, debtors, movements, audits, traces, purchases, closings).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["debtors", "movements", "sales", "audits", "traces", "purchases", "closings"] },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "entriesJson": { "type": "string", "maxLength": 750000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "storeId", "ownerUid", "entriesJson", "updatedAt"]
     }
   },
   "firestore": {
@@ -434,6 +675,18 @@
       "schema": { "$ref": "#/entities/StoreOrderItem" },
       "description": "Structured itemized lines for each store order and personalized sales invoice."
     },
+    "/stores/{storeId}/vectorConfig/{docId}": {
+      "schema": { "$ref": "#/entities/VectorBrandConfig" },
+      "description": "Per-brand Vector Section 13 configuration (strict isolation)."
+    },
+    "/stores/{storeId}/warehouseProducts/{productId}": {
+      "schema": { "$ref": "#/entities/WarehouseProduct" },
+      "description": "Private per-store Warehouse & POS product catalog (starts empty per store)."
+    },
+    "/stores/{storeId}/warehouseLedgers/{ledgerId}": {
+      "schema": { "$ref": "#/entities/WarehouseLedger" },
+      "description": "Private per-store Warehouse & POS operational ledgers (sales, debtors, movements, audits, traces, purchases, closings)."
+    },
     "/subscriptionPayments/{paymentId}": {
       "schema": { "$ref": "#/entities/SubscriptionPayment" },
       "description": "Monthly $25 subscription payment reports (and coupon renewals) submitted by store owners."
@@ -453,6 +706,26 @@
     "/adminEmails/{emailId}": {
       "schema": { "$ref": "#/entities/AdminEmailDispatch" },
       "description": "Super Admin email broadcast & individual dispatch log."
+    },
+    "/vectorTickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/VectorTicket" },
+      "description": "Vector N0-N4 escalation tickets and Admin reports."
+    },
+    "/vectorConsents/{consentId}": {
+      "schema": { "$ref": "#/entities/VectorConsentRecord" },
+      "description": "Vector opt-in / opt-out consent records."
+    },
+    "/vectorCampaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/VectorCampaign" },
+      "description": "Vector Admin-approved store owner email campaigns."
+    },
+    "/vectorConversationStats/{statId}": {
+      "schema": { "$ref": "#/entities/VectorConversationStat" },
+      "description": "Vector containment and escalation telemetry stats."
+    },
+    "/userPreferences/{uid}": {
+      "schema": { "$ref": "#/entities/UserLanguagePreference" },
+      "description": "Private per-user isolated language preferences (ES / EN / ZH)."
     }
   }
 }

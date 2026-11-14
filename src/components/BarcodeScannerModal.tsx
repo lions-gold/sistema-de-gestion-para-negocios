@@ -188,8 +188,28 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       startScanner();
     }, 200);
 
+    // Ensure iPhone Safari always keeps <video> inline (never opens fullscreen native player)
+    const enforceInlineVideo = () => {
+      const container = document.getElementById(scannerContainerId);
+      const vid = container?.querySelector('video');
+      if (vid) {
+        vid.setAttribute('playsinline', 'true');
+        vid.setAttribute('webkit-playsinline', 'true');
+        vid.setAttribute('muted', 'true');
+        vid.playsInline = true;
+        vid.muted = true;
+      }
+    };
+    const obs = new MutationObserver(enforceInlineVideo);
+    const targetEl = document.getElementById(scannerContainerId);
+    if (targetEl) {
+      obs.observe(targetEl, { childList: true, subtree: true });
+      enforceInlineVideo();
+    }
+
     return () => {
       clearTimeout(timer);
+      obs.disconnect();
       if (scannerRef.current) {
         if (scannerRef.current.isScanning) {
           scannerRef.current.stop().catch(console.error);
@@ -199,40 +219,79 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     };
   }, [isOpen]);
 
+  const handleCycleCamera = async () => {
+    if (cameras.length < 2 || !scannerRef.current) return;
+    const currentIdx = cameras.findIndex((c) => c.id === selectedCameraId);
+    const nextCam = cameras[(currentIdx + 1) % cameras.length];
+    try {
+      if (scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
+      }
+      setSelectedCameraId(nextCam.id);
+      await scannerRef.current.start(
+        nextCam.id,
+        { fps: 12, qrbox: { width: 260, height: 160 }, aspectRatio: 1.333 },
+        (decodedText) => handleCodeDetected(decodedText.trim()),
+        () => {}
+      );
+      const vid = document.getElementById(scannerContainerId)?.querySelector('video');
+      if (vid) {
+        vid.setAttribute('playsinline', 'true');
+        vid.playsInline = true;
+        vid.muted = true;
+      }
+    } catch (err) {
+      console.warn('Error switching camera:', err);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md flex flex-col justify-end sm:justify-center items-center p-0 sm:p-4 safe-area-bottom">
       {/* Container */}
-      <div className="bg-[#111114] border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200">
+      <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-lg w-full max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200">
         
         {/* Top Header */}
-        <div className="p-4 bg-[#09090b] border-b border-white/[0.08] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+        <div className="p-3.5 sm:p-4 bg-[#09090b] border-b border-white/[0.08] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
               <Camera className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-bold text-white text-sm sm:text-base font-display">
+            <div className="min-w-0">
+              <h3 className="font-bold text-white text-sm sm:text-base font-display truncate">
                 Lector de Códigos de Barra
               </h3>
-              <p className="text-[11px] text-zinc-400">
+              <p className="text-[11px] text-zinc-400 truncate">
                 Apunta la cámara del móvil a la botella o caja
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 shrink-0">
+            {cameras.length > 1 && scannerActive && (
+              <button
+                type="button"
+                onClick={handleCycleCamera}
+                className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-amber-400 rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
+                title="Cambiar lente / cámara"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            )}
             <button
+              type="button"
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors"
+              className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
               title={soundEnabled ? 'Silenciar pitido' : 'Activar sonido'}
             >
               {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4" />}
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors"
+              className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
+              aria-label="Cerrar escáner"
             >
               <X className="w-5 h-5" />
             </button>
@@ -240,7 +299,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
 
         {/* Camera Viewport & Reticle Area */}
-        <div className="relative bg-black flex-1 min-h-[260px] sm:min-h-[300px] flex items-center justify-center overflow-hidden">
+        <div className="relative bg-black flex-1 min-h-[240px] sm:min-h-[300px] flex items-center justify-center overflow-hidden">
           {/* HTML5 QR code video mount */}
           <div id={scannerContainerId} className="w-full h-full [&_video]:object-cover [&_video]:w-full [&_video]:h-full" />
 
@@ -278,7 +337,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
 
         {/* Result & Actions Drawer */}
-        <div className="p-4 bg-[#111114] border-t border-white/[0.08] space-y-3 overflow-y-auto max-h-[38vh]">
+        <div className="p-4 bg-[#111114] border-t border-white/[0.08] space-y-3 overflow-y-auto max-h-[38dvh]">
           {/* Matched product card */}
           {matchedProduct ? (
             <div className="p-3.5 bg-[#09090b] rounded-xl border border-emerald-500/40 space-y-2">

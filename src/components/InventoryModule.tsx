@@ -1,56 +1,56 @@
 import React, { useState } from 'react';
-import { 
-  Product, 
-  Sale, 
-  EmailAlertConfig, 
-  StockAlertEmailLog, 
-  InventoryAuditLog, 
-  InventoryAuditType, 
-  ProductBatchTrace, 
-  TraceabilityStep 
+import {
+  Product,
+  Sale,
+  EmailAlertConfig,
+  StockAlertEmailLog,
+  InventoryAuditLog,
+  InventoryAuditType,
+  ProductBatchTrace,
+  TraceabilityStep,
+  StoreProduct,
+  StoreTenant,
 } from '../types';
-import { 
-  INITIAL_INVENTORY_AUDITS, 
-  INITIAL_BATCH_TRACES 
-} from '../data/mockData';
-import { 
-  Package, 
-  Search, 
-  Plus, 
-  Minus, 
-  AlertTriangle, 
-  Check, 
-  X, 
-  Tag, 
-  Barcode, 
-  Layers, 
-  ArrowUpDown, 
-  Camera, 
-  Mail, 
-  Bell, 
-  ShieldAlert, 
-  TrendingDown, 
-  Truck, 
-  FileCheck, 
-  ArrowRight, 
-  Clock, 
-  ClipboardList, 
-  RotateCw, 
-  Building2, 
-  Download, 
-  Share2, 
-  Flame, 
-  History, 
-  Calendar, 
-  DollarSign, 
-  FileSpreadsheet, 
-  CheckCircle2, 
-  Filter, 
+import {
+  Package,
+  Search,
+  Plus,
+  Minus,
+  AlertTriangle,
+  Check,
+  X,
+  Tag,
+  Barcode,
+  Layers,
+  ArrowUpDown,
+  Camera,
+  Mail,
+  Bell,
+  ShieldAlert,
+  TrendingDown,
+  Truck,
+  FileCheck,
+  ArrowRight,
+  Clock,
+  ClipboardList,
+  RotateCw,
+  Building2,
+  Download,
+  Share2,
+  Flame,
+  History,
+  Calendar,
+  DollarSign,
+  FileSpreadsheet,
+  CheckCircle2,
+  Filter,
   ShoppingCart,
   MapPin,
   Upload,
   Star,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Store,
+  RefreshCw,
 } from 'lucide-react';
 import { EmailAlertConfigModal } from './EmailAlertConfigModal';
 import {
@@ -60,9 +60,9 @@ import {
   saveStoredEmailLogs,
   recordSimulatedEmailDispatch,
 } from '../utils/alertNotifications';
-import { 
-  exportInventoryAuditCSV, 
-  exportInventoryAuditPDF 
+import {
+  exportInventoryAuditCSV,
+  exportInventoryAuditPDF,
 } from '../utils/seniatExport';
 import {
   exportInventoryCatalogCSV,
@@ -75,15 +75,25 @@ import { compressImageFileToDataURL } from '../services/saasService';
 interface InventoryModuleProps {
   products: Product[];
   onUpdateProductStock: (id: string, delta: number) => void;
-  onAddProduct: (product: Omit<Product, 'id'>) => void;
-  onImportProducts?: (products: Omit<Product, 'id'>[], mergeBySku?: boolean) => void;
+  onAddProduct: (product: Omit<Product, 'id'>, publishToStore?: boolean) => void;
+  onImportProducts?: (
+    products: Omit<Product, 'id'>[],
+    mergeBySku?: boolean,
+    publishToStore?: boolean
+  ) => void;
   exchangeRate: number;
   onOpenScanner?: () => void;
   sales?: Sale[];
+  activeStore?: StoreTenant | null;
+  storefrontProducts?: StoreProduct[];
+  audits?: InventoryAuditLog[];
+  traces?: ProductBatchTrace[];
+  onAuditsChange?: (audits: InventoryAuditLog[]) => void;
+  onTracesChange?: (traces: ProductBatchTrace[]) => void;
+  onPublishProductToStore?: (product: Product) => Promise<void>;
+  onSyncAllToStore?: () => Promise<void>;
+  isSyncingToStore?: boolean;
 }
-
-const AUDITS_STORAGE_KEY = 'lions_gold_inventory_audits';
-const TRACES_STORAGE_KEY = 'lions_gold_inventory_traces';
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({
   products,
@@ -93,6 +103,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   exchangeRate,
   onOpenScanner,
   sales = [],
+  activeStore,
+  storefrontProducts = [],
+  audits: controlledAudits,
+  traces: controlledTraces,
+  onAuditsChange,
+  onTracesChange,
+  onPublishProductToStore,
+  onSyncAllToStore,
+  isSyncingToStore = false,
 }) => {
   // Main Sub-Tab: 'catalog' | 'audit' | 'traceability'
   const [activeSubTab, setActiveSubTab] = useState<'catalog' | 'audit' | 'traceability'>('catalog');
@@ -104,84 +123,104 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEmailConfig, setShowEmailConfig] = useState(false);
   const [showPurchaseOrderModal, setShowPurchaseOrderModal] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Email Alert state & persistence
   const [emailConfig, setEmailConfig] = useState<EmailAlertConfig>(getStoredEmailConfig);
   const [emailLogs, setEmailLogs] = useState<StockAlertEmailLog[]>(getStoredEmailLogs);
   const [emailToast, setEmailToast] = useState<{ message: string; logId: string } | null>(null);
 
-  // New product form state
+  // New product form state (neutral per-store defaults)
   const [newName, setNewName] = useState('');
-  const [newCategory, setNewCategory] = useState<string>('Licores');
+  const [newCategory, setNewCategory] = useState<string>('General');
   const [newSKU, setNewSKU] = useState('');
-  const [newStock, setNewStock] = useState('12');
-  const [newMinStock, setNewMinStock] = useState('4');
-  const [newCostUSD, setNewCostUSD] = useState('15.00');
-  const [newPriceUSD, setNewPriceUSD] = useState('22.00');
-  const [newUnit, setNewUnit] = useState('Botella');
-  const [newTurnover, setNewTurnover] = useState<'Alta' | 'Media' | 'Baja'>('Alta');
-  const [newLocation, setNewLocation] = useState<Product['location']>('Cava Principal');
-  const [newSupplier, setNewSupplier] = useState('C.A. Ron Santa Teresa');
+  const [newStock, setNewStock] = useState('10');
+  const [newMinStock, setNewMinStock] = useState('2');
+  const [newCostUSD, setNewCostUSD] = useState('0.00');
+  const [newPriceUSD, setNewPriceUSD] = useState('0.00');
+  const [newUnit, setNewUnit] = useState('Unidad');
+  const [newTurnover, setNewTurnover] = useState<'Alta' | 'Media' | 'Baja'>('Media');
+  const [newLocation, setNewLocation] = useState<Product['location']>('Depósito Principal');
+  const [newSupplier, setNewSupplier] = useState('');
   const [newImage, setNewImage] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newRating, setNewRating] = useState('5.0');
+  const [publishToStoreOnAdd, setPublishToStoreOnAdd] = useState(true);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Bulk Export / Import state
   const [importPreview, setImportPreview] = useState<Omit<Product, 'id'>[]>([]);
   const [importFileName, setImportFileName] = useState('');
   const [importMergeBySku, setImportMergeBySku] = useState(true);
+  const [publishToStoreOnImport, setPublishToStoreOnImport] = useState(true);
   const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // --- 2. AUDIT STATE (Mermas, Desvíos, Pérdidas) ---
-  const [audits, setAudits] = useState<InventoryAuditLog[]>(() => {
-    try {
-      const stored = localStorage.getItem(AUDITS_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // fallback
-    }
-    return INITIAL_INVENTORY_AUDITS;
-  });
+  // --- 2. AUDIT STATE (Mermas, Desvíos, Pérdidas - strictly per store, empty by default) ---
+  const [internalAudits, setInternalAudits] = useState<InventoryAuditLog[]>([]);
+  const audits = controlledAudits ?? internalAudits;
+  const updateAudits = (next: InventoryAuditLog[]) => {
+    setInternalAudits(next);
+    onAuditsChange?.(next);
+  };
 
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [auditProductId, setAuditProductId] = useState(products[0]?.id || '');
   const [auditType, setAuditType] = useState<InventoryAuditType>('Merma por Rotura');
   const [auditQty, setAuditQty] = useState('1');
-  const [auditLocation, setAuditLocation] = useState('Cava Principal');
-  const [auditAuditor, setAuditAuditor] = useState('Carlos Smith (Jefe Almacén)');
+  const [auditLocation, setAuditLocation] = useState('Depósito Principal');
+  const [auditAuditor, setAuditAuditor] = useState(
+    activeStore?.registeredOwnerName || 'Responsable de Almacén'
+  );
   const [auditNotes, setAuditNotes] = useState('');
   const [auditDiscountStock, setAuditDiscountStock] = useState(true);
   const [auditSearch, setAuditSearch] = useState('');
   const [auditFilterType, setAuditFilterType] = useState<string>('Todos');
 
-  // --- 3. TRACEABILITY STATE (End-to-End Tracking) ---
-  const [traces, setTraces] = useState<ProductBatchTrace[]>(() => {
-    try {
-      const stored = localStorage.getItem(TRACES_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {
-      // fallback
-    }
-    return INITIAL_BATCH_TRACES;
-  });
+  // --- 3. TRACEABILITY STATE (End-to-End Tracking - strictly per store, empty by default) ---
+  const [internalTraces, setInternalTraces] = useState<ProductBatchTrace[]>([]);
+  const traces = controlledTraces ?? internalTraces;
+  const updateTraces = (next: ProductBatchTrace[]) => {
+    setInternalTraces(next);
+    onTracesChange?.(next);
+  };
 
-  const [selectedTraceId, setSelectedTraceId] = useState<string>(traces[0]?.id || 'trace-001');
+  const [selectedTraceId, setSelectedTraceId] = useState<string>('');
   const [traceSearch, setTraceSearch] = useState('');
   const [showAddTraceStepModal, setShowAddTraceStepModal] = useState(false);
   const [newStepStage, setNewStepStage] = useState<TraceabilityStep['stage']>('Traslado a Barra');
   const [newStepDescription, setNewStepDescription] = useState('');
   const [newStepRef, setNewStepRef] = useState('');
-  const [newStepAuditor, setNewStepAuditor] = useState('Carlos Smith (Almacenista)');
+  const [newStepAuditor, setNewStepAuditor] = useState(
+    activeStore?.registeredOwnerName || 'Responsable de Almacén'
+  );
 
-  const baseCategories = ['Licores', 'Cervezas', 'Vinos', 'Bebidas', 'Snacks'];
+  const isProductSyncedToStore = (prod: Product) => {
+    if (prod.storefrontProductId) {
+      return storefrontProducts.length === 0 || storefrontProducts.some((sp) => sp.id === prod.storefrontProductId);
+    }
+    const cleanSku = prod.sku?.trim().toLowerCase();
+    return Boolean(
+      cleanSku &&
+        storefrontProducts.some(
+          (sp) => sp.sku && sp.sku.trim().toLowerCase() === cleanSku
+        )
+    );
+  };
+
+  const syncedProductsCount = products.filter((p) => isProductSyncedToStore(p)).length;
+
+  const productCategories = products
+    .map((p) => p.category)
+    .filter((c) => Boolean(c && c.trim()));
   const categories = [
     'Todos',
     ...Array.from(
-      new Set([
-        ...baseCategories,
-        ...products.map((p) => p.category).filter((c) => Boolean(c && c.trim())),
-      ])
+      new Set(
+        productCategories.length > 0
+          ? productCategories
+          : ['General']
+      )
     ),
   ];
 
@@ -267,25 +306,28 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     const cleanCategory = newCategory.trim() || 'General';
     const parsedRating = Math.max(1, Math.min(5, parseFloat(newRating) || 5));
 
-    onAddProduct({
-      name: newName.trim(),
-      category: cleanCategory,
-      sku: newSKU.trim() || `SKU-${Date.now().toString().slice(-4)}`,
-      stock: parseInt(newStock) || 0,
-      minStock: parseInt(newMinStock) || 2,
-      costUSD: parseFloat(newCostUSD) || 0,
-      priceUSD: parseFloat(newPriceUSD) || 0,
-      unit: newUnit,
-      barcode: `759${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-      image: newImage.trim() || undefined,
-      description: newDescription.trim() || undefined,
-      rating: Number(parsedRating.toFixed(1)),
-      turnoverRate: newTurnover,
-      location: newLocation,
-      supplier: newSupplier,
-      batchNumber: `LT-${cleanCategory.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
-      expirationDate: '2028-12-31',
-    });
+    onAddProduct(
+      {
+        name: newName.trim(),
+        category: cleanCategory,
+        sku: newSKU.trim() || `SKU-${Date.now().toString().slice(-4)}`,
+        stock: parseInt(newStock) || 0,
+        minStock: parseInt(newMinStock) || 2,
+        costUSD: parseFloat(newCostUSD) || 0,
+        priceUSD: parseFloat(newPriceUSD) || 0,
+        unit: newUnit,
+        barcode: `759${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+        image: newImage.trim() || undefined,
+        description: newDescription.trim() || undefined,
+        rating: Number(parsedRating.toFixed(1)),
+        turnoverRate: newTurnover,
+        location: newLocation,
+        supplier: newSupplier.trim() || undefined,
+        batchNumber: `LT-${cleanCategory.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
+        expirationDate: '2028-12-31',
+      },
+      Boolean(activeStore && publishToStoreOnAdd)
+    );
 
     setNewName('');
     setNewSKU('');
@@ -345,23 +387,61 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const handleConfirmImport = () => {
     if (importPreview.length === 0) return;
+    const shouldPublish = Boolean(activeStore && publishToStoreOnImport);
     if (onImportProducts) {
-      onImportProducts(importPreview, importMergeBySku);
+      onImportProducts(importPreview, importMergeBySku, shouldPublish);
     } else {
-      importPreview.forEach((item) => onAddProduct(item));
+      importPreview.forEach((item) => onAddProduct(item, shouldPublish));
     }
     setImportFeedback({
       type: 'success',
-      text: `Catálogo actualizado: se importaron ${importPreview.length} producto(s) desde ${importFileName}.`,
+      text: `Catálogo actualizado: se importaron ${importPreview.length} producto(s) desde ${importFileName}${shouldPublish ? ' y se sincronizaron con tu Tienda Online' : ''}.`,
     });
     setImportPreview([]);
     setImportFileName('');
   };
 
+  const handlePublishSingleProduct = async (prod: Product) => {
+    if (!onPublishProductToStore) return;
+    setPublishingId(prod.id);
+    setSyncMessage(null);
+    try {
+      await onPublishProductToStore(prod);
+      setSyncMessage({
+        type: 'success',
+        text: `"${prod.name}" sincronizado con la Tienda Online (${activeStore?.storeName || 'Tienda'}).`,
+      });
+    } catch (err) {
+      setSyncMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'No se pudo publicar en la tienda.',
+      });
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const handleSyncAllProducts = async () => {
+    if (!onSyncAllToStore) return;
+    setSyncMessage(null);
+    try {
+      await onSyncAllToStore();
+      setSyncMessage({
+        type: 'success',
+        text: `Todo el inventario (${products.length} producto(s)) fue sincronizado con "${activeStore?.storeName || 'tu Tienda Online'}".`,
+      });
+    } catch (err) {
+      setSyncMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Error sincronizando productos con la tienda.',
+      });
+    }
+  };
+
   // Register New Audit Incident (Merma / Desvío)
   const handleCreateAudit = (e: React.FormEvent) => {
     e.preventDefault();
-    const targetProd = products.find((p) => p.id === auditProductId);
+    const targetProd = products.find((p) => p.id === auditProductId) || products[0];
     if (!targetProd) return;
 
     const qty = Math.max(1, parseInt(auditQty) || 1);
@@ -380,14 +460,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       unitCostUSD: targetProd.costUSD,
       totalLossUSD: lossUSD,
       totalLossBs: lossBs,
-      auditorName: auditAuditor.trim() || 'Auditoría Smith Solutions',
+      auditorName: auditAuditor.trim() || 'Auditoría de Almacén',
       location: auditLocation,
       notes: auditNotes.trim() || `Registro de ${auditType} en ${auditLocation}`,
     };
 
     const updated = [newAudit, ...audits];
-    setAudits(updated);
-    localStorage.setItem(AUDITS_STORAGE_KEY, JSON.stringify(updated));
+    updateAudits(updated);
 
     // Optionally discount stock directly
     if (auditDiscountStock && targetProd.stock > 0) {
@@ -415,8 +494,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         }
         return t;
       });
-      setTraces(updatedTraces);
-      localStorage.setItem(TRACES_STORAGE_KEY, JSON.stringify(updatedTraces));
+      updateTraces(updatedTraces);
     }
 
     setAuditNotes('');
@@ -447,8 +525,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       return t;
     });
 
-    setTraces(updated);
-    localStorage.setItem(TRACES_STORAGE_KEY, JSON.stringify(updated));
+    updateTraces(updated);
     setNewStepDescription('');
     setNewStepRef('');
     setShowAddTraceStepModal(false);
@@ -461,7 +538,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const handleTriggerTestEmail = (customEmail?: string) => {
     const lowStock = products.filter((p) => p.stock <= p.minStock);
-    const targetProducts = lowStock.length > 0 ? lowStock : [products[0]];
+    const targetProducts =
+      lowStock.length > 0 ? lowStock : products.length > 0 ? [products[0]] : [];
+    if (targetProducts.length === 0) {
+      setEmailToast({
+        message: 'Añade al menos un producto a tu almacén para probar las alertas de stock crítico.',
+        logId: 'empty',
+      });
+      setTimeout(() => setEmailToast(null), 5000);
+      return;
+    }
     const log = recordSimulatedEmailDispatch(
       targetProducts,
       'Prueba manual desde Configuración de Alertas',
@@ -653,6 +739,73 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
           </div>
 
+          {/* Storefront Sync Header Banner (Almacén -> Tienda Online) */}
+          {activeStore && (
+            <div className="bg-gradient-to-r from-[#111114] via-[#111114] to-amber-950/20 border border-amber-500/30 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0">
+                  <Store className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-bold text-white font-display">
+                      Almacén Individual · {activeStore.storeName}
+                    </h3>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                      {syncedProductsCount} / {products.length} publicados en Tienda
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    {products.length === 0
+                      ? 'Tu almacén inicia vacío. Registra aquí tus productos manualmente o importa un CSV/JSON para abastecer tu Tienda Online.'
+                      : 'Añade productos desde tu almacén y sincronízalos directo al catálogo de tu tienda con stock vinculado.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {onSyncAllToStore && products.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isSyncingToStore}
+                    onClick={handleSyncAllProducts}
+                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncingToStore ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingToStore ? 'Sincronizando...' : 'Sincronizar Todo a Tienda'}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Agregar Producto</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {syncMessage && (
+            <div
+              className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                syncMessage.type === 'success'
+                  ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200'
+                  : 'bg-rose-950/50 border-rose-500/40 text-rose-200'
+              }`}
+            >
+              <span>{syncMessage.text}</span>
+              <button
+                type="button"
+                onClick={() => setSyncMessage(null)}
+                className="p-1 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Email Alert Banner */}
           <div className="bg-[#111114] border border-white/[0.08] hover:border-amber-500/30 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs transition-colors">
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -836,15 +989,28 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     </span>
                   </div>
 
-                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={importMergeBySku}
-                      onChange={(e) => setImportMergeBySku(e.target.checked)}
-                      className="accent-amber-500 w-4 h-4 rounded"
-                    />
-                    <span>Actualizar productos existentes si coincide SKU</span>
-                  </label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={importMergeBySku}
+                        onChange={(e) => setImportMergeBySku(e.target.checked)}
+                        className="accent-amber-500 w-4 h-4 rounded"
+                      />
+                      <span>Actualizar si coincide SKU</span>
+                    </label>
+                    {activeStore && (
+                      <label className="flex items-center gap-2 text-xs text-emerald-300 font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={publishToStoreOnImport}
+                          onChange={(e) => setPublishToStoreOnImport(e.target.checked)}
+                          className="accent-emerald-500 w-4 h-4 rounded"
+                        />
+                        <span>Publicar también en Tienda Online</span>
+                      </label>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
@@ -1048,7 +1214,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-white/[0.08] flex items-center justify-between">
+                    <div className="pt-2 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className={`text-xs font-bold ${isLowStock ? 'text-red-400' : 'text-zinc-400'}`}>
                           Stock:
@@ -1063,21 +1229,45 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         <span className="text-[11px] text-zinc-500">/ min {p.minStock} {p.unit}s</span>
                       </div>
 
-                      <div className="flex items-center gap-1 bg-[#09090b] p-1 rounded-lg border border-white/[0.08]">
-                        <button
-                          onClick={() => handleStockChange(p.id, -1)}
-                          disabled={p.stock <= 0}
-                          className="w-9 h-9 flex items-center justify-center hover:bg-zinc-800/80 active:bg-zinc-800 text-zinc-300 hover:text-white rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="px-2 font-mono text-xs text-zinc-400 font-bold">{p.stock}</span>
-                        <button
-                          onClick={() => handleStockChange(p.id, 1)}
-                          className="w-9 h-9 flex items-center justify-center hover:bg-zinc-800/80 active:bg-zinc-800 text-zinc-300 hover:text-white rounded-md transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                      <div className="flex items-center gap-2">
+                        {onPublishProductToStore && activeStore && (
+                          <button
+                            type="button"
+                            disabled={publishingId === p.id}
+                            onClick={() => handlePublishSingleProduct(p)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-colors ${
+                              isProductSyncedToStore(p)
+                                ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
+                                : 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                            }`}
+                          >
+                            <Store className="w-3 h-3" />
+                            <span>
+                              {publishingId === p.id
+                                ? '...'
+                                : isProductSyncedToStore(p)
+                                  ? 'En Tienda ✓'
+                                  : 'Añadir a Tienda'}
+                            </span>
+                          </button>
+                        )}
+
+                        <div className="flex items-center gap-1 bg-[#09090b] p-1 rounded-lg border border-white/[0.08]">
+                          <button
+                            onClick={() => handleStockChange(p.id, -1)}
+                            disabled={p.stock <= 0}
+                            className="w-9 h-9 flex items-center justify-center hover:bg-zinc-800/80 active:bg-zinc-800 text-zinc-300 hover:text-white rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="px-2 font-mono text-xs text-zinc-400 font-bold">{p.stock}</span>
+                          <button
+                            onClick={() => handleStockChange(p.id, 1)}
+                            className="w-9 h-9 flex items-center justify-center hover:bg-zinc-800/80 active:bg-zinc-800 text-zinc-300 hover:text-white rounded-md transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1222,23 +1412,52 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           </td>
 
                           <td className="py-3 px-4 text-right">
-                            <div className="inline-flex items-center gap-1 bg-[#09090b] p-1 rounded-md border border-white/[0.08]">
-                              <button
-                                onClick={() => handleStockChange(p.id, -1)}
-                                disabled={p.stock <= 0}
-                                className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                                title="Restar 1 unidad"
-                              >
-                                <Minus className="w-3.5 h-3.5" />
-                              </button>
-                              <span className="px-2 font-mono text-xs text-zinc-400">Stock</span>
-                              <button
-                                onClick={() => handleStockChange(p.id, 1)}
-                                className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded"
-                                title="Sumar 1 unidad"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
+                            <div className="inline-flex items-center gap-2">
+                              {onPublishProductToStore && activeStore && (
+                                <button
+                                  type="button"
+                                  disabled={publishingId === p.id}
+                                  onClick={() => handlePublishSingleProduct(p)}
+                                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 border transition-colors whitespace-nowrap ${
+                                    isProductSyncedToStore(p)
+                                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
+                                      : 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                                  }`}
+                                  title={
+                                    isProductSyncedToStore(p)
+                                      ? 'Actualizar datos y stock en Tienda Online'
+                                      : 'Publicar este producto en tu Tienda Online'
+                                  }
+                                >
+                                  <Store className="w-3 h-3" />
+                                  <span>
+                                    {publishingId === p.id
+                                      ? '...'
+                                      : isProductSyncedToStore(p)
+                                        ? 'En Tienda ✓'
+                                        : 'Añadir a Tienda'}
+                                  </span>
+                                </button>
+                              )}
+
+                              <div className="inline-flex items-center gap-1 bg-[#09090b] p-1 rounded-md border border-white/[0.08]">
+                                <button
+                                  onClick={() => handleStockChange(p.id, -1)}
+                                  disabled={p.stock <= 0}
+                                  className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Restar 1 unidad"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="px-2 font-mono text-xs text-zinc-400">Stock</span>
+                                <button
+                                  onClick={() => handleStockChange(p.id, 1)}
+                                  className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded"
+                                  title="Sumar 1 unidad"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -1675,8 +1894,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       {/* MODAL 1: REGISTRAR MERMA / AUDITORÍA DE INVENTARIO                        */}
       {/* ========================================================================= */}
       {showAuditModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-rose-500/30 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-rose-500/30 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg border border-rose-500/20">
@@ -1693,20 +1912,26 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
 
             <form onSubmit={handleCreateAudit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-zinc-300 font-medium mb-1">Producto Afectado</label>
-                <select
-                  value={auditProductId}
-                  onChange={(e) => setAuditProductId(e.target.value)}
-                  className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-rose-500"
-                >
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (Stock: {p.stock} {p.unit}s • Costo: ${p.costUSD.toFixed(2)})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {products.length === 0 ? (
+                <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs">
+                  Tu almacén aún no tiene productos registrados. Agrega productos primero en el catálogo para poder registrar mermas.
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-zinc-300 font-medium mb-1">Producto Afectado</label>
+                  <select
+                    value={auditProductId || products[0]?.id || ''}
+                    onChange={(e) => setAuditProductId(e.target.value)}
+                    className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-rose-500"
+                  >
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Stock: {p.stock} {p.unit}s • Costo: ${p.costUSD.toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1836,8 +2061,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       {/* MODAL 2: REGISTRAR PASO DE TRAZABILIDAD                                    */}
       {/* ========================================================================= */}
       {showAddTraceStepModal && currentTrace && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-blue-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-blue-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div>
                 <h3 className="font-bold text-white text-base font-display">Nuevo Hito de Trazabilidad</h3>
@@ -1922,8 +2147,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       {/* MODAL 3: SUGERENCIA DE PEDIDO A DISTRIBUIDORES                           */}
       {/* ========================================================================= */}
       {showPurchaseOrderModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-amber-500/30 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5 text-amber-400" />
@@ -1989,7 +2214,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <div className="pt-2">
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
-                      `*ORDEN DE REPOSICIÓN - LA TABERNA LIONS GOLD*\nFecha: ${new Date().toLocaleDateString('es-VE')}\n----------------------------\n` +
+                      `*ORDEN DE REPOSICIÓN - ${(activeStore?.storeName || 'SMITH SOLUTIONS').toUpperCase()}*\nFecha: ${new Date().toLocaleDateString('es-VE')}\n----------------------------\n` +
                       reorderList.map((p) => `• ${p.name}: Pedir ${Math.max(1, p.minStock * 2 - p.stock)} ${p.unit}s (Stock actual: ${p.stock})`).join('\n') +
                       `\n----------------------------\nEstimado total: $${totalReorderEstimateUSD.toFixed(2)} USD\nSoftware por Smith Bussines Solutions 2026`
                     )}`}
@@ -2011,8 +2236,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       {/* MODAL 4: REGISTRAR NUEVO PRODUCTO                                         */}
       {/* ========================================================================= */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <h3 className="font-bold text-white text-lg font-display">Registrar Nuevo Producto</h3>
               <button
@@ -2063,11 +2288,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     onChange={(e) => setNewUnit(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Botella">Botella</option>
+                    <option value="Unidad">Unidad</option>
                     <option value="Caja">Caja</option>
                     <option value="Fardo">Fardo</option>
+                    <option value="Botella">Botella</option>
                     <option value="Lata">Lata</option>
                     <option value="Bolsa">Bolsa</option>
+                    <option value="Paquete">Paquete</option>
+                    <option value="Kg">Kilogramo</option>
                   </select>
                 </div>
               </div>
@@ -2092,19 +2320,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     onChange={(e) => setNewLocation(e.target.value as Product['location'])}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   >
-                    <option value="Cava Principal">Cava Principal</option>
-                    <option value="Barra Central">Barra Central</option>
-                    <option value="Estantería Premium">Estantería Premium</option>
+                    <option value="Depósito Principal">Depósito Principal</option>
+                    <option value="Exhibición Tienda">Exhibición Tienda</option>
+                    <option value="Cava Refrigerada">Cava Refrigerada</option>
                     <option value="Depósito Seco">Depósito Seco</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Distribuidor / Proveedor</label>
+                <label className="block text-zinc-300 font-medium mb-1">Distribuidor / Proveedor (Opcional)</label>
                 <input
                   type="text"
-                  placeholder="Ej: Cervecería Polar, Ron Santa Teresa, DUSA..."
+                  placeholder="Ej: Proveedor mayorista, distribuidora..."
                   value={newSupplier}
                   onChange={(e) => setNewSupplier(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -2236,6 +2464,23 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              {activeStore && (
+                <label className="p-3 rounded-xl bg-emerald-950/25 border border-emerald-500/30 flex items-center justify-between gap-3 cursor-pointer">
+                  <div>
+                    <span className="font-bold text-emerald-300 block">Publicar también en mi Tienda Online</span>
+                    <span className="text-[11px] text-zinc-400">
+                      Añade este producto directo al catálogo de "{activeStore.storeName}" y vincula el stock.
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={publishToStoreOnAdd}
+                    onChange={(e) => setPublishToStoreOnAdd(e.target.checked)}
+                    className="accent-emerald-500 w-4 h-4 rounded shrink-0"
+                  />
+                </label>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-white/[0.08]">
                 <button

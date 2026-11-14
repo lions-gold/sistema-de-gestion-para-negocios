@@ -8,10 +8,6 @@ import {
   PaymentMethod 
 } from '../types';
 import { 
-  INITIAL_PURCHASE_INVOICES, 
-  INITIAL_CASH_CLOSINGS 
-} from '../data/mockData';
-import { 
   Coins, 
   TrendingUp, 
   TrendingDown, 
@@ -57,6 +53,10 @@ interface CashierModuleProps {
   exchangeRate: number;
   onAddMovement: (movement: Omit<CashMovement, 'id' | 'date'>) => void;
   sales: Sale[];
+  purchases?: PurchaseInvoice[];
+  closings?: CashClosingRecord[];
+  onPurchasesChange?: (purchases: PurchaseInvoice[]) => void;
+  onClosingsChange?: (closings: CashClosingRecord[]) => void;
 }
 
 export const CashierModule: React.FC<CashierModuleProps> = ({
@@ -64,6 +64,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   exchangeRate,
   onAddMovement,
   sales,
+  purchases: controlledPurchases,
+  closings: controlledClosings,
+  onPurchasesChange,
+  onClosingsChange,
 }) => {
   const [subTab, setSubTab] = useState<'closing' | 'fiscal_printers' | 'seniat_books' | 'petty_cash'>('closing');
 
@@ -81,12 +85,28 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     clockOk: true,
   });
 
-  // Purchase Invoices (Libro de Compras)
-  const [purchases, setPurchases] = useState<PurchaseInvoice[]>(INITIAL_PURCHASE_INVOICES);
+  // Purchase Invoices (Libro de Compras) — starts empty per store
+  const [localPurchases, setLocalPurchases] = useState<PurchaseInvoice[]>([]);
+  const purchases = controlledPurchases ?? localPurchases;
+  const setPurchases = (next: PurchaseInvoice[]) => {
+    if (onPurchasesChange) {
+      onPurchasesChange(next);
+    } else {
+      setLocalPurchases(next);
+    }
+  };
   const [showAddPurchaseModal, setShowAddPurchaseModal] = useState(false);
 
-  // Cash Closings History
-  const [closings, setClosings] = useState<CashClosingRecord[]>(INITIAL_CASH_CLOSINGS);
+  // Cash Closings History — starts empty per store
+  const [localClosings, setLocalClosings] = useState<CashClosingRecord[]>([]);
+  const closings = controlledClosings ?? localClosings;
+  const setClosings = (next: CashClosingRecord[]) => {
+    if (onClosingsChange) {
+      onClosingsChange(next);
+    } else {
+      setLocalClosings(next);
+    }
+  };
 
   // Arqueo Inputs
   const [declaredUSD, setDeclaredUSD] = useState('');
@@ -1326,8 +1346,8 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
       {/* MODAL: REGISTRAR FACTURA DE COMPRA SENIAT */}
       {showAddPurchaseModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs">
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <h3 className="font-bold text-white text-base font-display">Registrar Factura de Compra (Proveedor)</h3>
               <button onClick={() => setShowAddPurchaseModal(false)} className="text-zinc-400 hover:text-white">
@@ -1443,8 +1463,8 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
       {/* MODAL: REGISTRAR GASTO/INGRESO CAJA CHICA */}
       {showAddMovementModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs">
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <h3 className="font-bold text-white text-base font-display">Registrar Movimiento de Caja Menuda</h3>
               <button onClick={() => setShowAddMovementModal(false)} className="text-zinc-400 hover:text-white">

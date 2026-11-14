@@ -1,8 +1,21 @@
 import express from 'express';
+import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
+import {
+  handleVectorCampaignDraft,
+  handleVectorChat,
+  handleVectorTTS,
+  VectorCampaignDraftPayload,
+  VectorChatPayload,
+  VectorTTSPayload,
+} from './lib/vectorServer';
+import {
+  handlePaymentProofNotification,
+  PaymentProofNotifyPayload,
+} from './lib/paymentNotifyServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -270,6 +283,70 @@ app.post('/api/admin/send-email', async (req, res) => {
   });
 });
 
+// Vector AI Commercial Assistant Chat Endpoint (Gemini server-side)
+app.post('/api/vector/chat', async (req, res) => {
+  try {
+    const result = await handleVectorChat(
+      (req.body || {}) as VectorChatPayload,
+      req.headers.authorization
+    );
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/vector/chat error:', err);
+    return res.json({ ok: false, fallbackRequired: true });
+  }
+});
+
+// Vector Admin-Only AI Campaign A/B Drafting Endpoint
+app.post('/api/vector/campaign-draft', async (req, res) => {
+  try {
+    const result = await handleVectorCampaignDraft(
+      (req.body || {}) as VectorCampaignDraftPayload,
+      req.headers.authorization
+    );
+    if (result && 'status' in result && result.status === 403) {
+      return res.status(403).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/vector/campaign-draft error:', err);
+    return res.json({ ok: false, fallbackRequired: true });
+  }
+});
+
+// Vector Natural HD Voice TTS Endpoint (Gemini 3.8 Flash Lite TTS server-side)
+app.post('/api/vector/tts', async (req, res) => {
+  try {
+    const result = await handleVectorTTS((req.body || {}) as VectorTTSPayload);
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/vector/tts error:', err);
+    return res.json({ ok: false, fallbackRequired: true });
+  }
+});
+
+// Subscription Payment Proof Email & WhatsApp Dispatch Endpoint
+app.post('/api/payments/notify-proof', async (req, res) => {
+  try {
+    const result = await handlePaymentProofNotification(
+      (req.body || {}) as PaymentProofNotifyPayload,
+      req.headers.authorization
+    );
+    if (result.status === 403) {
+      return res.status(403).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/payments/notify-proof error:', err);
+    return res.status(500).json({
+      ok: false,
+      emailSent: false,
+      deliveryChannel: 'client_mailto',
+      message: 'Error interno al procesar comprobante en servidor.',
+    });
+  }
+});
+
 // Explicit JSON 404 for unknown API routes
 app.all('/api/*', (_req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado en Smith Solutions E-Commerce API' });
@@ -339,6 +416,8 @@ ${urlsXml}
 });
 
 async function startServer() {
+  const httpServer = http.createServer(app);
+
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req, res) => {
@@ -349,7 +428,11 @@ async function startServer() {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
+        allowedHosts: true,
         hmr: false,
+        ws: {
+          server: httpServer,
+        },
         watch: null,
       },
       appType: 'spa',
@@ -357,7 +440,7 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running at http://localhost:${PORT}`);
   });
 }

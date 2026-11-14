@@ -81,11 +81,11 @@ export const CookieBanner: React.FC = () => {
       {!isVisible && (
         <button
           onClick={handleOpenPreferences}
-          className="fixed bottom-20 md:bottom-5 left-4 z-40 bg-[#111114]/90 hover:bg-zinc-900 text-zinc-300 hover:text-amber-400 border border-white/[0.1] p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all flex items-center gap-2 group text-xs font-medium"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-5 right-[4.5rem] md:right-20 z-40 bg-[#111114]/90 hover:bg-zinc-900 text-zinc-300 hover:text-amber-400 border border-white/[0.1] min-w-[44px] min-h-[44px] p-2.5 rounded-full shadow-lg backdrop-blur-md transition-all active:scale-95 flex items-center justify-center gap-2 group text-xs font-medium"
           title={t.cookie.btnTitle}
         >
           <Cookie className="w-4 h-4 text-amber-400" />
-          <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 text-[11px] font-mono pr-0 group-hover:pr-1">
+          <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 text-[11px] font-mono pr-0 group-hover:pr-1 hidden sm:inline">
             Cookies
           </span>
         </button>
@@ -95,7 +95,7 @@ export const CookieBanner: React.FC = () => {
         <aside
           role="region"
           aria-label={t.cookie.badge}
-          className="fixed bottom-20 md:bottom-4 inset-x-4 md:inset-x-auto md:right-4 md:max-w-xl z-50"
+          className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 inset-x-3 md:inset-x-auto md:right-4 md:max-w-xl z-50"
         >
           <div className="bg-[#111114]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl p-5 shadow-2xl shadow-black/90 text-zinc-100 flex flex-col gap-4 relative overflow-hidden">
             <div className="flex items-start justify-between gap-3">
@@ -176,11 +176,11 @@ export const CookieBanner: React.FC = () => {
 
       {showConfigModal && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom"
           role="dialog"
           aria-modal="true"
         >
-          <div className="bg-[#111114] border border-white/[0.12] rounded-2xl max-w-lg w-full p-6 shadow-2xl text-zinc-100 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#111114] border-t sm:border border-white/[0.12] rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl text-zinc-100 flex flex-col gap-5 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-zinc-900 text-amber-400 rounded-lg border border-white/[0.08]">

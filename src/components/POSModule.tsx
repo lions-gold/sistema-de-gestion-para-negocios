@@ -52,6 +52,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [lastScannedFeedback, setLastScannedFeedback] = useState<string | null>(null);
   const [fiscalPrintSuccess, setFiscalPrintSuccess] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<'catalog' | 'cart'>('catalog');
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) return;
@@ -241,10 +242,45 @@ export const POSModule: React.FC<POSModuleProps> = ({
     return `*SMITH SOLUTIONS E-COMMERCE*%0A*Comprobante de Venta*: ${sale.receiptNumber}%0A*Factura Fiscal*: ${sale.fiscalInvoiceNumber || 'N/A'}%0A*Fecha*: ${sale.date}%0A*Cliente*: ${sale.customerName}%0A*RIF/CI*: ${sale.customerRIF || 'V-00000000-0'}%0A----------------------------%0A${itemsList}%0A----------------------------%0A*Base Imponible (16%)*: $${(sale.baseAmountUSD || (sale.subtotalUSD / 1.16)).toFixed(2)}%0A*IVA (16%)*: $${(sale.ivaUSD || (sale.subtotalUSD - sale.subtotalUSD / 1.16)).toFixed(2)}${igtfText}%0A*TOTAL FINAL USD*: $${totalFinalUSD}%0A*TOTAL BS*: ${totalFinalBs} Bs.%0A*Tasa*: ${sale.exchangeRate.toFixed(2)} Bs/USD%0A*Método de Pago*: ${sale.paymentMethod}%0A----------------------------%0A_Gracias por su compra en Smith Solutions E-Commerce._%0ASoftware por Smith Bussines Solutions 2026`;
   };
 
+  const totalCartItems = cart.reduce((a, b) => a + b.quantity, 0);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+    <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6 relative">
+      {/* Mobile-Only Sticky Segmented Switcher: Catálogo vs Caja POS */}
+      <div className="lg:hidden sticky top-[62px] z-20 -mx-1 px-1 py-1.5 bg-[#09090b]/90 backdrop-blur-md">
+        <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#111114] border border-white/[0.1]">
+          <button
+            type="button"
+            onClick={() => setMobilePane('catalog')}
+            className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+              mobilePane === 'catalog'
+                ? 'bg-amber-400 text-zinc-950 shadow-sm'
+                : 'text-zinc-300 hover:text-white'
+            }`}
+          >
+            <Barcode className="w-4 h-4 shrink-0" />
+            <span>Catálogo ({products.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobilePane('cart')}
+            className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all tabular-nums ${
+              mobilePane === 'cart'
+                ? 'bg-amber-400 text-zinc-950 shadow-sm'
+                : 'text-zinc-300 hover:text-white'
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4 shrink-0" />
+            <span>
+              Caja ({totalCartItems})
+              {totalCartItems > 0 ? ` · $${totalWithIgtfUSD.toFixed(2)}` : ''}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Left: Product Selector (7 cols) */}
-      <div className="lg:col-span-7 space-y-4">
+      <div className={`${mobilePane === 'catalog' ? 'block' : 'hidden'} lg:block lg:col-span-7 space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-2">
@@ -288,7 +324,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {products.map((p) => {
             const inCart = cart.find((i) => i.product.id === p.id);
             const isOutOfStock = p.stock <= 0;
@@ -298,7 +334,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 key={p.id}
                 onClick={() => addToCart(p)}
                 disabled={isOutOfStock}
-                className={`text-left p-3 rounded-xl border transition-all relative flex flex-col justify-between ${
+                className={`text-left p-3 rounded-xl border transition-all relative flex flex-col justify-between min-h-[112px] active:scale-[0.98] ${
                   isOutOfStock
                     ? 'bg-[#111114]/40 border-white/[0.08] opacity-50 cursor-not-allowed'
                     : inCart
@@ -307,10 +343,10 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">
-                    <span>{p.category}</span>
-                    <span className={`font-mono ${p.stock <= p.minStock ? 'text-amber-400' : 'text-zinc-400'}`}>
-                      Stock: {p.stock}
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1 gap-1">
+                    <span className="truncate">{p.category}</span>
+                    <span className={`font-mono shrink-0 ${p.stock <= p.minStock ? 'text-amber-400' : 'text-zinc-400'}`}>
+                      {p.stock}
                     </span>
                   </div>
                   <h4 className="font-medium text-white text-xs sm:text-sm line-clamp-2 mb-2 leading-tight">
@@ -318,11 +354,11 @@ export const POSModule: React.FC<POSModuleProps> = ({
                   </h4>
                 </div>
 
-                <div className="pt-2 border-t border-white/[0.08] flex items-baseline justify-between">
+                <div className="pt-2 border-t border-white/[0.08] flex items-baseline justify-between gap-1">
                   <span className="font-mono font-bold text-amber-400 text-sm tabular-nums">
                     ${p.priceUSD.toFixed(2)}
                   </span>
-                  <span className="text-[10px] font-mono text-zinc-400 tabular-nums">
+                  <span className="text-[10px] font-mono text-zinc-400 tabular-nums truncate">
                     {(p.priceUSD * exchangeRate).toFixed(0)} Bs.
                   </span>
                 </div>
@@ -336,33 +372,35 @@ export const POSModule: React.FC<POSModuleProps> = ({
             );
           })}
         </div>
+
+        {/* Mobile Quick Go-To-Checkout Inline CTA (avoids colliding with floating FABs) */}
+        {cart.length > 0 && (
+          <div className="lg:hidden pt-1">
+            <button
+              type="button"
+              onClick={() => setMobilePane('cart')}
+              className="w-full min-h-[48px] p-3.5 bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 font-bold rounded-xl shadow-lg flex items-center justify-between active:scale-[0.98] transition-transform"
+            >
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5" />
+                <span className="text-xs font-bold">
+                  {totalCartItems} ítems · Ir a Cobrar
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 font-mono text-sm font-extrabold">
+                <span>${subtotalUSD.toFixed(2)}</span>
+                <ArrowRight className="w-4 h-4 stroke-[3]" />
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Floating Mobile Cart Bar */}
-      {cart.length > 0 && (
-        <div className="md:hidden fixed bottom-18 left-3 right-3 z-30 animate-in slide-in-from-bottom duration-200">
-          <button
-            onClick={() => {
-              document.getElementById('checkout-cart')?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="w-full p-3.5 bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 font-bold rounded-2xl shadow-xl shadow-black/80 flex items-center justify-between active:scale-[0.98] transition-transform"
-          >
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5" />
-              <span className="text-xs font-bold">
-                {cart.reduce((a, b) => a + b.quantity, 0)} ítems en la orden
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 font-mono text-sm font-extrabold">
-              <span>${subtotalUSD.toFixed(2)} USD</span>
-              <ArrowRight className="w-4 h-4 stroke-[3]" />
-            </div>
-          </button>
-        </div>
-      )}
-
       {/* Right: Checkout & Cart (5 cols) */}
-      <div id="checkout-cart" className="lg:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+      <div
+        id="checkout-cart"
+        className={`${mobilePane === 'cart' ? 'flex' : 'hidden'} lg:flex lg:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex-col justify-between`}
+      >
         <div>
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
             <div className="flex items-center gap-2">
@@ -440,22 +478,24 @@ export const POSModule: React.FC<POSModuleProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 bg-[#111114] rounded p-0.5 border border-white/[0.08]">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 bg-[#111114] rounded-lg p-0.5 border border-white/[0.08]">
                       <button
+                        type="button"
                         onClick={() => updateQuantity(item.product.id, -1)}
-                        className="p-1 text-zinc-400 hover:text-white"
+                        className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
                       >
-                        <Minus className="w-3 h-3" />
+                        <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="font-mono px-1.5 text-white font-bold">
+                      <span className="font-mono px-1.5 text-white font-bold tabular-nums">
                         {item.quantity}
                       </span>
                       <button
+                        type="button"
                         onClick={() => updateQuantity(item.product.id, 1)}
-                        className="p-1 text-zinc-400 hover:text-white"
+                        className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
                       >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
@@ -464,10 +504,11 @@ export const POSModule: React.FC<POSModuleProps> = ({
                     </span>
 
                     <button
+                      type="button"
                       onClick={() => removeFromCart(item.product.id)}
-                      className="text-zinc-500 hover:text-rose-400 p-1"
+                      className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-500 hover:text-rose-400 rounded"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -488,7 +529,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
               {(
                 [
                   'Pago Móvil',
@@ -503,7 +544,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
                   key={method}
                   type="button"
                   onClick={() => setPaymentMethod(method)}
-                  className={`p-2 rounded-lg text-center font-medium transition-colors ${
+                  className={`min-h-[44px] p-2.5 rounded-lg text-center font-medium transition-colors active:scale-[0.98] ${
                     paymentMethod === method
                       ? 'bg-amber-500 text-zinc-950 font-bold shadow-sm'
                       : 'bg-[#09090b] text-zinc-300 hover:bg-zinc-800/80 border border-white/[0.08]'
@@ -528,7 +569,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
                     type="checkbox"
                     checked={applyIGTF}
                     onChange={(e) => setApplyIGTF(e.target.checked)}
-                    className="accent-amber-500 w-3.5 h-3.5 rounded"
+                    className="accent-amber-500 w-4 h-4 rounded"
                   />
                   <span>Aplicar 3%</span>
                 </label>
@@ -542,14 +583,15 @@ export const POSModule: React.FC<POSModuleProps> = ({
           {/* Cash Change Calculator when Efectivo USD is selected */}
           {paymentMethod === 'Efectivo USD' && (
             <div className="p-3 bg-[#09090b] rounded-lg border border-amber-500/20 text-xs space-y-2 mb-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-zinc-300">Paga con billete (USD):</span>
                 <input
                   type="number"
-                  placeholder="$ Monto entregado"
+                  inputMode="decimal"
+                  placeholder="$ Monto"
                   value={cashTenderedUSD}
                   onChange={(e) => setCashTenderedUSD(e.target.value)}
-                  className="w-24 bg-[#111114] border border-white/[0.1] rounded px-2 py-1 text-right text-white font-mono"
+                  className="w-28 bg-[#111114] border border-white/[0.1] rounded px-2.5 py-1.5 text-right text-white font-mono"
                 />
               </div>
               {tenderedUSD >= totalWithIgtfUSD && totalWithIgtfUSD > 0 && (
@@ -613,8 +655,8 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
       {/* Modal Digital Receipt after sale */}
       {completedSale && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#111114] border border-amber-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl text-xs space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/40 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl text-xs space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="text-center space-y-1">
               <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 mx-auto flex items-center justify-center border border-emerald-500/30">
                 <CheckCircle2 className="w-7 h-7" />

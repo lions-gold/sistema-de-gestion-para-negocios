@@ -146,8 +146,8 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'id', 'storeId', 'storeName', 'ownerUid', 'ownerEmail',
-          'amountUSD', 'paymentMethod', 'referenceNumber', 'payerInfo', 'notes',
+          'id', 'storeId', 'storeName', 'ownerUid', 'ownerEmail', 'ownerWhatsapp',
+          'amountUSD', 'paymentMethod', 'referenceNumber', 'payerInfo', 'notes', 'proofImageUrl',
           'couponId', 'couponCode', 'discountUSD',
           'status', 'createdAt', 'updatedAt'
         ]) &&
@@ -157,11 +157,13 @@ service cloud.firestore {
         data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
         isValidId(data.ownerUid) &&
         data.ownerEmail is string && data.ownerEmail.size() >= 5 && data.ownerEmail.size() <= 160 &&
+        (!('ownerWhatsapp' in data) || (data.ownerWhatsapp is string && data.ownerWhatsapp.size() <= 30)) &&
         data.amountUSD is number && data.amountUSD >= 0 && data.amountUSD <= 1000 &&
         data.paymentMethod in ['Transferencia Bancaria', 'Pago Móvil', 'Binance Pay', 'Bybit', 'Cupón Referido'] &&
         data.referenceNumber is string && data.referenceNumber.size() >= 4 && data.referenceNumber.size() <= 80 &&
         (!('payerInfo' in data) || (data.payerInfo is string && data.payerInfo.size() <= 120)) &&
         (!('notes' in data) || (data.notes is string && data.notes.size() <= 400)) &&
+        (!('proofImageUrl' in data) || (data.proofImageUrl is string && data.proofImageUrl.size() <= 150000)) &&
         (!('couponId' in data) || isValidId(data.couponId)) &&
         (!('couponCode' in data) || isValidReferralCode(data.couponCode)) &&
         (!('discountUSD' in data) || (data.discountUSD is number && data.discountUSD >= 0 && data.discountUSD <= 1000)) &&
@@ -384,6 +386,241 @@ service cloud.firestore {
         data.category in ['admin_email', 'referral_reward', 'system'] &&
         data.isRead is bool &&
         data.createdAt is timestamp;
+    }
+
+    function isValidVectorBrandConfig(data, storeId) {
+      return data.keys().hasAll([
+          'storeId', 'brandName', 'idiomaPrincipal', 'tratamientoEs', 'emojiMax', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'storeId', 'brandName', 'idiomaPrincipal', 'tratamientoEs', 'tratamientoZh', 'emojiMax',
+          'politicaEnvios', 'politicaDevoluciones', 'slaHumano', 'horarioAtencion', 'zonaHoraria',
+          'slaCriticaMin', 'slaAltaMin', 'slaMediaMin', 'nivel1Cola', 'nivel2Cobros',
+          'nivel2Logistica', 'nivel3Supervisor', 'nivel4Admin', 'autoEscalarPorVencimiento',
+          'maxIntentosBot', 'canalOfertas', 'frecuenciaMaximaSemanal', 'palancasSummary', 'updatedAt'
+        ]) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        data.brandName is string && data.brandName.size() >= 2 && data.brandName.size() <= 100 &&
+        data.idiomaPrincipal in ['es', 'en', 'zh'] &&
+        data.tratamientoEs in ['usted', 'tu'] &&
+        (!('tratamientoZh' in data) || data.tratamientoZh in ['您', '你']) &&
+        data.emojiMax in [0, 1] &&
+        (!('politicaEnvios' in data) || (data.politicaEnvios is string && data.politicaEnvios.size() <= 600)) &&
+        (!('politicaDevoluciones' in data) || (data.politicaDevoluciones is string && data.politicaDevoluciones.size() <= 600)) &&
+        (!('slaHumano' in data) || (data.slaHumano is string && data.slaHumano.size() <= 80)) &&
+        (!('horarioAtencion' in data) || (data.horarioAtencion is string && data.horarioAtencion.size() <= 100)) &&
+        (!('zonaHoraria' in data) || (data.zonaHoraria is string && data.zonaHoraria.size() <= 40)) &&
+        (!('slaCriticaMin' in data) || (data.slaCriticaMin is number && data.slaCriticaMin >= 1 && data.slaCriticaMin <= 1440)) &&
+        (!('slaAltaMin' in data) || (data.slaAltaMin is number && data.slaAltaMin >= 1 && data.slaAltaMin <= 2880)) &&
+        (!('slaMediaMin' in data) || (data.slaMediaMin is number && data.slaMediaMin >= 1 && data.slaMediaMin <= 10080)) &&
+        (!('nivel1Cola' in data) || (data.nivel1Cola is string && data.nivel1Cola.size() <= 100)) &&
+        (!('nivel2Cobros' in data) || (data.nivel2Cobros is string && data.nivel2Cobros.size() <= 100)) &&
+        (!('nivel2Logistica' in data) || (data.nivel2Logistica is string && data.nivel2Logistica.size() <= 100)) &&
+        (!('nivel3Supervisor' in data) || (data.nivel3Supervisor is string && data.nivel3Supervisor.size() <= 100)) &&
+        (!('nivel4Admin' in data) || (data.nivel4Admin is string && data.nivel4Admin.size() <= 100)) &&
+        (!('autoEscalarPorVencimiento' in data) || data.autoEscalarPorVencimiento is bool) &&
+        (!('maxIntentosBot' in data) || (data.maxIntentosBot is number && data.maxIntentosBot >= 1 && data.maxIntentosBot <= 5)) &&
+        (!('canalOfertas' in data) || data.canalOfertas in ['email', 'whatsapp', 'ambos']) &&
+        (!('frecuenciaMaximaSemanal' in data) || (data.frecuenciaMaximaSemanal is number && data.frecuenciaMaximaSemanal >= 0 && data.frecuenciaMaximaSemanal <= 14)) &&
+        (!('palancasSummary' in data) || (data.palancasSummary is string && data.palancasSummary.size() <= 240)) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVectorTicket(data, ticketId) {
+      return data.keys().hasAll([
+          'id', 'ticketNumber', 'storeId', 'storeName', 'storeOwnerUid', 'requesterUid',
+          'level', 'priority', 'slaMinutes', 'summary', 'status', 'handoffPacket',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ticketNumber', 'storeId', 'storeName', 'storeOwnerUid', 'requesterUid',
+          'customerName', 'customerContact', 'channel', 'language', 'triggerId', 'triggerMotivo',
+          'level', 'priority', 'slaMinutes', 'summary', 'botAttempts', 'lastProposal', 'orderRef',
+          'evidence', 'requiredHumanAction', 'clientCommitment', 'offerConsent', 'risk', 'threadId',
+          'status', 'handoffPacket', 'adminReport', 'reEscalatedCount', 'contextLeakReported',
+          'csatScore', 'dueAtMs', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == ticketId &&
+        isValidId(data.id) &&
+        data.ticketNumber is string && data.ticketNumber.size() >= 3 && data.ticketNumber.size() <= 40 &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        isValidId(data.storeOwnerUid) &&
+        isValidId(data.requesterUid) &&
+        (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 100)) &&
+        (!('customerContact' in data) || (data.customerContact is string && data.customerContact.size() <= 160)) &&
+        (!('channel' in data) || data.channel in ['web_chat', 'whatsapp', 'instagram', 'email']) &&
+        (!('language' in data) || data.language in ['es', 'en', 'zh']) &&
+        (!('triggerId' in data) || (data.triggerId is number && data.triggerId >= 0 && data.triggerId <= 99)) &&
+        (!('triggerMotivo' in data) || (data.triggerMotivo is string && data.triggerMotivo.size() <= 120)) &&
+        data.level in ['N0', 'N1', 'N2', 'N3', 'N4'] &&
+        data.priority in ['media', 'alta', 'critica'] &&
+        data.slaMinutes is number && data.slaMinutes >= 1 && data.slaMinutes <= 10080 &&
+        data.summary is string && data.summary.size() >= 3 && data.summary.size() <= 600 &&
+        (!('botAttempts' in data) || (data.botAttempts is number && data.botAttempts >= 0 && data.botAttempts <= 10)) &&
+        (!('lastProposal' in data) || (data.lastProposal is string && data.lastProposal.size() <= 400)) &&
+        (!('orderRef' in data) || (data.orderRef is string && data.orderRef.size() <= 80)) &&
+        (!('evidence' in data) || (data.evidence is string && data.evidence.size() <= 400)) &&
+        (!('requiredHumanAction' in data) || (data.requiredHumanAction is string && data.requiredHumanAction.size() <= 300)) &&
+        (!('clientCommitment' in data) || (data.clientCommitment is string && data.clientCommitment.size() <= 300)) &&
+        (!('offerConsent' in data) || data.offerConsent in ['si', 'no', 'solo_importante', 'no_preguntado']) &&
+        (!('risk' in data) || data.risk in ['ninguno', 'reembolso', 'legal', 'fraude', 'reputacional']) &&
+        (!('threadId' in data) || (data.threadId is string && data.threadId.size() <= 120)) &&
+        data.status in ['open', 'in_progress', 'escalated', 'resolved'] &&
+        data.handoffPacket is string && data.handoffPacket.size() >= 10 && data.handoffPacket.size() <= 2000 &&
+        (!('adminReport' in data) || (data.adminReport is string && data.adminReport.size() <= 1500)) &&
+        (!('reEscalatedCount' in data) || (data.reEscalatedCount is number && data.reEscalatedCount >= 0 && data.reEscalatedCount <= 20)) &&
+        (!('contextLeakReported' in data) || data.contextLeakReported is bool) &&
+        (!('csatScore' in data) || (data.csatScore is number && data.csatScore >= 1 && data.csatScore <= 5)) &&
+        (!('dueAtMs' in data) || (data.dueAtMs is number && data.dueAtMs >= 0)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVectorConsent(data, consentId) {
+      return data.keys().hasAll([
+          'id', 'userUid', 'storeId', 'storeOwnerUid', 'scope', 'status', 'channel', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'userUid', 'userEmail', 'storeId', 'storeName', 'storeOwnerUid',
+          'scope', 'status', 'channel', 'hardBounced', 'recentComplaint', 'updatedAt'
+        ]) &&
+        data.id == consentId &&
+        isValidId(data.id) &&
+        isValidId(data.userUid) &&
+        (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 160)) &&
+        isValidId(data.storeId) &&
+        (!('storeName' in data) || (data.storeName is string && data.storeName.size() <= 100)) &&
+        isValidId(data.storeOwnerUid) &&
+        data.scope in ['buyer_offers', 'merchant_campaigns'] &&
+        data.status in ['si', 'no', 'solo_importante'] &&
+        data.channel in ['web_chat', 'whatsapp', 'email', 'portal'] &&
+        (!('hardBounced' in data) || data.hardBounced is bool) &&
+        (!('recentComplaint' in data) || data.recentComplaint is bool) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVectorCampaign(data, campaignId) {
+      return data.keys().hasAll([
+          'id', 'title', 'segment', 'objective', 'realOffer', 'validUntil',
+          'primaryLanguage', 'approvedByAdmin', 'status', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'segment', 'objective', 'realOffer', 'validUntil',
+          'primaryLanguage', 'variantsJson', 'approvedByAdmin', 'approvedAtIso', 'status',
+          'sentCount', 'excludedCount', 'openCount', 'clickCount', 'attributedSalesCount',
+          'optOutCount', 'bounceCount', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == campaignId &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+        data.segment in ['all', 'active', 'pending', 'low_activity'] &&
+        data.objective is string && data.objective.size() <= 300 &&
+        data.realOffer is string && data.realOffer.size() <= 300 &&
+        data.validUntil is string && data.validUntil.size() >= 4 && data.validUntil.size() <= 40 &&
+        data.primaryLanguage in ['es', 'en', 'zh'] &&
+        (!('variantsJson' in data) || (data.variantsJson is string && data.variantsJson.size() <= 12000)) &&
+        data.approvedByAdmin is bool &&
+        (!('approvedAtIso' in data) || (data.approvedAtIso is string && data.approvedAtIso.size() <= 40)) &&
+        data.status in ['draft', 'approved', 'sent'] &&
+        (!('sentCount' in data) || (data.sentCount is number && data.sentCount >= 0 && data.sentCount <= 50000)) &&
+        (!('excludedCount' in data) || (data.excludedCount is number && data.excludedCount >= 0 && data.excludedCount <= 50000)) &&
+        (!('openCount' in data) || (data.openCount is number && data.openCount >= 0 && data.openCount <= 50000)) &&
+        (!('clickCount' in data) || (data.clickCount is number && data.clickCount >= 0 && data.clickCount <= 50000)) &&
+        (!('attributedSalesCount' in data) || (data.attributedSalesCount is number && data.attributedSalesCount >= 0 && data.attributedSalesCount <= 50000)) &&
+        (!('optOutCount' in data) || (data.optOutCount is number && data.optOutCount >= 0 && data.optOutCount <= 50000)) &&
+        (!('bounceCount' in data) || (data.bounceCount is number && data.bounceCount >= 0 && data.bounceCount <= 50000)) &&
+        data.createdByEmail is string && data.createdByEmail.size() >= 5 && data.createdByEmail.size() <= 160 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidVectorConversationStat(data, statId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeOwnerUid', 'userUid', 'language',
+          'turnsCount', 'containedByBot', 'escalated', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeOwnerUid', 'userUid', 'language',
+          'turnsCount', 'botAttemptsOnIssue', 'containedByBot', 'escalated',
+          'escalationAccurate', 'triggerId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == statId &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        isValidId(data.storeOwnerUid) &&
+        isValidId(data.userUid) &&
+        data.language in ['es', 'en', 'zh'] &&
+        data.turnsCount is number && data.turnsCount >= 0 && data.turnsCount <= 1000 &&
+        (!('botAttemptsOnIssue' in data) || (data.botAttemptsOnIssue is number && data.botAttemptsOnIssue >= 0 && data.botAttemptsOnIssue <= 50)) &&
+        data.containedByBot is bool &&
+        data.escalated is bool &&
+        (!('escalationAccurate' in data) || data.escalationAccurate is bool) &&
+        (!('triggerId' in data) || (data.triggerId is number && data.triggerId >= 0 && data.triggerId <= 99)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserLanguagePreference(data, uid) {
+      return data.keys().hasAll(['uid', 'language', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'language', 'updatedAt']) &&
+        data.uid == uid &&
+        isValidId(data.uid) &&
+        data.language in ['es', 'en', 'zh'] &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWarehouseProduct(data, storeId, productId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'ownerUid', 'name', 'category', 'sku',
+          'stock', 'minStock', 'costUSD', 'priceUSD', 'unit', 'barcode',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'ownerUid', 'name', 'category', 'sku',
+          'stock', 'minStock', 'costUSD', 'priceUSD', 'unit', 'barcode',
+          'image', 'description', 'rating', 'turnoverRate', 'batchNumber',
+          'supplier', 'location', 'expirationDate', 'storefrontProductId',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.id == productId &&
+        isValidId(data.id) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+        data.category is string && data.category.size() <= 60 &&
+        data.sku is string && data.sku.size() <= 60 &&
+        data.stock is number && data.stock >= 0 && data.stock <= 1000000 &&
+        data.minStock is number && data.minStock >= 0 && data.minStock <= 1000000 &&
+        data.costUSD is number && data.costUSD >= 0 && data.costUSD <= 1000000 &&
+        data.priceUSD is number && data.priceUSD >= 0 && data.priceUSD <= 1000000 &&
+        data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 30 &&
+        data.barcode is string && data.barcode.size() <= 80 &&
+        (!('image' in data) || (data.image is string && data.image.size() <= 150000)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+        (!('rating' in data) || (data.rating is number && data.rating >= 1 && data.rating <= 5)) &&
+        (!('turnoverRate' in data) || data.turnoverRate in ['Alta', 'Media', 'Baja']) &&
+        (!('batchNumber' in data) || (data.batchNumber is string && data.batchNumber.size() <= 60)) &&
+        (!('supplier' in data) || (data.supplier is string && data.supplier.size() <= 120)) &&
+        (!('location' in data) || (data.location is string && data.location.size() <= 60)) &&
+        (!('expirationDate' in data) || (data.expirationDate is string && data.expirationDate.size() <= 30)) &&
+        (!('storefrontProductId' in data) || isValidId(data.storefrontProductId)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWarehouseLedger(data, storeId, ledgerId) {
+      return ledgerId in ['debtors', 'movements', 'sales', 'audits', 'traces', 'purchases', 'closings'] &&
+        data.keys().hasAll(['id', 'storeId', 'ownerUid', 'entriesJson', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'storeId', 'ownerUid', 'entriesJson', 'updatedAt']) &&
+        data.id == ledgerId &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.entriesJson is string && data.entriesJson.size() <= 750000 &&
+        data.updatedAt is timestamp;
     }
 
     // -------------------------------------------------------------------------
@@ -643,6 +880,101 @@ service cloud.firestore {
           allow update, delete: if isValidId(storeId) && isValidId(orderId) && isValidId(itemId) && isAdmin();
         }
       }
+
+      // Per-Brand Vector Commercial Assistant Configuration (Section 13)
+      match /vectorConfig/{docId} {
+        allow get: if isValidId(storeId) && docId == 'settings';
+        allow list: if false;
+        allow create: if isValidId(storeId) && docId == 'settings' && isVerifiedUser() &&
+          isValidVectorBrandConfig(incoming(), storeId) &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (exists(/databases/$(database)/documents/stores/$(storeId)) &&
+             get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
+          );
+        allow update: if isValidId(storeId) && docId == 'settings' && isVerifiedUser() &&
+          isValidVectorBrandConfig(incoming(), storeId) &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (exists(/databases/$(database)/documents/stores/$(storeId)) &&
+             get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
+          );
+        allow delete: if isValidId(storeId) && isAdmin();
+      }
+
+      // Per-Store Isolated Warehouse & POS Products (starts empty per store)
+      match /warehouseProducts/{productId} {
+        allow get: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() && (
+          isAdmin() ||
+          existing().ownerUid == request.auth.uid
+        );
+        allow list: if isVerifiedUser() && (
+          isSuperAdminEmail() ||
+          resource.data.ownerUid == request.auth.uid
+        );
+        allow create: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() &&
+          isValidWarehouseProduct(incoming(), storeId, productId) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid;
+        allow update: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() &&
+          isValidWarehouseProduct(incoming(), storeId, productId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().ownerUid == request.auth.uid &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+            )
+          );
+        allow delete: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() && (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+          )
+        );
+      }
+
+      // Per-Store Isolated Warehouse & POS Operational Ledgers
+      match /warehouseLedgers/{ledgerId} {
+        allow get: if isValidId(storeId) && isValidId(ledgerId) && isVerifiedUser() && (
+          isAdmin() ||
+          existing().ownerUid == request.auth.uid
+        );
+        allow list: if isVerifiedUser() && (
+          isSuperAdminEmail() ||
+          resource.data.ownerUid == request.auth.uid
+        );
+        allow create: if isValidId(storeId) && isValidId(ledgerId) && isVerifiedUser() &&
+          isValidWarehouseLedger(incoming(), storeId, ledgerId) &&
+          incoming().ownerUid == request.auth.uid &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid;
+        allow update: if isValidId(storeId) && isValidId(ledgerId) && isVerifiedUser() &&
+          isValidWarehouseLedger(incoming(), storeId, ledgerId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().ownerUid == request.auth.uid &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+            )
+          );
+        allow delete: if isValidId(storeId) && isValidId(ledgerId) && isAdmin();
+      }
     }
 
     // Monthly $25 Subscription Payments (and Renewal Coupon Submissions)
@@ -775,6 +1107,150 @@ service cloud.firestore {
         isValidAdminEmailDispatch(incoming(), emailId) &&
         incoming().createdAt == request.time;
       allow update, delete: if isValidId(emailId) && isAdmin();
+    }
+
+    // Vector Escalation Tickets & Admin Reports (N1-N4 Protocol)
+    match /vectorTickets/{ticketId} {
+      allow get: if isValidId(ticketId) && isVerifiedUser() && (
+        isAdmin() ||
+        existing().storeOwnerUid == request.auth.uid ||
+        existing().requesterUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() ||
+        resource.data.storeOwnerUid == request.auth.uid ||
+        resource.data.requesterUid == request.auth.uid
+      );
+      allow create: if isValidId(ticketId) && isVerifiedUser() &&
+        isValidVectorTicket(incoming(), ticketId) &&
+        incoming().requesterUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          incoming().storeId == 'platform' ||
+          (
+            exists(/databases/$(database)/documents/stores/$(incoming().storeId)) &&
+            get(/databases/$(database)/documents/stores/$(incoming().storeId)).data.ownerUid == incoming().storeOwnerUid
+          )
+        );
+      allow update: if isValidId(ticketId) && isVerifiedUser() &&
+        isValidVectorTicket(incoming(), ticketId) &&
+        incoming().id == existing().id &&
+        incoming().storeId == existing().storeId &&
+        incoming().storeOwnerUid == existing().storeOwnerUid &&
+        incoming().requesterUid == existing().requesterUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().storeOwnerUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'level', 'priority', 'reEscalatedCount',
+              'contextLeakReported', 'csatScore', 'dueAtMs', 'updatedAt'
+            ])
+          ) ||
+          (
+            existing().requesterUid == request.auth.uid &&
+            existing().status != 'resolved' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'summary', 'lastProposal', 'handoffPacket', 'csatScore', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(ticketId) && isAdmin();
+    }
+
+    // Vector Persistent Opt-In / Opt-Out Consents
+    match /vectorConsents/{consentId} {
+      allow get: if isValidId(consentId) && isVerifiedUser() && (
+        isAdmin() ||
+        existing().userUid == request.auth.uid ||
+        existing().storeOwnerUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() ||
+        resource.data.userUid == request.auth.uid ||
+        resource.data.storeOwnerUid == request.auth.uid
+      );
+      allow create: if isValidId(consentId) && isVerifiedUser() &&
+        isValidVectorConsent(incoming(), consentId) &&
+        (incoming().userUid == request.auth.uid || isAdmin()) &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(consentId) && isVerifiedUser() &&
+        isValidVectorConsent(incoming(), consentId) &&
+        incoming().id == existing().id &&
+        incoming().userUid == existing().userUid &&
+        incoming().storeId == existing().storeId &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          existing().userUid == request.auth.uid
+        );
+      allow delete: if isValidId(consentId) && isAdmin();
+    }
+
+    // Vector Admin-Approved Campaigns to Store Owners
+    match /vectorCampaigns/{campaignId} {
+      allow get: if isValidId(campaignId) && isAdmin();
+      allow list: if isSuperAdminEmail();
+      allow create: if isValidId(campaignId) && isAdmin() &&
+        isValidVectorCampaign(incoming(), campaignId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(campaignId) && isAdmin() &&
+        isValidVectorCampaign(incoming(), campaignId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(campaignId) && isAdmin();
+    }
+
+    // Vector Conversation Control Telemetry (Containment vs Escalation Precision)
+    match /vectorConversationStats/{statId} {
+      allow get: if isValidId(statId) && isVerifiedUser() && (
+        isAdmin() ||
+        existing().userUid == request.auth.uid ||
+        existing().storeOwnerUid == request.auth.uid
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() ||
+        resource.data.userUid == request.auth.uid ||
+        resource.data.storeOwnerUid == request.auth.uid
+      );
+      allow create: if isValidId(statId) && isVerifiedUser() &&
+        isValidVectorConversationStat(incoming(), statId) &&
+        incoming().userUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(statId) && isVerifiedUser() &&
+        isValidVectorConversationStat(incoming(), statId) &&
+        incoming().id == existing().id &&
+        incoming().userUid == existing().userUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          existing().userUid == request.auth.uid ||
+          existing().storeOwnerUid == request.auth.uid
+        );
+      allow delete: if isValidId(statId) && isAdmin();
+    }
+
+    // Per-User Isolated Language Preference (never shared across users)
+    match /userPreferences/{uid} {
+      allow get: if isValidId(uid) && isVerifiedUser() && request.auth.uid == uid;
+      allow list: if false;
+      allow create: if isValidId(uid) && isVerifiedUser() &&
+        request.auth.uid == uid &&
+        isValidUserLanguagePreference(incoming(), uid) &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isVerifiedUser() &&
+        request.auth.uid == uid &&
+        isValidUserLanguagePreference(incoming(), uid) &&
+        incoming().uid == existing().uid &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(uid) && isVerifiedUser() && request.auth.uid == uid;
     }
   }
 }

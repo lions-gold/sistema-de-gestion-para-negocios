@@ -40,12 +40,12 @@ import {
   UserCheck
 } from 'lucide-react';
 import { exportSingleReceiptPDF, printReceiptTicket, exportSalesReportPDF } from '../utils/pdfExport';
-import { INITIAL_INVENTORY_AUDITS } from '../data/mockData';
 
 interface AnalyticsModuleProps {
   sales: Sale[];
   products: Product[];
   exchangeRate: number;
+  audits?: InventoryAuditLog[];
 }
 
 type PeriodFilter = 'today' | 'yesterday' | '7days' | 'month';
@@ -54,23 +54,13 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   sales,
   products,
   exchangeRate,
+  audits = [],
 }) => {
   // Navigation Sub-tab
   const [activeTab, setActiveTab] = useState<'profitability' | 'top_products' | 'peak_hours' | 'sales_team' | 'history'>('profitability');
   const [period, setPeriod] = useState<PeriodFilter>('7days');
   const [historySearch, setHistorySearch] = useState('');
   const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
-
-  // Load audit records from localStorage or mock for mermas deduction
-  const audits: InventoryAuditLog[] = useMemo(() => {
-    try {
-      const raw = localStorage.getItem('lions_gold_inventory_audits');
-      if (raw) return JSON.parse(raw);
-    } catch {
-      // fallback
-    }
-    return INITIAL_INVENTORY_AUDITS;
-  }, []);
 
   // Filter sales based on period
   const filteredSales = useMemo(() => {

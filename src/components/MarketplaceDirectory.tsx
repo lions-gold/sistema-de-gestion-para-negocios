@@ -37,11 +37,26 @@ import {
 } from '../services/saasService';
 import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  createLocalOfflineOrderSnapshot,
+  loadCachedStoreProducts,
+  loadCachedStores,
+  queueOfflineMutation,
+  saveCachedStoreProducts,
+  saveCachedStores,
+} from '../services/offlineSyncService';
 
 interface MarketplaceDirectoryProps {
   exchangeRate: number;
   initialStoreSlug?: string;
   onNavigateMerchant: () => void;
+  onVectorContextChange?: (ctx: {
+    store: StoreTenant | null;
+    products: StoreProduct[];
+    cart: StoreCartItem[];
+    addToCart: (p: StoreProduct) => void;
+    openCart: () => void;
+  }) => void;
 }
 
 const CARTS_STORAGE_KEY = 'smith_saas_store_carts_v1';
@@ -50,6 +65,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   exchangeRate,
   initialStoreSlug,
   onNavigateMerchant,
+  onVectorContextChange,
 }) => {
   const { t } = useLanguage();
   const [stores, setStores] = useState<StoreTenant[]>([]);
@@ -100,15 +116,22 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u?.displayName && !customerName) setCustomerName(u.displayName);
-      if (u?.email && !customerEmail) setCustomerEmail(u.email);
+      if (u?.displayName) setCustomerName((prev) => prev || u.displayName || '');
+      if (u?.email) setCustomerEmail((prev) => prev || u.email || '');
     });
     return () => unsubAuth();
-  }, [customerName, customerEmail]);
+  }, []);
 
   useEffect(() => {
+    // Hydrate cached active stores immediately so offline browsing works smoothly
+    const cached = loadCachedStores();
+    if (cached.length > 0) {
+      setStores((prev) => (prev.length === 0 ? cached : prev));
+    }
+
     const unsub = subscribeActiveStores((activeList) => {
       setStores(activeList);
+      saveCachedStores(activeList);
     });
     return () => unsub();
   }, []);
@@ -121,14 +144,14 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     );
     if (match) {
       setSelectedStore(match);
-    } else {
+    } else if (typeof navigator === 'undefined' || navigator.onLine) {
       fetchStoreByIdOrSlug(initialStoreSlug).then((found) => {
         if (found && found.status === 'active') setSelectedStore(found);
       });
     }
   }, [initialStoreSlug, stores]);
 
-  // Subscribe to selected store's active products
+  // Subscribe to selected store's active products (with offline local cache)
   useEffect(() => {
     if (!selectedStore) {
       setProducts([]);
@@ -142,8 +165,14 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
       setShippingType('Retiro en Tienda');
     }
 
+    const cachedProds = loadCachedStoreProducts(selectedStore.id);
+    if (cachedProds.length > 0) {
+      setProducts(cachedProds);
+    }
+
     const unsub = subscribePublicStoreProducts(selectedStore.id, (list) => {
       setProducts(list);
+      saveCachedStoreProducts(selectedStore.id, list);
     });
     return () => unsub();
   }, [selectedStore]);
@@ -234,6 +263,19 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     setCartsByStore((prev) => ({ ...prev, [selectedStore.id]: [] }));
   };
 
+  const onVectorContextRef = React.useRef(onVectorContextChange);
+  onVectorContextRef.current = onVectorContextChange;
+
+  useEffect(() => {
+    onVectorContextRef.current?.({
+      store: selectedStore,
+      products,
+      cart: activeCart,
+      addToCart,
+      openCart: () => setIsCartOpen(true),
+    });
+  }, [selectedStore, products, activeCart]);
+
   const buildWhatsappOrderLink = (
     store: StoreTenant,
     order: StoreOrder,
@@ -274,6 +316,62 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     setOrderError(null);
     setIsSubmittingOrder(true);
     try {
+      const invoiceNumber = `FAC-${Date.now().toString().slice(-6)}`;
+      const itemsSummary = activeCart
+        .map(
+          (i) =>
+            `${i.quantity}x ${i.product.name} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
+        )
+        .join(' | ')
+        .slice(0, 1950);
+
+      const snapshotItems = [...activeCart];
+      const baseOrderInput = {
+        invoiceNumber,
+        customerName: customerName.trim(),
+        customerRif: customerRif.trim() || undefined,
+        customerPhone: customerPhone.trim(),
+        customerEmail: customerEmail.trim() || user?.email || undefined,
+        shippingType,
+        shippingDetails: shippingDetails.trim() || undefined,
+        shippingFeeUSD,
+        paymentMethod,
+        subtotalUSD: cartSubtotalUSD,
+        totalUSD,
+        totalBs,
+        exchangeRate,
+        itemsSummary,
+        saleChannel: 'Carrito Web' as const,
+      };
+
+      const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (isOfflineNow) {
+        queueOfflineMutation({
+          type: 'marketplace_order',
+          label: `Pedido #${invoiceNumber} (${selectedStore.storeName})`,
+          payload: {
+            store: selectedStore,
+            orderInput: baseOrderInput,
+            items: snapshotItems,
+          },
+        });
+        const localOrder = createLocalOfflineOrderSnapshot(
+          selectedStore,
+          baseOrderInput,
+          snapshotItems
+        );
+        setCompletedOrder({
+          order: localOrder,
+          items: snapshotItems,
+          store: selectedStore,
+          registeredInCloud: false,
+        });
+        exportStoreOrderInvoicePDF(selectedStore, localOrder, snapshotItems, 'dual');
+        clearStoreCart();
+        setIsCartOpen(false);
+        return;
+      }
+
       let activeUser = user;
       if (!activeUser || !activeUser.emailVerified) {
         try {
@@ -292,35 +390,12 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         return;
       }
 
-      const invoiceNumber = `FAC-${Date.now().toString().slice(-6)}`;
-      const itemsSummary = activeCart
-        .map(
-          (i) =>
-            `${i.quantity}x ${i.product.name} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
-        )
-        .join(' | ')
-        .slice(0, 1950);
-
-      const snapshotItems = [...activeCart];
       const savedOrder = await createStoreOrderInCloud(
         activeUser,
         selectedStore,
         {
-          invoiceNumber,
-          customerName: customerName.trim(),
-          customerRif: customerRif.trim() || undefined,
-          customerPhone: customerPhone.trim(),
-          customerEmail: customerEmail.trim() || activeUser.email || undefined,
-          shippingType,
-          shippingDetails: shippingDetails.trim() || undefined,
-          shippingFeeUSD,
-          paymentMethod,
-          subtotalUSD: cartSubtotalUSD,
-          totalUSD,
-          totalBs,
-          exchangeRate,
-          itemsSummary,
-          saleChannel: 'Carrito Web',
+          ...baseOrderInput,
+          customerEmail: baseOrderInput.customerEmail || activeUser.email || undefined,
         },
         snapshotItems
       );
@@ -374,14 +449,14 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     return (
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Back & Share Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
           <button
             onClick={() => {
               setSelectedStore(null);
               setIsCartOpen(false);
               setCompletedOrder(null);
             }}
-            className="px-3.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-zinc-300 hover:text-white text-xs sm:text-sm font-medium flex items-center gap-2 transition-colors min-h-[40px]"
+            className="px-3.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-zinc-300 hover:text-white text-xs sm:text-sm font-medium flex items-center gap-2 transition-colors min-h-[44px]"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>{t.marketplace.backToDir}</span>
@@ -390,12 +465,14 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                const url = `${window.location.origin}/tienda/${selectedStore.slug}`;
+                const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+                const pathPrefix = base && base !== '.' ? base : '';
+                const url = `${window.location.origin}${pathPrefix}/tienda/${selectedStore.slug}`;
                 navigator.clipboard?.writeText(url);
                 setCopiedSlug(true);
                 setTimeout(() => setCopiedSlug(false), 2000);
               }}
-              className="px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-xs text-zinc-300 flex items-center gap-1.5 min-h-[40px]"
+              className="px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-xs text-zinc-300 flex items-center gap-1.5 min-h-[44px]"
             >
               <Share2 className="w-3.5 h-3.5 text-amber-400" />
               <span>{copiedSlug ? t.marketplace.linkCopied : t.marketplace.copyStoreLink}</span>
@@ -403,7 +480,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
             <button
               onClick={() => setIsCartOpen(true)}
-              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 min-h-[40px]"
+              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 min-h-[44px]"
             >
               <ShoppingCart className="w-4 h-4" />
               <span>{t.marketplace.cartBtn} ({cartItemCount})</span>
@@ -501,6 +578,11 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                   {completedOrder.order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}{' '}
                   Bs.) · {completedOrder.order.shippingType} · {completedOrder.order.paymentMethod}
                 </p>
+                {!completedOrder.registeredInCloud && (
+                  <p className="text-[11px] font-mono text-amber-300">
+                    Modo Offline: Factura PDF generada localmente y pedido guardado en cola para sincronizar automáticamente al volver internet.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -643,7 +725,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         setIsCartOpen(true);
                       }}
                       disabled={product.stock <= 0}
-                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-900 disabled:text-zinc-500 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors min-h-[42px]"
+                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] disabled:bg-zinc-900 disabled:text-zinc-500 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all min-h-[44px]"
                     >
                       <ShoppingCart className="w-3.5 h-3.5" />
                       <span>{product.stock > 0 ? t.marketplace.addToCart : t.marketplace.outOfStock}</span>
@@ -657,13 +739,13 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
         {/* Per-Store Shopping Cart & Custom Invoice Checkout Modal/Drawer */}
         {isCartOpen && (
-          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex justify-end">
-            <div className="w-full max-w-lg bg-[#09090b] border-l border-white/[0.08] h-full overflow-y-auto p-5 sm:p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-white font-display flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5 text-amber-400" />
-                    <span>{t.marketplace.cartDrawerTitle} · {selectedStore.storeName}</span>
+          <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex justify-end">
+            <div className="w-full max-w-lg bg-[#09090b] border-l border-white/[0.08] h-[100dvh] safe-area-top safe-area-bottom overflow-y-auto p-4 sm:p-6 space-y-5">
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-4 gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-bold text-white font-display flex items-center gap-2 truncate">
+                    <ShoppingCart className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span className="truncate">{t.marketplace.cartDrawerTitle} · {selectedStore.storeName}</span>
                   </h2>
                   <p className="text-[11px] text-zinc-400">
                     {t.marketplace.cartDrawerSub}
@@ -671,7 +753,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="px-3 py-1.5 rounded-lg bg-[#111114] border border-white/[0.1] text-xs text-zinc-300 hover:text-white"
+                  className="px-3.5 py-2 min-h-[44px] rounded-lg bg-[#111114] border border-white/[0.1] text-xs font-semibold text-zinc-300 hover:text-white shrink-0"
                 >
                   {t.common.close}
                 </button>
@@ -689,7 +771,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                     {activeCart.map((item) => (
                       <div
                         key={item.product.id}
-                        className="bg-[#111114] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-3"
+                        className="bg-[#111114] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-2.5"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="text-xs font-bold text-white truncate">
@@ -702,26 +784,29 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
+                            type="button"
                             onClick={() => updateCartQty(item.product.id, -1)}
-                            className="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-zinc-800 flex items-center justify-center text-white"
+                            className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
                           >
-                            <Minus className="w-3.5 h-3.5" />
+                            <Minus className="w-4 h-4" />
                           </button>
-                          <span className="w-7 text-center text-xs font-mono font-bold text-white">
+                          <span className="w-7 text-center text-xs font-mono font-bold text-white tabular-nums">
                             {item.quantity}
                           </span>
                           <button
+                            type="button"
                             onClick={() => updateCartQty(item.product.id, 1)}
-                            className="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-zinc-800 flex items-center justify-center text-white"
+                            className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
                           >
-                            <Plus className="w-3.5 h-3.5" />
+                            <Plus className="w-4 h-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => updateCartQty(item.product.id, -item.quantity)}
-                            className="w-8 h-8 rounded-lg bg-red-950/50 hover:bg-red-900/60 flex items-center justify-center text-red-400 ml-1"
+                            className="w-10 h-10 rounded-lg bg-red-950/50 hover:bg-red-900/60 active:scale-95 flex items-center justify-center text-red-400 ml-0.5"
                             title="Quitar"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>

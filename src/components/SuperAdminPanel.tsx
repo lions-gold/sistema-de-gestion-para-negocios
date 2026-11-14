@@ -18,7 +18,9 @@ import {
   Users,
   ExternalLink,
   Ticket,
+  Compass,
 } from 'lucide-react';
+import { AdminVectorHub } from './AdminVectorHub';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, SUPER_ADMIN_EMAIL } from '../firebase';
 import {
@@ -53,7 +55,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 
 interface SuperAdminPanelProps {
-  onOpenWarehouseApp?: () => void;
+  onOpenWarehouseApp?: (storeId?: string) => void;
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehouseApp }) => {
@@ -68,13 +70,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   const [ownerEmailMap, setOwnerEmailMap] = useState<Record<string, string>>({});
 
   const [activeTab, setActiveTab] = useState<
-    'stores' | 'payments' | 'emails' | 'referrals' | 'billing'
+    'stores' | 'payments' | 'emails' | 'referrals' | 'vector' | 'billing'
   >('stores');
   const [storeFilter, setStoreFilter] = useState<'all' | StoreStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [previewProofUrl, setPreviewProofUrl] = useState<string | null>(null);
 
   // Email Composer State
   const [emailMode, setEmailMode] = useState<'individual' | 'collective'>('individual');
@@ -405,7 +408,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
 
           {onOpenWarehouseApp && (
             <button
-              onClick={onOpenWarehouseApp}
+              onClick={() => onOpenWarehouseApp(stores[0]?.id)}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1.5 min-h-[40px]"
             >
               <Package className="w-4 h-4" />
@@ -463,66 +466,77 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       )}
 
       {/* Admin Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-white/[0.08] pb-3">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-white/[0.08] pb-3">
         <button
           onClick={() => setActiveTab('stores')}
-          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
             activeTab === 'stores'
               ? 'bg-amber-500 text-zinc-950'
               : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
           }`}
         >
-          <Store className="w-4 h-4" />
+          <Store className="w-4 h-4 shrink-0" />
           <span>
             {t.admin.tabStores} ({stores.length})
           </span>
         </button>
         <button
           onClick={() => setActiveTab('payments')}
-          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
             activeTab === 'payments'
               ? 'bg-amber-500 text-zinc-950'
               : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
           }`}
         >
-          <CreditCard className="w-4 h-4" />
+          <CreditCard className="w-4 h-4 shrink-0" />
           <span>
             {t.admin.tabPayments} ({pendingPaymentsCount})
           </span>
         </button>
         <button
           onClick={() => setActiveTab('emails')}
-          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
             activeTab === 'emails'
               ? 'bg-amber-500 text-zinc-950'
               : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
           }`}
         >
-          <Mail className="w-4 h-4" />
+          <Mail className="w-4 h-4 shrink-0" />
           <span>{t.admin.tabEmails}</span>
         </button>
         <button
           onClick={() => setActiveTab('referrals')}
-          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
             activeTab === 'referrals'
               ? 'bg-amber-500 text-zinc-950'
               : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
           }`}
         >
-          <Gift className="w-4 h-4" />
+          <Gift className="w-4 h-4 shrink-0" />
           <span>
             {t.admin.tabReferrals} ({referrals.length})
           </span>
         </button>
         <button
+          onClick={() => setActiveTab('vector')}
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+            activeTab === 'vector'
+              ? 'bg-amber-500 text-zinc-950'
+              : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
+          }`}
+        >
+          <Compass className="w-4 h-4 shrink-0" />
+          <span>Centro Vector</span>
+        </button>
+        <button
           onClick={() => setActiveTab('billing')}
-          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
             activeTab === 'billing'
               ? 'bg-amber-500 text-zinc-950'
               : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
           }`}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-4 h-4 shrink-0" />
           <span>{t.admin.tabBilling}</span>
         </button>
       </div>
@@ -734,6 +748,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <div className="text-zinc-300">
                     Ref / TxID: <strong className="font-mono text-white">{pay.referenceNumber}</strong> ·{' '}
                     {pay.ownerEmail}
+                    {pay.ownerWhatsapp ? ` · WhatsApp: ${pay.ownerWhatsapp}` : ''}
                   </div>
                   {pay.couponCode && (
                     <div className="text-emerald-300 font-mono">
@@ -742,6 +757,22 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   )}
                   {pay.payerInfo && <div className="text-zinc-400">{pay.payerInfo}</div>}
                   {pay.notes && <div className="text-zinc-400">{pay.notes}</div>}
+                  {pay.proofImageUrl && (
+                    <div className="pt-1.5 flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProofUrl(pay.proofImageUrl || null)}
+                        className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#09090b] border border-amber-500/35 hover:border-amber-400 text-amber-300 font-semibold text-[11px]"
+                      >
+                        <img
+                          src={pay.proofImageUrl}
+                          alt="Captura de pago"
+                          className="w-6 h-6 rounded object-cover"
+                        />
+                        <span>Ver Captura Adjunta</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {pay.status === 'pending' && (
@@ -771,6 +802,34 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 )}
               </div>
             ))
+          )}
+
+          {previewProofUrl && (
+            <div
+              className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom"
+              onClick={() => setPreviewProofUrl(null)}
+            >
+              <div
+                className="bg-[#111114] border-t sm:border border-amber-500/40 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-4 sm:p-5 space-y-3 max-h-[92dvh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">Captura del Comprobante</span>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewProofUrl(null)}
+                    className="min-h-[40px] px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-300 hover:text-white text-xs font-semibold"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <img
+                  src={previewProofUrl}
+                  alt="Captura de pago completa"
+                  className="w-full max-h-[70dvh] object-contain rounded-xl bg-[#09090b]"
+                />
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1233,6 +1292,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             <span>{t.admin.saveBillingBtn}</span>
           </button>
         </form>
+      )}
+
+      {activeTab === 'vector' && user && (
+        <AdminVectorHub
+          adminUser={user}
+          stores={stores}
+          ownerEmailMap={ownerEmailMap}
+          onNotify={showNotice}
+          onError={setErrorNotice}
+        />
       )}
     </section>
   );

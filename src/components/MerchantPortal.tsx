@@ -30,7 +30,9 @@ import {
   Ticket,
   Check,
   Sparkles,
+  Compass,
 } from 'lucide-react';
+import { MerchantVectorTab } from './MerchantVectorTab';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
 import {
@@ -48,10 +50,12 @@ import {
   SubscriptionPaymentMethod,
 } from '../types';
 import {
+  buildPaymentVoucherLinks,
   compressImageFileToDataURL,
   createStoreOrderInCloud,
   DEFAULT_BILLING_SETTINGS,
   deleteStoreProduct,
+  dispatchSubscriptionPaymentProof,
   ensureStoreReferralCode,
   exportProductsToCSV,
   exportProductsToJSON,
@@ -62,6 +66,7 @@ import {
   markStoreInboxMessageRead,
   normalizeReferralCode,
   parseImportedDatabaseFile,
+  PaymentVoucherDispatchResult,
   registerStoreTenant,
   resolveReferralCode,
   saveStoreProduct,
@@ -90,7 +95,8 @@ interface MerchantPortalProps {
   initialReferralCode?: string;
   onClearCapturedReferral?: () => void;
   onOpenStorefront: (slug: string) => void;
-  onOpenWarehouseApp?: () => void;
+  onOpenWarehouseApp?: (storeId?: string) => void;
+  onActiveBrandContext?: (ctx: { store: StoreTenant | null; products: StoreProduct[] }) => void;
 }
 
 export const MerchantPortal: React.FC<MerchantPortalProps> = ({
@@ -99,6 +105,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   onClearCapturedReferral,
   onOpenStorefront,
   onOpenWarehouseApp,
+  onActiveBrandContext,
 }) => {
   const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -115,7 +122,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [inboxMessages, setInboxMessages] = useState<StoreInboxMessage[]>([]);
 
   const [activeTab, setActiveTab] = useState<
-    'catalog' | 'billing' | 'orders' | 'referrals' | 'inbox' | 'settings'
+    'catalog' | 'billing' | 'orders' | 'referrals' | 'inbox' | 'vector' | 'settings'
   >('billing');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -142,8 +149,15 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [payMethod, setPayMethod] = useState<SubscriptionPaymentMethod>('Pago Móvil');
   const [payRef, setPayRef] = useState('');
   const [payPayerInfo, setPayPayerInfo] = useState('');
+  const [payWhatsapp, setPayWhatsapp] = useState('');
   const [payNotes, setPayNotes] = useState('');
+  const [payProofImage, setPayProofImage] = useState('');
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [selectedCouponId, setSelectedCouponId] = useState<string>('');
+  const [lastPaymentVoucher, setLastPaymentVoucher] = useState<{
+    payment: SubscriptionPayment;
+    result: PaymentVoucherDispatchResult;
+  } | null>(null);
 
   // Product Editor Modal/Inline State
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
@@ -176,12 +190,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     getPlatformBillingSettings().then(setBilling);
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u?.displayName && !regOwnerName) {
-        setRegOwnerName(u.displayName);
+      if (u?.displayName) {
+        setRegOwnerName((prev) => prev || u.displayName || '');
       }
     });
     return () => unsub();
-  }, [regOwnerName]);
+  }, []);
 
   useEffect(() => {
     if (!user || !user.emailVerified) {
@@ -193,8 +207,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     }
     const unsubStores = subscribeOwnerStores(user.uid, (list) => {
       setStores(list);
-      if (list.length > 0 && !selectedStoreId) {
-        setSelectedStoreId(list[0].id);
+      if (list.length > 0) {
+        setSelectedStoreId((prev) => prev || list[0].id);
       }
     });
     const unsubPays = subscribeOwnerPayments(user.uid, setPayments);
@@ -206,7 +220,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       unsubRefs();
       unsubCoups();
     };
-  }, [user, selectedStoreId]);
+  }, [user]);
 
   const activeStore = stores.find((s) => s.id === selectedStoreId) || stores[0] || null;
 
@@ -231,6 +245,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       unsubInbox();
     };
   }, [activeStore, user]);
+
+  const onActiveBrandContextRef = React.useRef(onActiveBrandContext);
+  onActiveBrandContextRef.current = onActiveBrandContext;
+
+  useEffect(() => {
+    onActiveBrandContextRef.current?.({
+      store: activeStore,
+      products,
+    });
+  }, [activeStore, products]);
 
   useEffect(() => {
     if (initialReferralCode && !regReferralCode) {
@@ -264,6 +288,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setRegRif(activeStore.rif || '');
     setRegLogoUrl(activeStore.logoUrl || '');
     setRegWhatsapp(activeStore.businessWhatsapp);
+    setPayWhatsapp((prev) => prev || activeStore.businessWhatsapp || '');
     setRegCategory(activeStore.category || 'Comercio General');
     setRegDescription(activeStore.description || '');
     setRegNationalEnabled(activeStore.nationalShippingEnabled);
@@ -376,29 +401,59 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     ? Math.max(0, Number((baseSubscriptionUSD - selectedCoupon.discountUSD).toFixed(2)))
     : baseSubscriptionUSD;
 
+  const handleUploadPaymentProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingProof(true);
+    try {
+      const dataUrl = await compressImageFileToDataURL(file, 480, 0.72);
+      setPayProofImage(dataUrl);
+      notify('Captura del comprobante cargada y optimizada.');
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'No se pudo procesar la captura del comprobante.');
+    } finally {
+      setIsUploadingProof(false);
+      e.target.value = '';
+    }
+  };
+
   const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !activeStore) return;
     if (netSubscriptionUSD > 0 && !payRef.trim()) return;
     setIsBusy(true);
     try {
-      await submitSubscriptionPayment(user, activeStore, {
+      const savedPayment = await submitSubscriptionPayment(user, activeStore, {
         amountUSD: baseSubscriptionUSD,
         paymentMethod: payMethod,
         referenceNumber:
           netSubscriptionUSD === 0 && selectedCoupon ? selectedCoupon.code : payRef,
         payerInfo: payPayerInfo,
         notes: payNotes,
+        proofImageUrl: payProofImage || undefined,
+        ownerWhatsapp: payWhatsapp.trim() || activeStore.businessWhatsapp,
         coupon: selectedCoupon,
+      });
+      const voucherResult = await dispatchSubscriptionPaymentProof({
+        user,
+        store: activeStore,
+        payment: savedPayment,
+        exchangeRate,
+        supportWhatsapp: billing.supportWhatsapp,
+      });
+      setLastPaymentVoucher({
+        payment: savedPayment,
+        result: voucherResult,
       });
       setPayRef('');
       setPayPayerInfo('');
       setPayNotes('');
+      setPayProofImage('');
       setSelectedCouponId('');
       notify(
-        selectedCoupon && netSubscriptionUSD === 0
-          ? `Renovación con Cupón ${selectedCoupon.code} enviada al Administrador para verificación.`
-          : 'Pago reportado al Administrador (empresaalhadiqainvest@gmail.com). Tu cuenta será activada manualmente tras verificar la referencia.'
+        voucherResult.emailSent
+          ? 'Comprobante registrado y enviado automáticamente por correo al Administrador. Puedes reenviarlo también por WhatsApp abajo.'
+          : 'Comprobante registrado en la nube. Usa los botones directos de WhatsApp y Correo para enviar tu recibo al Administrador.'
       );
     } catch (err) {
       notifyError(err instanceof Error ? err.message : 'Error enviando comprobante.');
@@ -965,7 +1020,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           )}
           {(activeStore.warehousePosEnabled || billing.warehousePosEnabled) && onOpenWarehouseApp && (
             <button
-              onClick={onOpenWarehouseApp}
+              onClick={() => onOpenWarehouseApp(activeStore.id)}
               className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 min-h-[38px]"
             >
               <Package className="w-3.5 h-3.5" />
@@ -1001,7 +1056,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-white/[0.08] pb-3">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-white/[0.08] pb-3">
         {[
           { id: 'billing', label: t.merchant.tabBilling, icon: CreditCard },
           { id: 'catalog', label: `${t.merchant.tabCatalog} (${products.length})`, icon: Package },
@@ -1016,6 +1071,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             label: `${t.merchant.tabInbox} (${inboxMessages.filter((m) => !m.isRead).length})`,
             icon: Mail,
           },
+          { id: 'vector', label: 'Asistente Vector', icon: Compass },
           { id: 'settings', label: t.merchant.tabSettings, icon: Truck },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1024,13 +1080,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-colors min-h-[42px] ${
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-colors min-h-[44px] whitespace-nowrap shrink-0 ${
                 active
                   ? 'bg-amber-500 text-zinc-950'
                   : 'bg-[#111114] border border-white/[0.08] text-zinc-300 hover:text-white'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-4 h-4 shrink-0" />
               <span>{tab.label}</span>
             </button>
           );
@@ -1156,18 +1212,71 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   </div>
                 </div>
               )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">
+                    {t.merchant.payerInfo}
+                  </label>
+                  <input
+                    type="text"
+                    value={payPayerInfo}
+                    onChange={(e) => setPayPayerInfo(e.target.value)}
+                    placeholder="Banesco 0414-0000000 / PayID"
+                    className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-400 block mb-1">
+                    WhatsApp para recibir confirmación
+                  </label>
+                  <input
+                    type="tel"
+                    value={payWhatsapp}
+                    onChange={(e) => setPayWhatsapp(e.target.value)}
+                    placeholder="+58 414 0000000"
+                    className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs text-zinc-400 block mb-1">
-                  {t.merchant.payerInfo}
+                  Captura del Comprobante (Opcional - Imagen)
                 </label>
-                <input
-                  type="text"
-                  value={payPayerInfo}
-                  onChange={(e) => setPayPayerInfo(e.target.value)}
-                  placeholder="Banesco 0414-0000000 / PayID"
-                  className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
-                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingProof ? 'Procesando...' : 'Adjuntar Captura'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadPaymentProof}
+                      className="hidden"
+                    />
+                  </label>
+                  {payProofImage ? (
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={payProofImage}
+                        alt="Captura de pago"
+                        className="w-10 h-10 rounded-lg object-cover border border-emerald-500/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPayProofImage('')}
+                        className="text-[11px] text-rose-400 hover:underline"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-zinc-500">
+                      Se adjuntará automáticamente en el correo al Administrador.
+                    </span>
+                  )}
+                </div>
               </div>
+
               <div>
                 <label className="text-xs text-zinc-400 block mb-1">{t.merchant.notes}</label>
                 <input
@@ -1189,6 +1298,77 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               </button>
             </form>
 
+            {/* Immediate Payment Voucher Dispatch Card (Email + WhatsApp) */}
+            {lastPaymentVoucher && (
+              <div className="bg-emerald-950/35 border border-emerald-500/40 rounded-2xl p-5 space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <h4 className="text-sm font-bold text-white font-display">
+                        Comprobante #{lastPaymentVoucher.payment.referenceNumber} Listo
+                      </h4>
+                    </div>
+                    <p className="text-xs text-emerald-200/90 mt-1">
+                      {lastPaymentVoucher.result.message}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLastPaymentVoucher(null)}
+                    className="text-zinc-400 hover:text-white p-1"
+                    aria-label="Cerrar comprobante"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="bg-[#09090b]/80 border border-white/[0.08] rounded-xl p-3 text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Tienda:</span>
+                    <span className="font-bold text-white">{lastPaymentVoucher.payment.storeName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Monto reportado:</span>
+                    <span className="font-mono font-bold text-amber-400">
+                      ${Number(lastPaymentVoucher.payment.amountUSD).toFixed(2)} USD · {lastPaymentVoucher.payment.paymentMethod}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Estado de correo:</span>
+                    <span className="font-semibold text-emerald-300">
+                      {lastPaymentVoucher.result.emailSent
+                        ? `Enviado (${lastPaymentVoucher.result.deliveryChannel.toUpperCase()})`
+                        : 'Listo para enviar vía tu correo'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <a
+                    href={lastPaymentVoucher.result.whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors min-h-[42px]"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Enviar Comprobante por WhatsApp</span>
+                  </a>
+                  <a
+                    href={lastPaymentVoucher.result.mailtoHref}
+                    className="py-2.5 px-3.5 rounded-xl bg-[#09090b] hover:bg-zinc-900 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-colors min-h-[42px]"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span>
+                      {lastPaymentVoucher.result.emailSent
+                        ? 'Reenviar Copia por Correo'
+                        : 'Enviar Comprobante por Correo'}
+                    </span>
+                  </a>
+                </div>
+              </div>
+            )}
+
             {/* Payments History */}
             <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3">
               <h3 className="text-sm font-bold text-white">{t.merchant.paymentsHistory}</h3>
@@ -1196,37 +1376,66 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 <p className="text-xs text-zinc-500">{t.merchant.noPaymentsYet}</p>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {payments.map((p) => (
-                    <div
-                      key={p.id}
-                      className="p-3 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <div className="font-bold text-white">
-                          {p.paymentMethod} · Ref: {p.referenceNumber}
+                  {payments.map((p) => {
+                    const voucherLinks = buildPaymentVoucherLinks({
+                      payment: p,
+                      store: activeStore,
+                      exchangeRate,
+                      supportWhatsapp: billing.supportWhatsapp,
+                    });
+                    return (
+                      <div
+                        key={p.id}
+                        className="p-3 rounded-xl bg-[#09090b] border border-white/[0.08] flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div>
+                          <div className="font-bold text-white">
+                            {p.paymentMethod} · Ref: {p.referenceNumber}
+                          </div>
+                          <div className="text-[11px] text-zinc-400">
+                            ${p.amountUSD} USD · {p.storeName}
+                            {p.couponCode ? ` · 🎟 ${p.couponCode} (-$${p.discountUSD ?? 0})` : ''}
+                            {p.proofImageUrl ? ' · 📎 Captura adjunta' : ''}
+                          </div>
                         </div>
-                        <div className="text-[11px] text-zinc-400">
-                          ${p.amountUSD} USD · {p.storeName}
-                          {p.couponCode ? ` · 🎟 ${p.couponCode} (-$${p.discountUSD ?? 0})` : ''}
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={voucherLinks.whatsappHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 text-[10px] font-bold flex items-center gap-1"
+                            title="Enviar comprobante por WhatsApp"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>WhatsApp</span>
+                          </a>
+                          <a
+                            href={voucherLinks.mailtoHref}
+                            className="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-amber-300 text-[10px] font-bold flex items-center gap-1 border border-white/[0.08]"
+                            title="Enviar comprobante por correo"
+                          >
+                            <Mail className="w-3 h-3" />
+                            <span>Correo</span>
+                          </a>
+                          <span
+                            className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                              p.status === 'approved'
+                                ? 'bg-emerald-500/15 text-emerald-300'
+                                : p.status === 'rejected'
+                                  ? 'bg-red-500/15 text-red-300'
+                                  : 'bg-amber-500/15 text-amber-300'
+                            }`}
+                          >
+                            {p.status === 'approved'
+                              ? t.common.approved
+                              : p.status === 'rejected'
+                                ? t.common.rejected
+                                : t.common.inReview}
+                          </span>
                         </div>
                       </div>
-                      <span
-                        className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                          p.status === 'approved'
-                            ? 'bg-emerald-500/15 text-emerald-300'
-                            : p.status === 'rejected'
-                              ? 'bg-red-500/15 text-red-300'
-                              : 'bg-amber-500/15 text-amber-300'
-                        }`}
-                      >
-                        {p.status === 'approved'
-                          ? t.common.approved
-                          : p.status === 'rejected'
-                            ? t.common.rejected
-                            : t.common.inReview}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1250,6 +1459,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {(activeStore.warehousePosEnabled || billing.warehousePosEnabled) && onOpenWarehouseApp && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenWarehouseApp(activeStore.id)}
+                    className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white flex items-center gap-1.5"
+                  >
+                    <Package className="w-3.5 h-3.5" />
+                    <span>Llenar desde Almacén</span>
+                  </button>
+                )}
                 <button
                   onClick={downloadSampleCSVTemplate}
                   className="px-3 py-2 rounded-lg bg-[#09090b] border border-white/[0.1] hover:border-amber-400 text-xs text-zinc-200"
@@ -1752,8 +1971,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
             {/* Direct Sale Registration Modal */}
             {showDirectSaleModal && (
-              <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-[#111114] border border-amber-500/30 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              <div className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+                <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
                   <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                     <div>
                       <h3 className="text-base font-bold text-white font-display">
@@ -2325,6 +2544,15 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {t.merchant.saveSettingsBtn}
           </button>
         </form>
+      )}
+
+      {activeTab === 'vector' && activeStore && user && (
+        <MerchantVectorTab
+          user={user}
+          store={activeStore}
+          onNotify={notify}
+          onError={notifyError}
+        />
       )}
     </section>
   );

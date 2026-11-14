@@ -15,8 +15,16 @@ export interface Product {
   turnoverRate?: 'Alta' | 'Media' | 'Baja';
   batchNumber?: string;
   supplier?: string;
-  location?: 'Cava Principal' | 'Barra Central' | 'Estantería Premium' | 'Depósito Seco';
+  location?:
+    | 'Depósito Principal'
+    | 'Exhibición Tienda'
+    | 'Cava Refrigerada'
+    | 'Cava Principal'
+    | 'Barra Central'
+    | 'Estantería Premium'
+    | 'Depósito Seco';
   expirationDate?: string;
+  storefrontProductId?: string;
 }
 
 export interface CartItem {
@@ -290,11 +298,13 @@ export interface SubscriptionPayment {
   storeName: string;
   ownerUid: string;
   ownerEmail: string;
+  ownerWhatsapp?: string;
   amountUSD: number;
   paymentMethod: SubscriptionPaymentMethod;
   referenceNumber: string;
   payerInfo?: string;
   notes?: string;
+  proofImageUrl?: string;
   couponId?: string;
   couponCode?: string;
   discountUSD?: number;
@@ -441,4 +451,191 @@ export interface StoreOrder {
   createdAt?: unknown;
   updatedAt?: unknown;
 }
+
+// -----------------------------------------------------------------------------
+// Vector — Multi-SaaS Commercial Assistant & Governance Protocol Types
+// -----------------------------------------------------------------------------
+
+export type VectorLanguage = 'es' | 'en' | 'zh';
+
+export type VectorInfluenceLever =
+  | 'reciprocidad'
+  | 'escasez_real'
+  | 'urgencia_real'
+  | 'prueba_social'
+  | 'anclaje'
+  | 'aversion_perdida'
+  | 'personalizacion'
+  | 'compromiso_pequeno';
+
+export type VectorEscalationLevel = 'N0' | 'N1' | 'N2' | 'N3' | 'N4';
+export type VectorPriority = 'media' | 'alta' | 'critica';
+export type VectorRiskType = 'ninguno' | 'reembolso' | 'legal' | 'fraude' | 'reputacional';
+export type VectorConsentStatus = 'si' | 'no' | 'solo_importante' | 'no_preguntado';
+
+export interface VectorBrandConfig {
+  storeId: string;
+  brandName: string;
+  idiomaPrincipal: VectorLanguage;
+  tratamientoEs: 'usted' | 'tu';
+  tratamientoZh: '您' | '你';
+  emojiMax: 0 | 1;
+  politicaEnvios: string;
+  politicaDevoluciones: string;
+  slaHumano: string;
+  horarioAtencion: string;
+  zonaHoraria: string;
+  slaCriticaMin: number;
+  slaAltaMin: number;
+  slaMediaMin: number;
+  nivel1Cola: string;
+  nivel2Cobros: string;
+  nivel2Logistica: string;
+  nivel3Supervisor: string;
+  nivel4Admin: string;
+  autoEscalarPorVencimiento: boolean;
+  maxIntentosBot: number;
+  canalOfertas: 'email' | 'whatsapp' | 'ambos';
+  frecuenciaMaximaSemanal: number;
+  palancasActivas: VectorInfluenceLever[];
+  updatedAt?: unknown;
+}
+
+export interface VectorTriggerDefinition {
+  id: number;
+  code: string;
+  labelEs: string;
+  labelEn: string;
+  labelZh: string;
+  level: VectorEscalationLevel;
+  reEscalateTo?: VectorEscalationLevel;
+  priority: VectorPriority;
+  firstContactLabel: string;
+  slaMinutes: number;
+  reportMotivo:
+    | 'reclamo'
+    | 'cobro'
+    | 'logistica'
+    | 'fraude'
+    | 'legal'
+    | 'pide_humano'
+    | 'admin'
+    | 'molestia';
+  requiresAdminReport: boolean;
+}
+
+export interface VectorTicket {
+  id: string;
+  ticketNumber: string;
+  storeId: string;
+  storeName: string;
+  storeOwnerUid: string;
+  requesterUid: string;
+  customerName: string;
+  customerContact: string;
+  channel: 'web_chat' | 'whatsapp' | 'instagram' | 'email';
+  language: VectorLanguage;
+  triggerId: number;
+  triggerMotivo: string;
+  level: VectorEscalationLevel;
+  priority: VectorPriority;
+  slaMinutes: number;
+  summary: string;
+  botAttempts: number;
+  lastProposal: string;
+  orderRef: string;
+  evidence: string;
+  requiredHumanAction: string;
+  clientCommitment: string;
+  offerConsent: VectorConsentStatus;
+  risk: VectorRiskType;
+  threadId: string;
+  status: 'open' | 'in_progress' | 'escalated' | 'resolved';
+  handoffPacket: string;
+  adminReport?: string;
+  reEscalatedCount: number;
+  contextLeakReported?: boolean;
+  csatScore?: number;
+  dueAtMs: number;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface VectorConsentRecord {
+  id: string;
+  userUid: string;
+  userEmail?: string;
+  storeId: string;
+  storeName: string;
+  storeOwnerUid: string;
+  scope: 'buyer_offers' | 'merchant_campaigns';
+  status: 'si' | 'no' | 'solo_importante';
+  channel: 'web_chat' | 'whatsapp' | 'email' | 'portal';
+  hardBounced?: boolean;
+  recentComplaint?: boolean;
+  updatedAt?: unknown;
+}
+
+export interface VectorCampaignVariant {
+  lang: VectorLanguage;
+  variantLabel: 'A' | 'B';
+  subject: string;
+  body: string;
+}
+
+export interface VectorCampaign {
+  id: string;
+  title: string;
+  segment: 'all' | 'active' | 'pending' | 'low_activity';
+  objective: string;
+  realOffer: string;
+  validUntil: string;
+  primaryLanguage: VectorLanguage;
+  variants: VectorCampaignVariant[];
+  approvedByAdmin: boolean;
+  approvedAtIso?: string;
+  status: 'draft' | 'approved' | 'sent';
+  sentCount: number;
+  excludedCount: number;
+  openCount: number;
+  clickCount: number;
+  attributedSalesCount: number;
+  optOutCount: number;
+  bounceCount: number;
+  createdByEmail: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface VectorConversationStat {
+  id: string;
+  storeId: string;
+  storeOwnerUid: string;
+  userUid: string;
+  language: VectorLanguage;
+  turnsCount: number;
+  botAttemptsOnIssue: number;
+  containedByBot: boolean;
+  escalated: boolean;
+  escalationAccurate?: boolean;
+  triggerId?: number;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface VectorChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  language: VectorLanguage;
+  leversUsed?: VectorInfluenceLever[];
+  leverEvidence?: string[];
+  recommendedProductIds?: string[];
+  escalationTicketNumber?: string;
+  adminReportText?: string;
+  handoffPacketText?: string;
+  blockedSecurityNotice?: boolean;
+}
+
 
