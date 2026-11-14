@@ -98,6 +98,50 @@
       },
       "required": ["storeId", "ownerUid", "ownerEmail", "createdAt", "updatedAt"]
     },
+    "StoreEmailConfig": {
+      "title": "StoreEmailConfig",
+      "description": "Private per-store custom SMTP or Resend API configuration for critical stock alerts and sales report email delivery.",
+      "type": "object",
+      "properties": {
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "provider": { "type": "string", "enum": ["resend", "smtp"] },
+        "isEnabled": { "type": "boolean" },
+        "recipientEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "secondaryEmail": { "type": "string", "maxLength": 160 },
+        "fromName": { "type": "string", "maxLength": 100 },
+        "fromEmail": { "type": "string", "maxLength": 160 },
+        "resendApiKey": { "type": "string", "maxLength": 300 },
+        "smtpHost": { "type": "string", "maxLength": 160 },
+        "smtpPort": { "type": "number" },
+        "smtpSecure": { "type": "boolean" },
+        "smtpUser": { "type": "string", "maxLength": 160 },
+        "smtpPass": { "type": "string", "maxLength": 300 },
+        "alertOnCriticalStock": { "type": "boolean" },
+        "notifyOnPOS": { "type": "boolean" },
+        "notifyOnManualAdjustment": { "type": "boolean" },
+        "alertFrequency": { "type": "string", "enum": ["immediate", "daily"] },
+        "sendSalesReports": { "type": "boolean" },
+        "salesReportFrequency": { "type": "string", "enum": ["per_sale", "daily_closing", "manual"] },
+        "lastTestStatus": { "type": "string", "maxLength": 240 },
+        "lastTestAt": { "type": "string", "maxLength": 60 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "storeId",
+        "ownerUid",
+        "provider",
+        "isEnabled",
+        "recipientEmail",
+        "alertOnCriticalStock",
+        "notifyOnPOS",
+        "notifyOnManualAdjustment",
+        "alertFrequency",
+        "sendSalesReports",
+        "salesReportFrequency",
+        "updatedAt"
+      ]
+    },
     "SubscriptionPayment": {
       "title": "SubscriptionPayment",
       "description": "Monthly $25 USD subscription payment report submitted by store owners via Venezuelan Banks, Pago Movil, Binance Pay, Bybit, or Referral Coupon.",
@@ -658,6 +702,10 @@
     "/stores/{storeId}/private/account": {
       "schema": { "$ref": "#/entities/StorePrivateAccount" },
       "description": "Isolated store owner PII (email and private billing info)."
+    },
+    "/stores/{storeId}/private/emailConfig": {
+      "schema": { "$ref": "#/entities/StoreEmailConfig" },
+      "description": "Isolated store owner custom SMTP / Resend API settings for stock alerts and sales report delivery."
     },
     "/stores/{storeId}/inbox/{messageId}": {
       "schema": { "$ref": "#/entities/StoreInboxMessage" },

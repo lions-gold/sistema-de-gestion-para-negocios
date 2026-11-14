@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Product,
   Sale,
@@ -60,6 +60,12 @@ import {
   saveStoredEmailLogs,
   recordSimulatedEmailDispatch,
 } from '../utils/alertNotifications';
+import {
+  dispatchStoreEmail,
+  getLocalStoreEmailConfig,
+  getStoreEmailLogs,
+  clearStoreEmailLogs,
+} from '../services/emailDeliveryService';
 import {
   exportInventoryAuditCSV,
   exportInventoryAuditPDF,
@@ -127,9 +133,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Email Alert state & persistence
+  const currentStoreId = activeStore?.id || 'default-warehouse';
   const [emailConfig, setEmailConfig] = useState<EmailAlertConfig>(getStoredEmailConfig);
-  const [emailLogs, setEmailLogs] = useState<StockAlertEmailLog[]>(getStoredEmailLogs);
+  const [emailLogs, setEmailLogs] = useState<StockAlertEmailLog[]>(() =>
+    getStoreEmailLogs(currentStoreId)
+  );
   const [emailToast, setEmailToast] = useState<{ message: string; logId: string } | null>(null);
+
+  useEffect(() => {
+    setEmailLogs(getStoreEmailLogs(currentStoreId));
+    const storeCfg = getLocalStoreEmailConfig(currentStoreId, activeStore?.ownerUid || '');
+    if (storeCfg.recipientEmail) {
+      setEmailConfig({
+        recipientEmail: storeCfg.recipientEmail,
+        secondaryEmail: storeCfg.secondaryEmail || undefined,
+        isEnabled: storeCfg.isEnabled,
+        frequency: storeCfg.alertFrequency,
+        notifyOnPOS: storeCfg.notifyOnPOS,
+        notifyOnManualAdjustment: storeCfg.notifyOnManualAdjustment,
+      });
+    }
+  }, [currentStoreId, activeStore?.ownerUid]);
 
   // New product form state (neutral per-store defaults)
   const [newName, setNewName] = useState('');
@@ -273,26 +297,57 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       t.supplierName.toLowerCase().includes(s);
   });
 
-  // Stock change handler with simulated email alert interception
+  // Stock change handler with real SMTP/Resend dispatch (or simulated fallback)
   const handleStockChange = (id: string, delta: number) => {
     if (delta < 0) {
       const prod = products.find((p) => p.id === id);
       if (prod) {
-        const willBeLow = (prod.stock + delta) <= prod.minStock;
+        const willBeLow = prod.stock + delta <= prod.minStock;
         const wasAbove = prod.stock > prod.minStock;
-        if (willBeLow && wasAbove && emailConfig.isEnabled && emailConfig.notifyOnManualAdjustment) {
+        if (willBeLow && wasAbove) {
           const simulatedProd = { ...prod, stock: Math.max(0, prod.stock + delta) };
-          const log = recordSimulatedEmailDispatch(
-            [simulatedProd],
-            `Ajuste manual de stock en Almacén (-1 unidad)`,
-            emailConfig
-          );
-          setEmailLogs(getStoredEmailLogs());
-          setEmailToast({
-            message: `Alerta enviada a ${emailConfig.recipientEmail}: "${prod.name}" alcanzó nivel crítico (${simulatedProd.stock} / ${prod.minStock} mín.)`,
-            logId: log.id,
-          });
-          setTimeout(() => setEmailToast(null), 6000);
+          const storeCfg = getLocalStoreEmailConfig(currentStoreId, activeStore?.ownerUid || '');
+          const hasRealProvider =
+            storeCfg.isEnabled &&
+            storeCfg.alertOnCriticalStock &&
+            storeCfg.notifyOnManualAdjustment &&
+            ((storeCfg.provider === 'resend' && Boolean(storeCfg.resendApiKey)) ||
+              (storeCfg.provider === 'smtp' && Boolean(storeCfg.smtpHost && storeCfg.smtpPass)));
+
+          if (hasRealProvider) {
+            dispatchStoreEmail({
+              action: 'stock_alert',
+              storeId: currentStoreId,
+              storeName: activeStore?.storeName || 'Almacén & POS',
+              exchangeRate,
+              config: storeCfg,
+              triggerEvent: 'Ajuste manual de stock en Almacén',
+              products: [simulatedProd],
+            })
+              .then((res) => {
+                setEmailLogs(getStoreEmailLogs(currentStoreId));
+                setEmailToast({
+                  message: res.ok
+                    ? `Alerta enviada (${storeCfg.provider.toUpperCase()}) a ${storeCfg.recipientEmail}: "${prod.name}" (${simulatedProd.stock}/${prod.minStock}).`
+                    : `Error enviando alerta a ${storeCfg.recipientEmail}: ${res.message}`,
+                  logId: res.log.id,
+                });
+                setTimeout(() => setEmailToast(null), 6500);
+              })
+              .catch(() => {});
+          } else if (emailConfig.isEnabled && emailConfig.notifyOnManualAdjustment) {
+            const log = recordSimulatedEmailDispatch(
+              [simulatedProd],
+              `Ajuste manual de stock en Almacén (-1 unidad)`,
+              emailConfig
+            );
+            setEmailLogs(getStoredEmailLogs());
+            setEmailToast({
+              message: `Alerta registrada para ${emailConfig.recipientEmail}: "${prod.name}" alcanzó nivel crítico (${simulatedProd.stock} / ${prod.minStock} mín.)`,
+              logId: log.id,
+            });
+            setTimeout(() => setEmailToast(null), 6000);
+          }
         }
       }
     }
@@ -564,6 +619,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const handleClearLogs = () => {
     saveStoredEmailLogs([]);
+    clearStoreEmailLogs(currentStoreId);
     setEmailLogs([]);
   };
 
@@ -2509,13 +2565,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         config={emailConfig}
         onSaveConfig={handleSaveEmailConfig}
         products={products}
+        sales={sales}
         exchangeRate={exchangeRate}
         emailLogs={emailLogs}
         onTriggerTestEmail={handleTriggerTestEmail}
         onClearLogs={handleClearLogs}
+        activeStore={activeStore}
+        onLogsUpdated={setEmailLogs}
       />
 
-      {/* Floating Simulated Email Notification Toast */}
+      {/* Floating Email Notification Toast */}
       {emailToast && (
         <div 
           className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 max-w-sm sm:max-w-md bg-[#111114] border border-amber-500/50 p-4 rounded-2xl shadow-2xl shadow-black/80 flex items-start gap-3 animate-in slide-in-from-bottom duration-300 backdrop-blur-md"
@@ -2523,14 +2582,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           aria-live="polite"
         >
           <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0 mt-0.5">
-            <Mail className="w-5 h-5 animate-pulse" />
+            <Mail className="w-5 h-5" />
           </div>
           <div className="flex-1 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-sm font-display">Alerta de Correo Enviada</span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                Simulación
-              </span>
+              <span className="font-bold text-white text-sm font-display">Notificación de Alerta</span>
             </div>
             <p className="mt-1 text-zinc-300 leading-snug">{emailToast.message}</p>
             <div className="mt-2.5 flex items-center gap-3">
@@ -2542,7 +2598,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 }}
                 className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center gap-1 hover:underline min-h-[36px]"
               >
-                <span>Ver Registro & Maqueta</span>
+                <span>Ver Historial & Config. SMTP</span>
                 <span>→</span>
               </button>
             </div>

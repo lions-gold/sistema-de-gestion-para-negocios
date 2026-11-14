@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Product,
   Debtor,
@@ -16,6 +16,8 @@ import { POSModule } from './POSModule';
 import { FiadosModule } from './FiadosModule';
 import { CashierModule } from './CashierModule';
 import { AnalyticsModule } from './AnalyticsModule';
+import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
+import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
 import {
   Package,
   Receipt,
@@ -24,7 +26,8 @@ import {
   ArrowLeft,
   Store,
   TrendingUp,
-  Camera
+  Camera,
+  Server
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -103,13 +106,55 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
 }) => {
   const { t } = useLanguage();
   const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
+  const [showEmailPanel, setShowEmailPanel] = useState(false);
   const activeTab = controlledTab || internalTab;
 
+  useEffect(() => {
+    setShowEmailPanel(false);
+  }, [controlledTab]);
+
   const handleTabSelect = (tab: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => {
+    setShowEmailPanel(false);
     setInternalTab(tab);
     if (onTabChange) {
       onTabChange(tab);
     }
+  };
+
+  const handleDailyClosingEmail = (closing: CashClosingRecord) => {
+    const storeId = activeStore?.id || 'default-warehouse';
+    const storeName = activeStore?.storeName || 'Almacén & POS';
+    const cfg = getLocalStoreEmailConfig(storeId, activeStore?.ownerUid || '');
+    const hasProvider =
+      cfg.isEnabled &&
+      cfg.sendSalesReports &&
+      cfg.salesReportFrequency === 'daily_closing' &&
+      Boolean(cfg.recipientEmail) &&
+      ((cfg.provider === 'resend' && Boolean(cfg.resendApiKey)) ||
+        (cfg.provider === 'smtp' && Boolean(cfg.smtpHost && cfg.smtpPass)));
+
+    if (!hasProvider) return;
+
+    dispatchStoreEmail({
+      action: 'sales_report',
+      storeId,
+      storeName,
+      exchangeRate,
+      config: cfg,
+      triggerEvent: `Cierre de Caja Z (${closing.closingNumber} · ${closing.zReportNumber})`,
+      salesSummary: {
+        periodLabel: `Cierre Diario ${closing.date} (${closing.closingNumber})`,
+        totalOrders: closing.totalTransactions,
+        grossRevenueUSD: closing.totalSalesUSD,
+        paymentBreakdown: Object.entries(closing.byPaymentMethod)
+          .filter(([, v]) => v.count > 0)
+          .map(([method, v]) => ({
+            method,
+            count: v.count,
+            totalUSD: v.totalUSD,
+          })),
+      },
+    }).catch(() => {});
   };
 
   const totalSalesUSD = sales.reduce((acc, s) => acc + s.subtotalUSD, 0);
@@ -176,13 +221,13 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
       {/* Tabs navigation */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 border-b border-white/[0.08]">
-          <button onClick={() => handleTabSelect('inventory')} className={tabClass(activeTab === 'inventory')}>
+          <button onClick={() => handleTabSelect('inventory')} className={tabClass(!showEmailPanel && activeTab === 'inventory')}>
             <Package className="w-4 h-4" />
             <span>{t.warehouse.tabInventory}</span>
             {lowStockCount > 0 && (
               <span
                 className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold rounded-full tabular-nums ${
-                  activeTab === 'inventory'
+                  !showEmailPanel && activeTab === 'inventory'
                     ? 'bg-red-600 text-white'
                     : 'bg-red-500/15 text-red-400 border border-red-500/30'
                 }`}
@@ -192,24 +237,29 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
             )}
           </button>
 
-          <button onClick={() => handleTabSelect('pos')} className={tabClass(activeTab === 'pos')}>
+          <button onClick={() => handleTabSelect('pos')} className={tabClass(!showEmailPanel && activeTab === 'pos')}>
             <Receipt className="w-4 h-4" />
             <span>{t.warehouse.tabPos}</span>
           </button>
 
-          <button onClick={() => handleTabSelect('debtors')} className={tabClass(activeTab === 'debtors')}>
+          <button onClick={() => handleTabSelect('debtors')} className={tabClass(!showEmailPanel && activeTab === 'debtors')}>
             <BookOpen className="w-4 h-4" />
             <span>{t.warehouse.tabDebtors}</span>
           </button>
 
-          <button onClick={() => handleTabSelect('cashier')} className={tabClass(activeTab === 'cashier')}>
+          <button onClick={() => handleTabSelect('cashier')} className={tabClass(!showEmailPanel && activeTab === 'cashier')}>
             <Coins className="w-4 h-4" />
             <span>{t.warehouse.tabCashier}</span>
           </button>
 
-          <button onClick={() => handleTabSelect('sales')} className={tabClass(activeTab === 'sales')}>
+          <button onClick={() => handleTabSelect('sales')} className={tabClass(!showEmailPanel && activeTab === 'sales')}>
             <TrendingUp className="w-4 h-4" />
             <span>{t.warehouse.tabSales}</span>
+          </button>
+
+          <button onClick={() => setShowEmailPanel(true)} className={tabClass(showEmailPanel)}>
+            <Server className="w-4 h-4" />
+            <span>SMTP / Alertas</span>
           </button>
 
           <button
@@ -224,65 +274,81 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
 
         {/* Tab Body */}
         <div className="pt-6">
-          {activeTab === 'inventory' && (
-            <InventoryModule
+          {showEmailPanel ? (
+            <EmailProviderConfigPanel
+              storeId={activeStore?.id || 'default-warehouse'}
+              ownerUid={activeStore?.ownerUid || ''}
+              storeName={activeStore?.storeName || 'Almacén & POS'}
+              exchangeRate={exchangeRate}
               products={products}
-              onUpdateProductStock={onUpdateProductStock}
-              onAddProduct={onAddProduct}
-              onImportProducts={onImportProducts}
-              exchangeRate={exchangeRate}
-              onOpenScanner={onOpenScanner}
               sales={sales}
-              activeStore={activeStore}
-              storefrontProducts={storefrontProducts}
-              audits={audits}
-              traces={traces}
-              onAuditsChange={onAuditsChange}
-              onTracesChange={onTracesChange}
-              onPublishProductToStore={onPublishProductToStore}
-              onSyncAllToStore={onSyncAllToStore}
-              isSyncingToStore={isSyncingToStore}
             />
-          )}
+          ) : (
+            <>
+              {activeTab === 'inventory' && (
+                <InventoryModule
+                  products={products}
+                  onUpdateProductStock={onUpdateProductStock}
+                  onAddProduct={onAddProduct}
+                  onImportProducts={onImportProducts}
+                  exchangeRate={exchangeRate}
+                  onOpenScanner={onOpenScanner}
+                  sales={sales}
+                  activeStore={activeStore}
+                  storefrontProducts={storefrontProducts}
+                  audits={audits}
+                  traces={traces}
+                  onAuditsChange={onAuditsChange}
+                  onTracesChange={onTracesChange}
+                  onPublishProductToStore={onPublishProductToStore}
+                  onSyncAllToStore={onSyncAllToStore}
+                  isSyncingToStore={isSyncingToStore}
+                />
+              )}
 
-          {activeTab === 'pos' && (
-            <POSModule
-              products={products}
-              exchangeRate={exchangeRate}
-              onCompleteSale={onCompleteSale}
-              onOpenScanner={onOpenScanner}
-            />
-          )}
+              {activeTab === 'pos' && (
+                <POSModule
+                  products={products}
+                  exchangeRate={exchangeRate}
+                  onCompleteSale={onCompleteSale}
+                  onOpenScanner={onOpenScanner}
+                />
+              )}
 
-          {activeTab === 'debtors' && (
-            <FiadosModule
-              debtors={debtors}
-              exchangeRate={exchangeRate}
-              onAddDebtor={onAddDebtor}
-              onRecordPayment={onRecordPayment}
-            />
-          )}
+              {activeTab === 'debtors' && (
+                <FiadosModule
+                  debtors={debtors}
+                  exchangeRate={exchangeRate}
+                  onAddDebtor={onAddDebtor}
+                  onRecordPayment={onRecordPayment}
+                />
+              )}
 
-          {activeTab === 'cashier' && (
-            <CashierModule
-              movements={movements}
-              exchangeRate={exchangeRate}
-              onAddMovement={onAddMovement}
-              sales={sales}
-              purchases={purchases}
-              closings={closings}
-              onPurchasesChange={onPurchasesChange}
-              onClosingsChange={onClosingsChange}
-            />
-          )}
+              {activeTab === 'cashier' && (
+                <CashierModule
+                  movements={movements}
+                  exchangeRate={exchangeRate}
+                  onAddMovement={onAddMovement}
+                  sales={sales}
+                  purchases={purchases}
+                  closings={closings}
+                  onPurchasesChange={onPurchasesChange}
+                  onClosingsChange={onClosingsChange}
+                  onClosingCompleted={handleDailyClosingEmail}
+                />
+              )}
 
-          {activeTab === 'sales' && (
-            <AnalyticsModule
-              sales={sales}
-              products={products}
-              exchangeRate={exchangeRate}
-              audits={audits}
-            />
+              {activeTab === 'sales' && (
+                <AnalyticsModule
+                  sales={sales}
+                  products={products}
+                  exchangeRate={exchangeRate}
+                  audits={audits}
+                  activeStore={activeStore}
+                  onOpenEmailConfig={() => setShowEmailPanel(true)}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

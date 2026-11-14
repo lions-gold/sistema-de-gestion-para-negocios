@@ -31,8 +31,10 @@ import {
   Check,
   Sparkles,
   Compass,
+  Server,
 } from 'lucide-react';
 import { MerchantVectorTab } from './MerchantVectorTab';
+import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
 import {
@@ -122,7 +124,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [inboxMessages, setInboxMessages] = useState<StoreInboxMessage[]>([]);
 
   const [activeTab, setActiveTab] = useState<
-    'catalog' | 'billing' | 'orders' | 'referrals' | 'inbox' | 'vector' | 'settings'
+    'catalog' | 'billing' | 'orders' | 'referrals' | 'inbox' | 'vector' | 'email_smtp' | 'settings'
   >('billing');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -1072,6 +1074,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             icon: Mail,
           },
           { id: 'vector', label: 'Asistente Vector', icon: Compass },
+          { id: 'email_smtp', label: 'SMTP / Alertas', icon: Server },
           { id: 'settings', label: t.merchant.tabSettings, icon: Truck },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -2553,6 +2556,20 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           onNotify={notify}
           onError={notifyError}
         />
+      )}
+
+      {activeTab === 'email_smtp' && activeStore && user && (
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6">
+          <EmailProviderConfigPanel
+            storeId={activeStore.id}
+            ownerUid={activeStore.ownerUid}
+            storeName={activeStore.storeName}
+            ownerEmail={user.email || ''}
+            exchangeRate={exchangeRate}
+            storeProducts={products}
+            orders={orders}
+          />
+        </div>
       )}
     </section>
   );

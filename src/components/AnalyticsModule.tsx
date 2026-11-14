@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Sale, Product, InventoryAuditLog } from '../types';
+import { Sale, Product, InventoryAuditLog, StoreTenant } from '../types';
 import {
   ResponsiveContainer,
   BarChart,
@@ -37,15 +37,21 @@ import {
   BarChart3,
   Receipt,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  Mail,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { exportSingleReceiptPDF, printReceiptTicket, exportSalesReportPDF } from '../utils/pdfExport';
+import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
 
 interface AnalyticsModuleProps {
   sales: Sale[];
   products: Product[];
   exchangeRate: number;
   audits?: InventoryAuditLog[];
+  activeStore?: StoreTenant | null;
+  onOpenEmailConfig?: () => void;
 }
 
 type PeriodFilter = 'today' | 'yesterday' | '7days' | 'month';
@@ -55,12 +61,19 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   products,
   exchangeRate,
   audits = [],
+  activeStore = null,
+  onOpenEmailConfig,
 }) => {
   // Navigation Sub-tab
   const [activeTab, setActiveTab] = useState<'profitability' | 'top_products' | 'peak_hours' | 'sales_team' | 'history'>('profitability');
   const [period, setPeriod] = useState<PeriodFilter>('7days');
   const [historySearch, setHistorySearch] = useState('');
   const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
+  const [isSendingReport, setIsSendingReport] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   // Filter sales based on period
   const filteredSales = useMemo(() => {
@@ -310,8 +323,106 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
     });
   }, [sales, historySearch, historyMethodFilter]);
 
+  const handleSendSalesReportEmail = async () => {
+    const storeId = activeStore?.id || 'default-warehouse';
+    const storeName = activeStore?.storeName || 'Almacén & POS';
+    const cfg = getLocalStoreEmailConfig(storeId, activeStore?.ownerUid || '');
+
+    const hasCredentials =
+      cfg.isEnabled &&
+      Boolean(cfg.recipientEmail) &&
+      ((cfg.provider === 'resend' && Boolean(cfg.resendApiKey)) ||
+        (cfg.provider === 'smtp' && Boolean(cfg.smtpHost && cfg.smtpPass)));
+
+    if (!hasCredentials) {
+      setReportFeedback({
+        type: 'error',
+        text: 'Configura primero tu servidor SMTP o clave API de Resend en la pestaña "SMTP / Alertas".',
+      });
+      return;
+    }
+
+    const periodLabels: Record<PeriodFilter, string> = {
+      today: 'Hoy',
+      yesterday: 'Ayer',
+      '7days': 'Últimos 7 días',
+      month: 'Mes actual',
+    };
+
+    const paymentMap: Record<string, { method: string; count: number; totalUSD: number }> = {};
+    filteredSales.forEach((s) => {
+      if (!paymentMap[s.paymentMethod]) {
+        paymentMap[s.paymentMethod] = { method: s.paymentMethod, count: 0, totalUSD: 0 };
+      }
+      paymentMap[s.paymentMethod].count += 1;
+      paymentMap[s.paymentMethod].totalUSD += s.totalWithIgtfUSD || s.subtotalUSD;
+    });
+
+    setIsSendingReport(true);
+    setReportFeedback(null);
+    try {
+      const res = await dispatchStoreEmail({
+        action: 'sales_report',
+        storeId,
+        storeName,
+        exchangeRate,
+        config: cfg,
+        triggerEvent: `Envío manual desde Analítica (${periodLabels[period]})`,
+        salesSummary: {
+          periodLabel: periodLabels[period],
+          totalOrders: profitabilityMetrics.totalOrders,
+          grossRevenueUSD: profitabilityMetrics.grossRevenueUSD,
+          costOfGoodsUSD: profitabilityMetrics.replacementCostUSD,
+          mermasLossUSD: profitabilityMetrics.mermasLossUSD,
+          netProfitUSD: profitabilityMetrics.netProfitUSD,
+          paymentBreakdown: Object.values(paymentMap),
+          topItems: topProducts.slice(0, 8).map((p) => ({
+            name: p.name,
+            quantity: p.quantitySold,
+            revenueUSD: p.revenueUSD,
+          })),
+        },
+      });
+      setReportFeedback({
+        type: res.ok ? 'success' : 'error',
+        text: res.ok
+          ? `Reporte enviado a ${cfg.recipientEmail} (${res.message})`
+          : res.message,
+      });
+    } finally {
+      setIsSendingReport(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {reportFeedback && (
+        <div
+          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 rounded-xl border text-xs ${
+            reportFeedback.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-red-500/10 border-red-500/30 text-red-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {reportFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{reportFeedback.text}</span>
+          </div>
+          {reportFeedback.type === 'error' && onOpenEmailConfig && (
+            <button
+              type="button"
+              onClick={onOpenEmailConfig}
+              className="px-3 py-1.5 rounded-lg bg-amber-500 text-zinc-950 font-semibold text-xs shrink-0 self-start sm:self-auto"
+            >
+              Configurar SMTP / Resend
+            </button>
+          )}
+        </div>
+      )}
       {/* Sub-Tabs Bar & Period Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-3">
         <div className="flex items-center gap-1.5 overflow-x-auto text-xs sm:text-sm">
@@ -421,11 +532,26 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                 </p>
               </div>
 
-              <div className="text-right">
-                <span className="text-[11px] text-zinc-400 block">Margen Neto Real</span>
-                <span className="font-mono text-2xl font-black text-emerald-400 tabular-nums">
-                  {profitabilityMetrics.netMarginPct.toFixed(1)}%
-                </span>
+              <div className="flex items-center gap-4 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleSendSalesReportEmail}
+                  disabled={isSendingReport}
+                  className="px-3.5 py-2 min-h-[42px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-2 transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isSendingReport ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Mail className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isSendingReport ? 'Enviando...' : 'Enviar Reporte por Correo'}</span>
+                </button>
+                <div className="text-right">
+                  <span className="text-[11px] text-zinc-400 block">Margen Neto Real</span>
+                  <span className="font-mono text-2xl font-black text-emerald-400 tabular-nums">
+                    {profitabilityMetrics.netMarginPct.toFixed(1)}%
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -843,6 +969,21 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                   ≈ {(sales.reduce((acc, s) => acc + s.subtotalUSD, 0) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
                 </span>
               </div>
+
+              <button
+                type="button"
+                onClick={handleSendSalesReportEmail}
+                disabled={isSendingReport}
+                className="px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 text-amber-300 font-semibold rounded-xl text-xs sm:text-sm flex items-center gap-2 transition-colors disabled:opacity-40 whitespace-nowrap min-h-[44px]"
+                title="Enviar resumen de ventas al correo configurado (SMTP / Resend)"
+              >
+                {isSendingReport ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Mail className="w-4 h-4" />
+                )}
+                <span>{isSendingReport ? 'Enviando...' : 'Enviar por Correo'}</span>
+              </button>
 
               <button
                 onClick={() => exportSalesReportPDF(sales, exchangeRate)}

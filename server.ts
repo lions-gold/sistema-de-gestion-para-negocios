@@ -16,6 +16,10 @@ import {
   handlePaymentProofNotification,
   PaymentProofNotifyPayload,
 } from './lib/paymentNotifyServer';
+import {
+  handleStoreEmailDispatch,
+  StoreEmailDispatchPayload,
+} from './lib/storeEmailServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -343,6 +347,27 @@ app.post('/api/payments/notify-proof', async (req, res) => {
       emailSent: false,
       deliveryChannel: 'client_mailto',
       message: 'Error interno al procesar comprobante en servidor.',
+    });
+  }
+});
+
+// Per-Store Custom SMTP / Resend API Email Dispatch Endpoint (Stock Alerts & Sales Reports)
+app.post('/api/stores/send-email', async (req, res) => {
+  try {
+    const result = await handleStoreEmailDispatch(
+      (req.body || {}) as StoreEmailDispatchPayload,
+      req.headers.authorization
+    );
+    if (result.status && result.status >= 400) {
+      return res.status(result.status).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/stores/send-email error:', err);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error interno al enviar el correo desde el servidor.',
+      error: err instanceof Error ? err.message : 'INTERNAL_ERROR',
     });
   }
 });

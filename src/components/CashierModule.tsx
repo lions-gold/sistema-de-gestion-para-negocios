@@ -57,6 +57,7 @@ interface CashierModuleProps {
   closings?: CashClosingRecord[];
   onPurchasesChange?: (purchases: PurchaseInvoice[]) => void;
   onClosingsChange?: (closings: CashClosingRecord[]) => void;
+  onClosingCompleted?: (closing: CashClosingRecord) => void;
 }
 
 export const CashierModule: React.FC<CashierModuleProps> = ({
@@ -68,6 +69,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   closings: controlledClosings,
   onPurchasesChange,
   onClosingsChange,
+  onClosingCompleted,
 }) => {
   const [subTab, setSubTab] = useState<'closing' | 'fiscal_printers' | 'seniat_books' | 'petty_cash'>('closing');
 
@@ -242,6 +244,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     saveStoredFiscalConfig(updatedConfig);
 
     setClosings([newClosing, ...closings]);
+    onClosingCompleted?.(newClosing);
     setFiscalLogs((prev) => [
       `[${new Date().toLocaleTimeString()}] *** REPORTE Z GENERADO: ${zReportStr} ***`,
       `[${new Date().toLocaleTimeString()}] Total ventas: $${paymentMethodStats.totalSalesUSD.toFixed(2)} (${paymentMethodStats.totalSalesBs.toLocaleString('es-VE')} Bs.)`,

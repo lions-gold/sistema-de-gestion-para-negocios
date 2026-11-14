@@ -1,0 +1,580 @@
+import fs from 'fs';
+import path from 'path';
+import nodemailer from 'nodemailer';
+import firebaseConfig from '../firebase-applet-config.json';
+
+function getFirebaseApiKey(): string {
+  if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
+  if (firebaseConfig && typeof firebaseConfig.apiKey === 'string' && firebaseConfig.apiKey) {
+    return firebaseConfig.apiKey;
+  }
+  try {
+    const cfgPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    const raw = fs.readFileSync(cfgPath, 'utf8');
+    const parsed = JSON.parse(raw) as { apiKey?: string };
+    return parsed.apiKey || '';
+  } catch {
+    return '';
+  }
+}
+
+async function verifyAuthenticatedUserBearerToken(
+  authHeader?: string
+): Promise<{ ok: boolean; email?: string; uid?: string }> {
+  const firebaseApiKey = getFirebaseApiKey();
+  if (!authHeader || !authHeader.startsWith('Bearer ') || !firebaseApiKey) {
+    return { ok: false };
+  }
+  const idToken = authHeader.slice('Bearer '.length).trim();
+  if (!idToken) return { ok: false };
+
+  try {
+    const resp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseApiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+    if (!resp.ok) return { ok: false };
+    const data = (await resp.json()) as {
+      users?: Array<{ localId?: string; email?: string; emailVerified?: boolean }>;
+    };
+    const user = data.users?.[0];
+    if (user && user.emailVerified === true && user.email) {
+      return { ok: true, email: user.email, uid: user.localId };
+    }
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeHeaderLine(value: string, maxLen = 180): string {
+  return value.replace(/[\r\n]+/g, ' ').trim().slice(0, maxLen);
+}
+
+function isValidEmail(email?: string): email is string {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+export interface StoreEmailProviderConfigInput {
+  provider: 'resend' | 'smtp';
+  recipientEmail: string;
+  secondaryEmail?: string;
+  fromName?: string;
+  fromEmail?: string;
+  resendApiKey?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+}
+
+export interface StockAlertItemInput {
+  id: string;
+  name: string;
+  sku: string;
+  stock: number;
+  minStock: number;
+  unit: string;
+  costUSD: number;
+}
+
+export interface SalesReportItemInput {
+  name: string;
+  quantity: number;
+  revenueUSD: number;
+}
+
+export interface StoreEmailDispatchPayload {
+  action: 'test' | 'stock_alert' | 'sales_report';
+  storeId?: string;
+  storeName: string;
+  exchangeRate?: number;
+  config: StoreEmailProviderConfigInput;
+  triggerEvent?: string;
+  products?: StockAlertItemInput[];
+  salesReport?: {
+    periodLabel: string;
+    totalOrders: number;
+    grossRevenueUSD: number;
+    costOfGoodsUSD?: number;
+    mermasLossUSD?: number;
+    netProfitUSD?: number;
+    receiptNumber?: string;
+    customerName?: string;
+    paymentMethod?: string;
+    cashierName?: string;
+    paymentBreakdown?: Array<{ method: string; count: number; totalUSD: number }>;
+    topItems?: SalesReportItemInput[];
+    recentReceipts?: Array<{
+      receiptNumber: string;
+      date: string;
+      customerName: string;
+      paymentMethod: string;
+      totalUSD: number;
+    }>;
+  };
+}
+
+export interface StoreEmailDispatchResponse {
+  ok: boolean;
+  status?: number;
+  deliveryChannel?: 'smtp' | 'resend';
+  messageId?: string;
+  message: string;
+  error?: string;
+}
+
+function buildEmailContent(payload: StoreEmailDispatchPayload, authenticatedEmail?: string) {
+  const storeName = sanitizeHeaderLine(payload.storeName || 'Mi Tienda', 100);
+  const rate =
+    typeof payload.exchangeRate === 'number' && payload.exchangeRate > 0
+      ? payload.exchangeRate
+      : 1;
+  const nowStr = new Date().toLocaleString('es-VE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  if (payload.action === 'test') {
+    const providerLabel =
+      payload.config.provider === 'resend'
+        ? 'Resend API'
+        : `SMTP (${sanitizeHeaderLine(payload.config.smtpHost || '', 120)}:${Number(payload.config.smtpPort || 587)})`;
+    const subject = sanitizeHeaderLine(
+      `[PRUEBA EXITOSA] Correo configurado para ${storeName} · Smith Solutions`
+    );
+    const text = [
+      `Smith Solutions E-Commerce — Verificación de Correo`,
+      `Tienda: ${storeName}`,
+      `Proveedor activo: ${providerLabel}`,
+      `Receptor principal: ${payload.config.recipientEmail}`,
+      payload.config.secondaryEmail ? `Copia (CC): ${payload.config.secondaryEmail}` : '',
+      `Cuenta verificada: ${authenticatedEmail || payload.config.recipientEmail}`,
+      `Fecha de prueba: ${nowStr}`,
+      ``,
+      `Tu canal de notificaciones está listo para entregar alertas de stock crítico y reportes de ventas.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const html = `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#09090b;color:#f4f4f5;padding:24px;border-radius:14px;border:1px solid #27272a;">
+        <div style="border-bottom:1px solid #27272a;padding-bottom:14px;margin-bottom:18px;">
+          <div style="font-size:11px;letter-spacing:1.2px;color:#fbbf24;font-weight:700;">SMITH SOLUTIONS E-COMMERCE</div>
+          <h2 style="margin:6px 0 0;color:#ffffff;font-size:20px;">Conexión de Correo Verificada</h2>
+        </div>
+        <p style="font-size:14px;line-height:1.6;color:#d4d4d8;margin:0 0 16px;">
+          Tu servidor de correo para <strong style="color:#ffffff;">${escapeHtml(storeName)}</strong> ha sido probado y validado correctamente.
+        </p>
+        <div style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:16px;font-size:13px;line-height:1.8;">
+          <div><span style="color:#a1a1aa;">Proveedor:</span> <strong style="color:#fbbf24;">${escapeHtml(providerLabel)}</strong></div>
+          <div><span style="color:#a1a1aa;">Destinatario:</span> <span style="color:#ffffff;">${escapeHtml(payload.config.recipientEmail)}</span></div>
+          ${
+            payload.config.secondaryEmail
+              ? `<div><span style="color:#a1a1aa;">Copia (CC):</span> <span style="color:#ffffff;">${escapeHtml(payload.config.secondaryEmail)}</span></div>`
+              : ''
+          }
+          <div><span style="color:#a1a1aa;">Fecha:</span> <span style="color:#ffffff;">${escapeHtml(nowStr)}</span></div>
+        </div>
+        <p style="font-size:12px;color:#71717a;margin:18px 0 0;">
+          A partir de ahora recibirás alertas de inventario crítico y reportes de ventas en esta dirección.
+        </p>
+      </div>
+    `;
+    return { subject, text, html };
+  }
+
+  if (payload.action === 'stock_alert') {
+    const items = Array.isArray(payload.products) ? payload.products : [];
+    const triggerEvent = sanitizeHeaderLine(
+      payload.triggerEvent || 'Monitoreo automático de stock crítico',
+      180
+    );
+    const subject = sanitizeHeaderLine(
+      items.length === 1
+        ? `[STOCK CRÍTICO] ${storeName} · ${items[0].name} (${items[0].stock} ${items[0].unit})`
+        : `[STOCK CRÍTICO] ${storeName} · ${items.length} producto(s) requieren reposición`
+    );
+
+    const textLines = [
+      `ALERTA DE STOCK CRÍTICO — ${storeName}`,
+      `Evento: ${triggerEvent}`,
+      `Fecha: ${nowStr} | Tasa ref.: ${rate.toFixed(2)} Bs/USD`,
+      `--------------------------------------------------`,
+      ...items.map(
+        (p) =>
+          `• ${p.name} (SKU: ${p.sku}) -> Stock: ${p.stock} / Mín: ${p.minStock} ${p.unit} | Costo unit.: $${Number(p.costUSD || 0).toFixed(2)}`
+      ),
+      items.length === 0 ? 'No hay productos por debajo del stock mínimo en este momento.' : '',
+    ].filter(Boolean);
+
+    const rowsHtml =
+      items.length === 0
+        ? `<tr><td colspan="4" style="padding:14px;text-align:center;color:#a1a1aa;">Todos los productos están por encima de su stock mínimo.</td></tr>`
+        : items
+            .map((p) => {
+              const reorderQty = Math.max(1, (Number(p.minStock) || 1) * 2 - (Number(p.stock) || 0));
+              const estUsd = reorderQty * (Number(p.costUSD) || 0);
+              const estBs = estUsd * rate;
+              return `
+                <tr style="border-top:1px solid #27272a;">
+                  <td style="padding:10px 12px;">
+                    <div style="font-weight:700;color:#ffffff;">${escapeHtml(p.name)}</div>
+                    <div style="font-size:11px;color:#a1a1aa;font-family:monospace;">${escapeHtml(p.sku)}</div>
+                  </td>
+                  <td style="padding:10px 12px;text-align:center;font-weight:700;color:#f87171;font-family:monospace;">
+                    ${Number(p.stock)} ${escapeHtml(p.unit)}
+                  </td>
+                  <td style="padding:10px 12px;text-align:center;color:#d4d4d8;font-family:monospace;">
+                    ${Number(p.minStock)} ${escapeHtml(p.unit)}
+                  </td>
+                  <td style="padding:10px 12px;text-align:right;font-family:monospace;">
+                    <div style="font-weight:700;color:#fbbf24;">$${estUsd.toFixed(2)} USD</div>
+                    <div style="font-size:11px;color:#a1a1aa;">≈ ${estBs.toLocaleString('es-VE', { maximumFractionDigits: 0 })} Bs.</div>
+                  </td>
+                </tr>
+              `;
+            })
+            .join('');
+
+    const html = `
+      <div style="font-family:Arial,Helvetica,sans-serif;max-width:660px;margin:0 auto;background:#09090b;color:#f4f4f5;padding:24px;border-radius:14px;border:1px solid #3f3f46;">
+        <div style="border-bottom:1px solid #27272a;padding-bottom:14px;margin-bottom:16px;">
+          <div style="font-size:11px;letter-spacing:1.2px;color:#f87171;font-weight:700;">ALERTA DE STOCK CRÍTICO</div>
+          <h2 style="margin:6px 0 0;color:#ffffff;font-size:20px;">${escapeHtml(storeName)}</h2>
+          <p style="margin:4px 0 0;font-size:12px;color:#a1a1aa;">Disparador: ${escapeHtml(triggerEvent)} · ${escapeHtml(nowStr)}</p>
+        </div>
+        <div style="background:#111114;border:1px solid #27272a;border-radius:10px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">
+            <thead style="background:#18181b;color:#a1a1aa;font-size:11px;text-transform:uppercase;">
+              <tr>
+                <th style="padding:10px 12px;">Producto</th>
+                <th style="padding:10px 12px;text-align:center;">Stock Actual</th>
+                <th style="padding:10px 12px;text-align:center;">Mínimo</th>
+                <th style="padding:10px 12px;text-align:right;">Reposición Est.</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <p style="font-size:11px;color:#71717a;margin:16px 0 0;">
+          Tasa BCV/Ref aplicada: ${rate.toFixed(2)} Bs/USD · Smith Solutions E-Commerce
+        </p>
+      </div>
+    `;
+    return { subject, text: textLines.join('\n'), html };
+  }
+
+  // action === 'sales_report'
+  const rep = payload.salesReport || {
+    periodLabel: 'Resumen de Ventas',
+    totalOrders: 0,
+    grossRevenueUSD: 0,
+  };
+  const grossUSD = Number(rep.grossRevenueUSD || 0);
+  const grossBs = grossUSD * rate;
+  const cogsUSD = Number(rep.costOfGoodsUSD || 0);
+  const mermasUSD = Number(rep.mermasLossUSD || 0);
+  const netProfitUSD =
+    typeof rep.netProfitUSD === 'number'
+      ? rep.netProfitUSD
+      : Math.max(0, grossUSD - cogsUSD - mermasUSD);
+
+  const isSingleReceipt = Boolean(rep.receiptNumber);
+  const subject = sanitizeHeaderLine(
+    isSingleReceipt
+      ? `[VENTA #${rep.receiptNumber}] ${storeName} · $${grossUSD.toFixed(2)} USD`
+      : `[REPORTE DE VENTAS] ${storeName} · ${rep.periodLabel} · $${grossUSD.toFixed(2)} USD`
+  );
+
+  const textLines = [
+    `REPORTE DE VENTAS — ${storeName}`,
+    `Período / Referencia: ${rep.receiptNumber ? `Recibo #${rep.receiptNumber}` : rep.periodLabel}`,
+    rep.customerName ? `Cliente: ${rep.customerName}` : '',
+    rep.paymentMethod ? `Método de pago: ${rep.paymentMethod}` : '',
+    `Órdenes: ${rep.totalOrders} | Facturación Bruta: $${grossUSD.toFixed(2)} USD (≈ ${grossBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.)`,
+    cogsUSD > 0 ? `Costo de Reposición: -$${cogsUSD.toFixed(2)} USD` : '',
+    mermasUSD > 0 ? `Mermas / Auditoría: -$${mermasUSD.toFixed(2)} USD` : '',
+    `Ganancia Neta Estimada: $${netProfitUSD.toFixed(2)} USD`,
+    ``,
+    rep.topItems && rep.topItems.length > 0 ? 'Productos destacados:' : '',
+    ...(rep.topItems || []).map(
+      (it) => `• ${it.quantity}x ${it.name} — $${Number(it.revenueUSD).toFixed(2)} USD`
+    ),
+    ``,
+    `Emitido el ${nowStr} (Tasa: ${rate.toFixed(2)} Bs/USD)`,
+  ].filter(Boolean);
+
+  const paymentRows = (rep.paymentBreakdown || [])
+    .map(
+      (pm) => `
+      <tr style="border-top:1px solid #27272a;">
+        <td style="padding:8px 12px;color:#e4e4e7;">${escapeHtml(pm.method)}</td>
+        <td style="padding:8px 12px;text-align:center;color:#a1a1aa;font-family:monospace;">${pm.count}</td>
+        <td style="padding:8px 12px;text-align:right;color:#fbbf24;font-weight:700;font-family:monospace;">$${Number(pm.totalUSD).toFixed(2)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const topItemRows = (rep.topItems || [])
+    .map(
+      (it) => `
+      <tr style="border-top:1px solid #27272a;">
+        <td style="padding:8px 12px;color:#ffffff;">${escapeHtml(it.name)}</td>
+        <td style="padding:8px 12px;text-align:center;color:#d4d4d8;font-family:monospace;">${it.quantity}</td>
+        <td style="padding:8px 12px;text-align:right;color:#34d399;font-weight:700;font-family:monospace;">$${Number(it.revenueUSD).toFixed(2)}</td>
+      </tr>
+    `
+    )
+    .join('');
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:660px;margin:0 auto;background:#09090b;color:#f4f4f5;padding:24px;border-radius:14px;border:1px solid #27272a;">
+      <div style="border-bottom:1px solid #27272a;padding-bottom:14px;margin-bottom:18px;">
+        <div style="font-size:11px;letter-spacing:1.2px;color:#fbbf24;font-weight:700;">REPORTE DE VENTAS & RENTABILIDAD</div>
+        <h2 style="margin:6px 0 0;color:#ffffff;font-size:20px;">${escapeHtml(storeName)}</h2>
+        <p style="margin:4px 0 0;font-size:12px;color:#a1a1aa;">
+          ${escapeHtml(rep.receiptNumber ? `Ticket #${rep.receiptNumber}` : rep.periodLabel)} · ${escapeHtml(nowStr)}
+        </p>
+      </div>
+
+      <table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 18px;">
+        <tr>
+          <td style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:12px;width:33%;">
+            <div style="font-size:11px;color:#a1a1aa;">Facturación Bruta</div>
+            <div style="font-size:18px;font-weight:800;color:#fbbf24;font-family:monospace;margin-top:4px;">$${grossUSD.toFixed(2)}</div>
+            <div style="font-size:11px;color:#71717a;font-family:monospace;">${grossBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</div>
+          </td>
+          <td style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:12px;width:33%;">
+            <div style="font-size:11px;color:#a1a1aa;">Ganancia Neta Est.</div>
+            <div style="font-size:18px;font-weight:800;color:#34d399;font-family:monospace;margin-top:4px;">$${netProfitUSD.toFixed(2)}</div>
+            <div style="font-size:11px;color:#71717a;font-family:monospace;">COGS -$${cogsUSD.toFixed(2)}</div>
+          </td>
+          <td style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:12px;width:33%;">
+            <div style="font-size:11px;color:#a1a1aa;">Órdenes Procesadas</div>
+            <div style="font-size:18px;font-weight:800;color:#ffffff;font-family:monospace;margin-top:4px;">${rep.totalOrders}</div>
+            <div style="font-size:11px;color:#71717a;">${escapeHtml(rep.paymentMethod || 'Multimétodo')}</div>
+          </td>
+        </tr>
+      </table>
+
+      ${
+        rep.customerName
+          ? `<div style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:12px 14px;font-size:13px;margin-bottom:16px;">
+              <div><span style="color:#a1a1aa;">Cliente:</span> <strong style="color:#ffffff;">${escapeHtml(rep.customerName)}</strong></div>
+              ${rep.cashierName ? `<div><span style="color:#a1a1aa;">Caja / Responsable:</span> <span style="color:#d4d4d8;">${escapeHtml(rep.cashierName)}</span></div>` : ''}
+            </div>`
+          : ''
+      }
+
+      ${
+        paymentRows
+          ? `<div style="background:#111114;border:1px solid #27272a;border-radius:10px;overflow:hidden;margin-bottom:16px;">
+              <div style="padding:10px 12px;font-size:12px;font-weight:700;color:#fbbf24;background:#18181b;">Desglose por Método de Pago</div>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody>${paymentRows}</tbody>
+              </table>
+            </div>`
+          : ''
+      }
+
+      ${
+        topItemRows
+          ? `<div style="background:#111114;border:1px solid #27272a;border-radius:10px;overflow:hidden;margin-bottom:16px;">
+              <div style="padding:10px 12px;font-size:12px;font-weight:700;color:#ffffff;background:#18181b;">Detalle de Productos Vendidos</div>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <tbody>${topItemRows}</tbody>
+              </table>
+            </div>`
+          : ''
+      }
+
+      <p style="font-size:11px;color:#71717a;margin:14px 0 0;">
+        Tasa de referencia aplicada: ${rate.toFixed(2)} Bs/USD · Reporte generado por Smith Solutions E-Commerce
+      </p>
+    </div>
+  `;
+
+  return { subject, text: textLines.join('\n'), html };
+}
+
+export async function handleStoreEmailDispatch(
+  payload: StoreEmailDispatchPayload,
+  authHeader?: string
+): Promise<StoreEmailDispatchResponse> {
+  const verified = await verifyAuthenticatedUserBearerToken(authHeader);
+  if (!verified.ok) {
+    return {
+      ok: false,
+      status: 403,
+      message: 'Sesión no autorizada. Inicia sesión con Google verificado para enviar correos.',
+      error: 'UNAUTHORIZED',
+    };
+  }
+
+  const cfg = payload?.config;
+  if (!cfg || !isValidEmail(cfg.recipientEmail)) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'Ingresa un correo electrónico destinatario válido.',
+      error: 'INVALID_RECIPIENT',
+    };
+  }
+
+  const toEmail = cfg.recipientEmail.trim();
+  const ccEmail = isValidEmail(cfg.secondaryEmail) && cfg.secondaryEmail.trim().toLowerCase() !== toEmail.toLowerCase()
+    ? cfg.secondaryEmail.trim()
+    : undefined;
+
+  const { subject, text, html } = buildEmailContent(payload, verified.email);
+  const fromName = sanitizeHeaderLine(cfg.fromName || payload.storeName || 'Smith Solutions', 80);
+
+  if (cfg.provider === 'smtp') {
+    const host = sanitizeHeaderLine(cfg.smtpHost || '', 160);
+    const port = Number(cfg.smtpPort || 587);
+    const user = sanitizeHeaderLine(cfg.smtpUser || '', 160);
+    const pass = String(cfg.smtpPass || '');
+
+    if (!host || !user || !pass || Number.isNaN(port) || port < 1 || port > 65535) {
+      return {
+        ok: false,
+        status: 400,
+        message: 'Completa Servidor SMTP (host), Puerto (1-65535), Usuario y Contraseña.',
+        error: 'INCOMPLETE_SMTP_CONFIG',
+      };
+    }
+
+    const fromAddress = isValidEmail(cfg.fromEmail)
+      ? cfg.fromEmail.trim()
+      : isValidEmail(user)
+        ? user
+        : toEmail;
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: typeof cfg.smtpSecure === 'boolean' ? cfg.smtpSecure : port === 465,
+        auth: { user, pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+
+      if (payload.action === 'test') {
+        await transporter.verify();
+      }
+
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromAddress}>`,
+        to: toEmail,
+        cc: ccEmail,
+        replyTo: verified.email || fromAddress,
+        subject,
+        text,
+        html,
+      });
+
+      return {
+        ok: true,
+        deliveryChannel: 'smtp',
+        messageId: info.messageId,
+        message: `Correo enviado correctamente vía SMTP (${host}:${port}) a ${toEmail}.`,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión SMTP';
+      return {
+        ok: false,
+        status: 502,
+        deliveryChannel: 'smtp',
+        message: `Error SMTP: ${msg}`,
+        error: msg,
+      };
+    }
+  }
+
+  // Provider: Resend API
+  const resendKey = String(cfg.resendApiKey || '').trim();
+  if (!resendKey || !resendKey.startsWith('re_')) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'Ingresa una clave de API de Resend válida (ej. re_xxxxxxxxx).',
+      error: 'INVALID_RESEND_API_KEY',
+    };
+  }
+
+  const fromEmail = isValidEmail(cfg.fromEmail)
+    ? cfg.fromEmail.trim()
+    : 'onboarding@resend.dev';
+
+  try {
+    const resp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: [toEmail],
+        cc: ccEmail ? [ccEmail] : undefined,
+        reply_to: verified.email || toEmail,
+        subject,
+        text,
+        html,
+      }),
+    });
+
+    const bodyText = await resp.text();
+    let parsed: { id?: string; message?: string; name?: string } = {};
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {
+      parsed = { message: bodyText };
+    }
+
+    if (!resp.ok) {
+      const errMsg = parsed?.message || `HTTP ${resp.status} desde Resend API`;
+      return {
+        ok: false,
+        status: 502,
+        deliveryChannel: 'resend',
+        message: `Error Resend API: ${errMsg}`,
+        error: errMsg,
+      };
+    }
+
+    return {
+      ok: true,
+      deliveryChannel: 'resend',
+      messageId: parsed.id,
+      message: `Correo enviado vía Resend API a ${toEmail}${parsed.id ? ` (ID: ${parsed.id})` : ''}.`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error de red contactando a Resend API';
+    return {
+      ok: false,
+      status: 502,
+      deliveryChannel: 'resend',
+      message: `Error Resend API: ${msg}`,
+      error: msg,
+    };
+  }
+}

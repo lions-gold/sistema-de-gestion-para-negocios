@@ -28,6 +28,7 @@ import { BarcodeScannerModal } from './components/BarcodeScannerModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { fetchLiveExchangeRates, BCVRatesState } from './services/bcvApi';
 import { getStoredEmailConfig, recordSimulatedEmailDispatch } from './utils/alertNotifications';
+import { dispatchStoreEmail, getLocalStoreEmailConfig } from './services/emailDeliveryService';
 import { CookieBanner } from './components/CookieBanner';
 import { NotFoundPage } from './components/NotFoundPage';
 import { MarketplaceDirectory } from './components/MarketplaceDirectory';
@@ -622,15 +623,57 @@ export default function App() {
       }
     });
 
+    const emailStoreId = activeWarehouseStore?.id || 'default-warehouse';
+    const emailStoreName = activeWarehouseStore?.storeName || 'Almacén & POS';
+    const storeEmailCfg = getLocalStoreEmailConfig(
+      emailStoreId,
+      activeWarehouseStore?.ownerUid || '',
+      authUser?.email || ''
+    );
+    const hasRealEmailProvider =
+      storeEmailCfg.isEnabled &&
+      Boolean(storeEmailCfg.recipientEmail) &&
+      ((storeEmailCfg.provider === 'resend' && Boolean(storeEmailCfg.resendApiKey)) ||
+        (storeEmailCfg.provider === 'smtp' &&
+          Boolean(storeEmailCfg.smtpHost && storeEmailCfg.smtpPass)));
+
     if (criticalProducts.length > 0) {
-      const emailConfig = getStoredEmailConfig();
-      if (emailConfig.isEnabled && emailConfig.notifyOnPOS) {
-        recordSimulatedEmailDispatch(
-          criticalProducts,
-          `Venta procesada en Caja POS #${sale.receiptNumber}`,
-          emailConfig
-        );
+      if (hasRealEmailProvider && storeEmailCfg.alertOnCriticalStock && storeEmailCfg.notifyOnPOS) {
+        dispatchStoreEmail({
+          action: 'stock_alert',
+          storeId: emailStoreId,
+          storeName: emailStoreName,
+          exchangeRate,
+          config: storeEmailCfg,
+          triggerEvent: `Venta procesada en Caja POS #${sale.receiptNumber}`,
+          products: criticalProducts,
+        }).catch(() => {});
+      } else {
+        const emailConfig = getStoredEmailConfig();
+        if (emailConfig.isEnabled && emailConfig.notifyOnPOS) {
+          recordSimulatedEmailDispatch(
+            criticalProducts,
+            `Venta procesada en Caja POS #${sale.receiptNumber}`,
+            emailConfig
+          );
+        }
       }
+    }
+
+    if (
+      hasRealEmailProvider &&
+      storeEmailCfg.sendSalesReports &&
+      storeEmailCfg.salesReportFrequency === 'per_sale'
+    ) {
+      dispatchStoreEmail({
+        action: 'sales_report',
+        storeId: emailStoreId,
+        storeName: emailStoreName,
+        exchangeRate,
+        config: storeEmailCfg,
+        triggerEvent: `Venta procesada en Caja POS #${sale.receiptNumber}`,
+        sale,
+      }).catch(() => {});
     }
 
     // Deduct stock for all items in Almacén & linked Storefront products

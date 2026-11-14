@@ -139,6 +139,46 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidStoreEmailConfig(data, storeId) {
+      return data.keys().hasAll([
+          'storeId', 'ownerUid', 'provider', 'isEnabled', 'recipientEmail',
+          'alertOnCriticalStock', 'notifyOnPOS', 'notifyOnManualAdjustment', 'alertFrequency',
+          'sendSalesReports', 'salesReportFrequency', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'storeId', 'ownerUid', 'provider', 'isEnabled', 'recipientEmail',
+          'secondaryEmail', 'fromName', 'fromEmail', 'resendApiKey',
+          'smtpHost', 'smtpPort', 'smtpSecure', 'smtpUser', 'smtpPass',
+          'alertOnCriticalStock', 'notifyOnPOS', 'notifyOnManualAdjustment', 'alertFrequency',
+          'sendSalesReports', 'salesReportFrequency',
+          'lastTestStatus', 'lastTestAt', 'updatedAt'
+        ]) &&
+        data.storeId == storeId &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.provider in ['resend', 'smtp'] &&
+        data.isEnabled is bool &&
+        data.recipientEmail is string && data.recipientEmail.size() >= 5 && data.recipientEmail.size() <= 160 &&
+        (!('secondaryEmail' in data) || (data.secondaryEmail is string && data.secondaryEmail.size() <= 160)) &&
+        (!('fromName' in data) || (data.fromName is string && data.fromName.size() <= 100)) &&
+        (!('fromEmail' in data) || (data.fromEmail is string && data.fromEmail.size() <= 160)) &&
+        (!('resendApiKey' in data) || (data.resendApiKey is string && data.resendApiKey.size() <= 300)) &&
+        (!('smtpHost' in data) || (data.smtpHost is string && data.smtpHost.size() <= 160)) &&
+        (!('smtpPort' in data) || (data.smtpPort is number && data.smtpPort >= 1 && data.smtpPort <= 65535)) &&
+        (!('smtpSecure' in data) || data.smtpSecure is bool) &&
+        (!('smtpUser' in data) || (data.smtpUser is string && data.smtpUser.size() <= 160)) &&
+        (!('smtpPass' in data) || (data.smtpPass is string && data.smtpPass.size() <= 300)) &&
+        data.alertOnCriticalStock is bool &&
+        data.notifyOnPOS is bool &&
+        data.notifyOnManualAdjustment is bool &&
+        data.alertFrequency in ['immediate', 'daily'] &&
+        data.sendSalesReports is bool &&
+        data.salesReportFrequency in ['per_sale', 'daily_closing', 'manual'] &&
+        (!('lastTestStatus' in data) || (data.lastTestStatus is string && data.lastTestStatus.size() <= 240)) &&
+        (!('lastTestAt' in data) || (data.lastTestAt is string && data.lastTestAt.size() <= 60)) &&
+        data.updatedAt is timestamp;
+    }
+
     function isValidSubscriptionPayment(data, paymentId) {
       return data.keys().hasAll([
           'id', 'storeId', 'storeName', 'ownerUid', 'ownerEmail',
@@ -705,31 +745,56 @@ service cloud.firestore {
 
       allow delete: if isValidId(storeId) && isAdmin();
 
-      // Split Collection PII: Store owner's email isolated from public storefront
+      // Split Collection PII & Private Credentials: Store owner's email and SMTP/Resend settings isolated from public storefront
       match /private/{docId} {
-        allow get: if isValidId(storeId) && docId == 'account' && isVerifiedUser() && (
+        allow get: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() && (
           isAdmin() || existing().ownerUid == request.auth.uid
         );
         allow list: if false;
-        allow create: if isValidId(storeId) && docId == 'account' && isVerifiedUser() &&
-          isValidStorePrivateAccount(incoming(), storeId) &&
+        allow create: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() &&
           incoming().ownerUid == request.auth.uid &&
-          incoming().createdAt == request.time &&
           incoming().updatedAt == request.time &&
           exists(/databases/$(database)/documents/stores/$(storeId)) &&
-          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid;
-        allow update: if isValidId(storeId) && docId == 'account' && isVerifiedUser() &&
-          isValidStorePrivateAccount(incoming(), storeId) &&
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid &&
+          (
+            (docId == 'account' &&
+             isValidStorePrivateAccount(incoming(), storeId) &&
+             incoming().createdAt == request.time) ||
+            (docId == 'emailConfig' &&
+             isValidStoreEmailConfig(incoming(), storeId))
+          );
+        allow update: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() &&
           incoming().storeId == existing().storeId &&
           incoming().ownerUid == existing().ownerUid &&
-          incoming().createdAt == existing().createdAt &&
           incoming().updatedAt == request.time &&
           (
-            isAdmin() ||
-            (existing().ownerUid == request.auth.uid &&
-             incoming().diff(existing()).affectedKeys().hasOnly(['ownerEmail', 'updatedAt']))
+            (docId == 'account' &&
+             isValidStorePrivateAccount(incoming(), storeId) &&
+             incoming().createdAt == existing().createdAt &&
+             (
+               isAdmin() ||
+               (existing().ownerUid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['ownerEmail', 'updatedAt']))
+             )) ||
+            (docId == 'emailConfig' &&
+             isValidStoreEmailConfig(incoming(), storeId) &&
+             (
+               isAdmin() ||
+               (existing().ownerUid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'provider', 'isEnabled', 'recipientEmail', 'secondaryEmail',
+                  'fromName', 'fromEmail', 'resendApiKey',
+                  'smtpHost', 'smtpPort', 'smtpSecure', 'smtpUser', 'smtpPass',
+                  'alertOnCriticalStock', 'notifyOnPOS', 'notifyOnManualAdjustment', 'alertFrequency',
+                  'sendSalesReports', 'salesReportFrequency',
+                  'lastTestStatus', 'lastTestAt', 'updatedAt'
+                ]))
+             ))
           );
-        allow delete: if isValidId(storeId) && isAdmin();
+        allow delete: if isValidId(storeId) && (
+          isAdmin() ||
+          (docId == 'emailConfig' && isVerifiedUser() && existing().ownerUid == request.auth.uid)
+        );
       }
 
       // Official Store Owner Inbox (Admin broadcasts, individual messages, coupon reward alerts)

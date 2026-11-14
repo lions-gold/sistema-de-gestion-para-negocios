@@ -153,6 +153,8 @@ export interface CashMovement {
   date: string;
 }
 
+export type EmailProviderType = 'resend' | 'smtp';
+
 export interface EmailAlertConfig {
   recipientEmail: string;
   secondaryEmail?: string;
@@ -162,12 +164,41 @@ export interface EmailAlertConfig {
   notifyOnManualAdjustment: boolean;
 }
 
+export interface StoreEmailConfig {
+  storeId: string;
+  ownerUid: string;
+  provider: EmailProviderType;
+  isEnabled: boolean;
+  recipientEmail: string;
+  secondaryEmail?: string;
+  fromName?: string;
+  fromEmail?: string;
+  resendApiKey?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  alertOnCriticalStock: boolean;
+  notifyOnPOS: boolean;
+  notifyOnManualAdjustment: boolean;
+  alertFrequency: 'immediate' | 'daily';
+  sendSalesReports: boolean;
+  salesReportFrequency: 'per_sale' | 'daily_closing' | 'manual';
+  lastTestStatus?: string;
+  lastTestAt?: string;
+  updatedAt?: unknown;
+}
+
 export interface StockAlertEmailLog {
   id: string;
   timestamp: string;
   recipientEmail: string;
   subject: string;
   triggerEvent: string;
+  kind?: 'stock_alert' | 'sales_report' | 'test';
+  deliveryChannel?: 'smtp' | 'resend' | 'offline_queue' | 'simulated';
+  errorDetail?: string;
   products: {
     id: string;
     name: string;
@@ -177,7 +208,12 @@ export interface StockAlertEmailLog {
     unit: string;
     costUSD: number;
   }[];
-  status: 'Simulado y Enviado';
+  status:
+    | 'Simulado y Enviado'
+    | 'Enviado (SMTP)'
+    | 'Enviado (Resend)'
+    | 'Error de Envío'
+    | 'En Cola Offline';
 }
 
 export type InventoryAuditType = 
