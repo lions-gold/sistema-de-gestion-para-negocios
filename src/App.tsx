@@ -101,6 +101,11 @@ import {
   syncPendingOfflineActions,
   CachedAuthSnapshot,
 } from './services/offlineSyncService';
+import {
+  notifyCashClosingBrowserAlert,
+  notifyCriticalStockBrowserAlert,
+  subscribeNotificationNavigation,
+} from './services/browserNotificationService';
 
 export default function App() {
   const { lang, t } = useLanguage();
@@ -249,6 +254,12 @@ export default function App() {
   useEffect(() => {
     syncFirebaseAuthLanguage(lang);
   }, [lang]);
+
+  useEffect(() => {
+    return subscribeNotificationNavigation((tab) => {
+      navigateTo('app', tab);
+    });
+  }, []);
 
   useEffect(() => {
     hydrateOfflineStoreFromIDB().then(() => {
@@ -425,8 +436,37 @@ export default function App() {
     }
 
     // 2. Cloud Firestore live listeners scoped to storeId + ownerUid (preserving unsynced offline mutations)
+    let hasInitialCloudProducts = false;
+    const lastCloudStockMap = new Map<string, number>();
+    let hasInitialCloudClosings = false;
+    const seenCloudClosingIds = new Set<string>(
+      (local.closings || []).map((c) => c.id)
+    );
+
     const unsubWhProds = subscribeStoreWarehouseProducts(storeId, ownerUid, (cloudProducts) => {
       if (cloudProducts.length > 0) {
+        if (!hasInitialCloudProducts) {
+          cloudProducts.forEach((cp) => lastCloudStockMap.set(cp.id, cp.stock));
+          hasInitialCloudProducts = true;
+        } else {
+          const newlyCritical = cloudProducts.filter((cp) => {
+            const prevStock = lastCloudStockMap.get(cp.id);
+            if (prevStock === undefined) return false;
+            return (
+              cp.stock <= cp.minStock &&
+              (prevStock > cp.minStock || (cp.stock === 0 && prevStock > 0))
+            );
+          });
+          cloudProducts.forEach((cp) => lastCloudStockMap.set(cp.id, cp.stock));
+          if (newlyCritical.length > 0) {
+            notifyCriticalStockBrowserAlert({
+              products: newlyCritical,
+              storeId,
+              storeName: activeWarehouseStore.storeName,
+            }).catch(() => {});
+          }
+        }
+
         const queuedStockAdjustments = getOfflineQueue().filter(
           (q) =>
             (q.type === 'stock_adjustment' && q.payload.storeId === storeId) ||
@@ -460,7 +500,25 @@ export default function App() {
       if (Array.isArray(cloudLedgers.audits)) setAudits(cloudLedgers.audits);
       if (Array.isArray(cloudLedgers.traces)) setTraces(cloudLedgers.traces);
       if (Array.isArray(cloudLedgers.purchases)) setPurchases(cloudLedgers.purchases);
-      if (Array.isArray(cloudLedgers.closings)) setClosings(cloudLedgers.closings);
+      if (Array.isArray(cloudLedgers.closings)) {
+        if (!hasInitialCloudClosings) {
+          cloudLedgers.closings.forEach((cl) => seenCloudClosingIds.add(cl.id));
+          hasInitialCloudClosings = true;
+        } else {
+          const newClosings = cloudLedgers.closings.filter(
+            (cl) => !seenCloudClosingIds.has(cl.id)
+          );
+          cloudLedgers.closings.forEach((cl) => seenCloudClosingIds.add(cl.id));
+          if (newClosings.length > 0) {
+            notifyCashClosingBrowserAlert({
+              closing: newClosings[0],
+              storeId,
+              storeName: activeWarehouseStore.storeName,
+            }).catch(() => {});
+          }
+        }
+        setClosings(cloudLedgers.closings);
+      }
     });
 
     const unsubSfProds = subscribeOwnerStoreProducts(storeId, ownerUid, (sfList) => {
@@ -700,6 +758,16 @@ export default function App() {
     setProducts((prev) =>
       prev.map((p) => (p.id === id ? { ...p, stock: nextStock } : p))
     );
+    if (
+      nextStock <= target.minStock &&
+      (target.stock > target.minStock || (nextStock === 0 && target.stock > 0))
+    ) {
+      notifyCriticalStockBrowserAlert({
+        products: [{ ...target, stock: nextStock }],
+        storeId: activeWarehouseStore?.id || 'default-warehouse',
+        storeName: activeWarehouseStore?.storeName || 'Almacén & POS',
+      }).catch(() => {});
+    }
     if (activeWarehouseStore) {
       if (isAppEffectivelyOffline()) {
         queueOfflineMutation({
@@ -1079,6 +1147,12 @@ export default function App() {
           Boolean(storeEmailCfg.smtpHost && storeEmailCfg.smtpPass)));
 
     if (criticalProducts.length > 0) {
+      notifyCriticalStockBrowserAlert({
+        products: criticalProducts,
+        storeId,
+        storeName,
+      }).catch(() => {});
+
       if (hasRealEmailProvider && storeEmailCfg.alertOnCriticalStock && storeEmailCfg.notifyOnPOS) {
         const alertPayload = {
           action: 'stock_alert' as const,
@@ -1258,8 +1332,17 @@ export default function App() {
   };
 
   const handleClosingsChange = (nextClosings: CashClosingRecord[]) => {
+    const prevIds = new Set(closings.map((c) => c.id));
+    const newlyAdded = nextClosings.find((c) => !prevIds.has(c.id));
     setClosings(nextClosings);
     syncLedgerWithOfflineFallback('closings', 'Cierres de Caja', nextClosings);
+    if (newlyAdded) {
+      notifyCashClosingBrowserAlert({
+        closing: newlyAdded,
+        storeId: activeWarehouseStore?.id || 'default-warehouse',
+        storeName: activeWarehouseStore?.storeName || 'Almacén & POS',
+      }).catch(() => {});
+    }
   };
 
   const handleOpenAppToModule = (

@@ -60,10 +60,10 @@ export const VECTOR_IDENTITY = {
     zh: '我是维克托（Vector）。精准、简练，始终领先一步。',
   },
   greetings: {
-    es: 'Buen día. Soy Vector. Puedo orientarle para comprar en tiendas verificadas o guiarle paso a paso en el registro de su propia tienda ($25/mes). ¿Qué desea hacer hoy?',
-    esTu: 'Buen día. Soy Vector. Puedo orientarte para comprar en tiendas verificadas o guiarte paso a paso en el registro de tu propia tienda ($25/mes). ¿Qué deseas hacer hoy?',
-    en: "Good morning. I'm Vector. I can help you shop across verified stores or guide you step-by-step through registering your own store ($25/mo). How would you like to begin?",
-    zh: '您好，我是维克托（Vector）。我可以协助您在已认证店铺购物，或一步步指导您完成自有店铺入驻（$25/月）。请问今天想办理哪项？',
+    es: '¡Qué gusto saludarle! Soy Vector, su asesor comercial. Puedo orientarle para comprar en tiendas verificadas o guiarle paso a paso para abrir su tienda propia por 25 dólares al mes. ¿Qué le gustaría hacer hoy?',
+    esTu: '¡Qué gusto saludarte! Soy Vector, tu asesor comercial. Puedo orientarte para comprar en tiendas verificadas o guiarte paso a paso para abrir tu tienda propia por 25 dólares al mes. ¿Qué te gustaría hacer hoy?',
+    en: "Good day, welcome! I'm Vector, your commercial advisor. I can help you buy from verified stores or guide you step by step to launch your own store for 25 dollars per month. What would you like to do today?",
+    zh: '您好，很高兴为您服务！我是商务顾问维克托（Vector）。我可以协助您在认证店铺放心购物，或指导您以每月 25 美元快速开启自己的线上店铺。请问今天想办理哪一项？',
   },
   pronunciation: {
     es: 'vek-tor',
@@ -1142,6 +1142,7 @@ export function runVectorDeterministicFallback(params: {
   botAttemptsOnIssue: number;
   hasOpenTicket: boolean;
   offerConsent: VectorConsentStatus;
+  voiceMode?: boolean;
   userRole?: UserPlatformRole;
   isAuthenticated?: boolean;
   hasOwnedStore?: boolean;
@@ -1331,8 +1332,40 @@ export function runVectorDeterministicFallback(params: {
     };
   }
 
-  // Rule 7.5: Guided Store Registration & Buyer vs. Seller Differentiation
+  // Rule 7.4: Consultative Value & Quick Sale Flow (for general business/entrepreneurs)
   const isGeneralPlatformScope = params.brandConfig.storeId === 'platform';
+  if (
+    isGeneralPlatformScope &&
+    /(para qu[eé] sirve|qu[eé] hace|beneficio|ventaja|c[oó]mo hago una venta|como hago una venta|c[oó]mo vender un producto|what does this do|how do i make a sale|有什么用|怎么收银|如何销售)/i.test(
+      text
+    )
+  ) {
+    const asksSale = /(venta|vender un producto|cobrar|caja|make a sale|收银)/i.test(text);
+    const reply = asksSale
+      ? detectedLang === 'zh'
+        ? '操作非常快捷！只需进入销售模块挑选客户选购的商品，选择现金或转账支付方式并确认，系统就会自动累计营收并扣减库存。您目前是已经上架商品，还是我们先从创建第一件商品开始？'
+        : detectedLang === 'en'
+          ? 'It is super fast! Simply open the sales section, pick the items your customer wants, choose cash or transfer, and confirm. The system adds the payment to your register and deducts stock automatically. Do you already have products loaded, or shall we start there?'
+          : '¡Es súper rápido! Solo entra a la sección de ventas, elige los artículos que lleva su cliente, selecciona el método de pago en efectivo o transferencia y confirma. El sistema suma el dinero a su caja y descuenta el inventario automáticamente. ¿Ya tiene productos cargados o empezamos por ahí?'
+      : detectedLang === 'zh'
+        ? '很高兴为您介绍！这套系统能为您节省大量人工对账时间，帮您实时掌控库存变化、在几秒内完成开单收银，并自动核算每日美元与玻利瓦尔收益。您想让我为您演示如何在两分钟内注册店铺吗？'
+        : detectedLang === 'en'
+          ? 'Great question! This platform saves you hours every day by tracking exact inventory levels, closing sales in seconds with live BCV conversion, and calculating daily profit without manual math. Would you like me to walk you through registering your store in under two minutes?'
+          : '¡Qué gusto saludarle! Este sistema le ahorra muchísimo tiempo, porque le permite controlar exactamente qué se vende más para evitar pérdidas de mercancía, registrar ventas en segundos a tasa BCV y conocer su ganancia diaria sin hacer cuentas manuales. ¿Le gustaría que le explique cómo registrar su tienda en menos de dos minutos?';
+
+    return {
+      reply,
+      detectedLanguage: detectedLang,
+      leversUsed: ['reciprocidad'],
+      leverEvidence: ['Guía consultiva de beneficios y flujo de venta'],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(detectedLang, 'navigate_merchant'),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  // Rule 7.5: Guided Store Registration & Buyer vs. Seller Differentiation
   const onboardingOrRoleHit = resolveStoreOnboardingOrRoleGuidance({
     text,
     lang: detectedLang,
@@ -2288,6 +2321,7 @@ export function computeVectorControlMetrics(
 export async function sendVectorChat(params: {
   message: string;
   language: VectorLanguage;
+  voiceMode?: boolean;
   brandConfig: VectorBrandConfig;
   products: StoreProduct[];
   exchangeRate: number;
@@ -2362,6 +2396,7 @@ export async function sendVectorChat(params: {
       body: JSON.stringify({
         message: params.message,
         language: params.language,
+        voiceMode: Boolean(params.voiceMode),
         storeId: params.brandConfig.storeId,
         userRole: params.userRole || 'buyer',
         currentView: params.currentView || 'landing',
@@ -2422,6 +2457,7 @@ export async function sendVectorChat(params: {
     botAttemptsOnIssue: params.botAttemptsOnIssue,
     hasOpenTicket: params.hasOpenTicket,
     offerConsent: params.offerConsent,
+    voiceMode: params.voiceMode,
     userRole: params.userRole,
     isAuthenticated,
     hasOwnedStore: params.hasOwnedStore,
@@ -2437,7 +2473,7 @@ export function getAuthUidSafe(): string {
 export async function requestVectorTTSAudio(params: {
   text: string;
   language: VectorLanguage;
-  voiceName?: 'Charon' | 'Fenrir' | 'Kore';
+  voiceName?: 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Zephyr';
 }): Promise<{ ok: boolean; audioBase64?: string; mimeType?: string; offlineOrUnavailable?: boolean }> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { ok: false, offlineOrUnavailable: true };

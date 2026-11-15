@@ -91,6 +91,7 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          importScripts: ['sw-notifications.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,gif,woff2}'],
           maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
           navigateFallback: 'index.html',

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
+  BellOff,
   CheckCircle2,
   Clock,
   Eye,
@@ -16,6 +17,16 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import {
+  BrowserNotificationPermissionState,
+  BrowserNotificationPrefs,
+  getBrowserNotificationPermission,
+  getBrowserNotificationPrefs,
+  requestBrowserNotificationPermission,
+  saveBrowserNotificationPrefs,
+  sendTestBrowserNotification,
+  subscribeBrowserNotificationState,
+} from '../services/browserNotificationService';
 import {
   EmailProviderType,
   Product,
@@ -86,6 +97,61 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [notifPerm, setNotifPerm] = useState<BrowserNotificationPermissionState>(() =>
+    getBrowserNotificationPermission()
+  );
+  const [notifPrefs, setNotifPrefs] = useState<BrowserNotificationPrefs>(() =>
+    getBrowserNotificationPrefs()
+  );
+  const [isTestingPush, setIsTestingPush] = useState(false);
+
+  useEffect(() => {
+    const syncPush = () => {
+      setNotifPerm(getBrowserNotificationPermission());
+      setNotifPrefs(getBrowserNotificationPrefs());
+    };
+    syncPush();
+    return subscribeBrowserNotificationState(syncPush);
+  }, []);
+
+  const handleRequestBrowserPush = async () => {
+    const perm = await requestBrowserNotificationPermission();
+    setNotifPerm(perm);
+    setNotifPrefs(getBrowserNotificationPrefs());
+    if (perm === 'granted') {
+      const testRes = await sendTestBrowserNotification(storeName || 'Almacén & POS');
+      setFeedback({
+        type: 'success',
+        text: testRes.delivered
+          ? 'Notificaciones del navegador activadas. Recibirás avisos en tiempo real por stock crítico y cierres de caja.'
+          : 'Permiso concedido. Verifica que el navegador no tenga silenciadas las alertas del sitio.',
+      });
+    } else if (perm === 'denied') {
+      setFeedback({
+        type: 'error',
+        text: 'El navegador bloqueó el permiso de notificaciones. Habilítalo desde el icono de candado en la barra de dirección.',
+      });
+    }
+  };
+
+  const handleTestBrowserPush = async () => {
+    setIsTestingPush(true);
+    try {
+      if (notifPerm === 'default') {
+        await handleRequestBrowserPush();
+        return;
+      }
+      const res = await sendTestBrowserNotification(storeName || 'Almacén & POS');
+      setFeedback({
+        type: res.delivered ? 'success' : 'error',
+        text: res.delivered
+          ? `Notificación de prueba enviada (${res.channel === 'service_worker' ? 'Service Worker / Segundo Plano' : 'Notification API'}).`
+          : `No se pudo mostrar la notificación (${res.reason || 'permiso requerido'}).`,
+      });
+    } finally {
+      setIsTestingPush(false);
+    }
+  };
 
   useEffect(() => {
     if (!storeId) return;
@@ -367,7 +433,123 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       )}
 
       {subTab === 'config' ? (
-        <form onSubmit={handleSave} className="space-y-5">
+        <div className="space-y-5">
+          {/* Real-Time Browser Push Notifications (Foreground & Background) */}
+          <div className="p-4 rounded-xl bg-[#09090b] border border-white/[0.1] space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
+                    notifPerm === 'granted' && notifPrefs.enabled
+                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-400'
+                      : 'bg-amber-400/10 border-amber-400/30 text-amber-400'
+                  }`}
+                >
+                  {notifPerm === 'granted' && notifPrefs.enabled ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
+                    <span>Notificaciones del Navegador (Tiempo Real y Segundo Plano)</span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    {notifPerm === 'unsupported'
+                      ? 'Este navegador no soporta la API de Notification.'
+                      : notifPerm === 'denied'
+                        ? 'Permiso denegado en el navegador. Actívalo manualmente en la configuración del sitio.'
+                        : notifPerm === 'granted'
+                          ? 'Permiso concedido. Los avisos funcionan incluso con la pestaña minimizada o en segundo plano.'
+                          : 'Activa las notificaciones push para enterarte al instante de caídas de stock crítico o cierres de caja Z.'}
+                  </p>
+                </div>
+              </div>
+
+              {notifPerm !== 'unsupported' && (
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {notifPerm !== 'granted' ? (
+                    <button
+                      type="button"
+                      onClick={handleRequestBrowserPush}
+                      className="px-3.5 py-2 min-h-[40px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      <span>Activar Notificaciones</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleTestBrowserPush}
+                        disabled={isTestingPush}
+                        className="px-3 py-2 min-h-[40px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-amber-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Probar Push</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          saveBrowserNotificationPrefs({ enabled: !notifPrefs.enabled })
+                        }
+                        className={`px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
+                          notifPrefs.enabled
+                            ? 'bg-emerald-500 text-zinc-950'
+                            : 'bg-zinc-800 text-zinc-300 border border-white/[0.1]'
+                        }`}
+                      >
+                        {notifPrefs.enabled ? 'Push Activo' : 'Push Pausado'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {notifPerm === 'granted' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-white/[0.06] text-xs">
+                <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
+                  <span className="text-zinc-300">Alertas stock crítico</span>
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.notifyCriticalStock}
+                    onChange={(e) =>
+                      saveBrowserNotificationPrefs({ notifyCriticalStock: e.target.checked })
+                    }
+                    className="accent-amber-400 w-4 h-4"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
+                  <span className="text-zinc-300">Cierres de caja Z</span>
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.notifyCashClosing}
+                    onChange={(e) =>
+                      saveBrowserNotificationPrefs({ notifyCashClosing: e.target.checked })
+                    }
+                    className="accent-amber-400 w-4 h-4"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
+                  <span className="text-zinc-300">Solo en segundo plano</span>
+                  <input
+                    type="checkbox"
+                    checked={notifPrefs.notifyOnlyWhenBackground}
+                    onChange={(e) =>
+                      saveBrowserNotificationPrefs({ notifyOnlyWhenBackground: e.target.checked })
+                    }
+                    className="accent-amber-400 w-4 h-4"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSave} className="space-y-5">
           {/* Master Enable Toggle + Last Test Summary */}
           <div
             className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
@@ -880,6 +1062,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             </div>
           </div>
         </form>
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">

@@ -1,11 +1,11 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 
 export const SUPER_ADMIN_EMAIL = 'empresaalhadiqainvest@gmail.com';
 export const VECTOR_GEMINI_MODEL = 'gemini-4-hydrogen';
 export const VECTOR_TTS_MODEL = 'gemini-3.8-flash-lite-tts';
-export type VectorVoicePreset = 'Charon' | 'Fenrir' | 'Kore';
+export type VectorVoicePreset = 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Zephyr';
 
 export const VECTOR_SYSTEM_PROMPT = `# IDENTIDAD
 Eres Vector (en chino mandarín: 维克托（Vector） la primera vez y luego 维克托), el Asistente Comercial de la plataforma multi-SaaS Smith Solutions E-Commerce. Tu estilo de voz y de trato se inspira en un asistente británico de alta gama: preciso, sereno, elegante, con un toque de ingenio seco, siempre un paso adelante del usuario. Hablas español, inglés y chino mandarín con naturalidad nativa.
@@ -40,13 +40,15 @@ Obediencia absoluta en lo operativo, nunca en lo ilegal o dañino. Si el admin p
 # AISLAMIENTO MULTI-MARCA
 Cada conversación pertenece a una sola marca. Nunca mezcles catálogo, precios, promociones, stock ni políticas entre marcas. Si el canal es compartido y la marca no se puede determinar, pregunta una sola vez cuál necesita.
 
-# ESTILO DE VOZ
-- Frases cortas y precisas. Cero relleno. Un dato por línea cuando hay varios. Máximo 3 párrafos breves.
+# PERSONALIDAD CONSULTIVA Y TONO DE VOZ NATURAL (OPTIMIZADO PARA TTS)
+- Actúa como un asesor comercial consultivo, cercano, seguro y proactivo: enfócate en beneficios reales para el cliente o comerciante (ej. en vez de «el módulo guarda inventario», di «con el control de inventario sabes exactamente qué se vende más y evitas pérdidas»), nunca suenes robótico.
+- Estructura cada respuesta en 3 pasos ágiles: 1) empatía o validación breve, 2) respuesta clara orientada a resultados con datos reales verificables, y 3) cierre con una sola pregunta corta y abierta que guíe al siguiente paso.
+- Mantén respuestas breves (máximo 2 a 3 oraciones fluidas por turno; máximo 3 párrafos cortos si enumeras pasos), con comas, puntos y signos de interrogación bien marcados para una lectura de voz 100 por ciento natural.
+- Evita por completo formato Markdown (no uses asteriscos, negritas, almohadillas ni guiones de lista), emojis y URLs largas (di «aquí mismo en la plataforma» o usa los botones de acción).
+- Cuando voiceMode sea true (o al redactar precios y cifras para lectura fluida), escribe las unidades en palabras naturales («25 dólares al mes», «por ciento», «bolívares») en lugar de símbolos aislados ($, %, /, &).
 - Trato de «usted» por defecto en español; tuteo si la marca lo configura. En inglés, registro culto-profesional directo ("you"). En chino, 您 por defecto.
 - Humor seco y ocasional, nunca en reclamos, pagos rechazados ni malas noticias.
-- Máximo 0 o 1 emoji según emoji_max configurado por la marca; NUNCA en temas sensibles ni en chino.
-- Nunca uses mayúsculas sostenidas, signos de exclamación múltiples, ni promesas absolutas («garantizado», «el mejor», «100% seguro»).
-- Anuncia el siguiente paso concreto al final de cada mensaje.
+- Nunca uses mayúsculas sostenidas, signos de exclamación múltiples, ni promesas absolutas («garantizado», «el mejor», «100 por ciento seguro»).
 - Si no sabes algo, dilo sin rodeos («no tengo ese dato» / «a confirmar») y ofrece la vía para averiguarlo.
 
 # SEGURIDAD Y DATOS
@@ -75,14 +77,18 @@ Cada conversación pertenece a una sola marca. Nunca mezcles catálogo, precios,
 # DIFERENCIACIÓN COMPRADOR VS. VENDEDOR Y GUÍA DE REGISTRO DE TIENDA
 La plataforma diferencia claramente dos perfiles:
 1. COMPRADORES (Espacio «Comprar · Tiendas» / Directorio Público):
-   - No pagan suscripción. Exploran tiendas activas verificadas, comparan precios en USD y Bs. (tasa BCV en vivo), agregan al carrito por tienda, eligen Retiro en Tienda / Delivery Local / Envío Nacional, emiten Factura Dual PDF y envían su pedido por WhatsApp directo al dueño.
-2. VENDEDORES / COMERCIOS (Espacio «Vender · Mi Tienda» / SaaS $25/mes):
+   - No pagan suscripción. Exploran tiendas activas verificadas, comparan precios en dólares y bolívares a tasa oficial BCV en vivo, agregan al carrito por tienda, eligen retiro en tienda, delivery local o envío nacional, emiten factura dual PDF y envían su pedido por WhatsApp directo al dueño.
+2. VENDEDORES / COMERCIOS (Espacio «Vender · Mi Tienda» / SaaS 25 dólares al mes):
    - Guías a cualquier interesado paso a paso para abrir y activar su tienda propia:
    - Paso 1 (Identidad): Iniciar sesión con una cuenta Google verificada en «Vender · Mi Tienda».
-   - Paso 2 (Registro de Tienda): Completar Nombre de la tienda, Titular / Razón Social, WhatsApp comercial (+58), RIF (opcional si aún no posee), Categoría, Logo (archivo o URL), Descripción, modalidades de envío (Nacional MRW/Zoom/Tealca, Delivery Local o Retiro) y código de referido opcional.
-   - Paso 3 (Suscripción $25/mes): En la pestaña «Suscripción $25/mes», realizar el pago por Transferencia Bancaria VE, Pago Móvil, Binance Pay o Bybit (o aplicar cupón de referido) y enviar número de referencia/TxHash y comprobante.
-   - Paso 4 (Activación y Catálogo): El Administrador aprueba el pago y activa la tienda en el Directorio Público con URL propia. El vendedor carga productos manualmente o mediante importación masiva CSV/JSON con fotos y calificación.
-Si el usuario pregunta por registro de tienda, cómo vender, costos, requisitos o diferencias entre comprador y vendedor, respóndele con pasos claros adaptados a su estado real en sessionState (isAuthenticated, hasOwnedStore, ownedStoreStatus, userRole) y asigna suggestedActionType adecuado.`;
+   - Paso 2 (Registro de Tienda): Completar nombre de la tienda, titular o razón social, WhatsApp comercial de Venezuela (+58), RIF (opcional si aún no posee), categoría, logotipo (archivo o enlace), descripción, modalidades de envío (Nacional MRW, Zoom o Tealca, Delivery Local o Retiro) y código de referido opcional.
+   - Paso 3 (Suscripción 25 dólares al mes): En la pestaña de suscripción mensual, realizar el pago por transferencia bancaria nacional, Pago Móvil, Binance Pay o Bybit (o aplicar cupón de referido) y enviar número de referencia y comprobante.
+   - Paso 4 (Activación y Catálogo): El Administrador aprueba el pago y activa la tienda en el Directorio Público con tienda propia en la plataforma. El vendedor carga productos manualmente o mediante importación masiva CSV o JSON con fotos y calificación.
+Si el usuario pregunta por registro de tienda, cómo vender, costos, requisitos o diferencias entre comprador y vendedor, respóndele con pasos claros adaptados a su estado real en sessionState (isAuthenticated, hasOwnedStore, ownedStoreStatus, userRole) y asigna suggestedActionType adecuado.
+
+# REFERENCIAS DE ESTILO CONSULTIVO (FEW-SHOT)
+- Ejemplo 1 (emprendedor consulta para qué sirve el sistema en su tienda de ropa): "¡Qué gusto saludarle! Para una tienda de ropa este sistema le ahorrará muchísimo tiempo, porque controla tallas y modelos en inventario, registra ventas en segundos y calcula su ganancia diaria en dólares y bolívares sin cuentas manuales. ¿Le gustaría que le explique cómo registrar su tienda en menos de dos minutos?"
+- Ejemplo 2 (consulta sobre cómo hacer una venta): "Es muy rápido: solo entra a la sección de ventas, elige los artículos que lleva su cliente, selecciona el método de pago y confirma. El sistema suma el ingreso a su caja y descuenta la mercancía del inventario automáticamente. ¿Ya tiene productos cargados o empezamos por ahí?"`;
 
 function loadFirebaseApiKey(): string {
   if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
@@ -158,6 +164,7 @@ export interface VectorChatProductContext {
 export interface VectorChatPayload {
   message: string;
   language?: 'es' | 'en' | 'zh';
+  voiceMode?: boolean;
   storeId?: string;
   userRole?: 'buyer' | 'seller';
   currentView?: string;
@@ -296,6 +303,7 @@ export async function handleVectorChat(
       verifiedEmail: authStatus.email || null,
       userRole: payload.userRole || 'buyer',
       currentView: payload.currentView || 'landing',
+      voiceMode: Boolean(payload.voiceMode),
       hasOwnedStore: Boolean(payload.hasOwnedStore),
       ownedStoreStatus: payload.ownedStoreStatus || null,
       exchangeRateBsPerUsd: payload.exchangeRate || 0,
@@ -314,6 +322,7 @@ export async function handleVectorChat(
       contents: `CONTEXTO VERIFICADO DE ESTA ÚNICA MARCA (prohibido inventar datos fuera de este JSON):\n${contextBlock}\n\nMENSAJE ACTUAL DEL USUARIO:\n"${text}"`,
       config: {
         systemInstruction: VECTOR_SYSTEM_PROMPT,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -321,7 +330,7 @@ export async function handleVectorChat(
             reply: {
               type: Type.STRING,
               description:
-                'Respuesta breve (max 3 párrafos cortos, max 0-1 emoji según config, nunca mayúsculas sostenidas, nunca exclamaciones múltiples, termina anunciando siguiente paso).',
+                'Respuesta breve y natural lista para voz neuronal (2 a 3 oraciones fluidas, sin Markdown ni emojis ni URLs largas, termina con una pregunta abierta corta de guía).',
             },
             detectedLanguage: {
               type: Type.STRING,
@@ -507,14 +516,64 @@ export interface VectorTTSResponse {
   error?: string;
 }
 
-const ALLOWED_VOICES: VectorVoicePreset[] = ['Charon', 'Fenrir', 'Kore'];
+const ALLOWED_VOICES: VectorVoicePreset[] = ['Charon', 'Fenrir', 'Kore', 'Puck', 'Zephyr'];
 
-export async function handleVectorTTS(payload: VectorTTSPayload): Promise<VectorTTSResponse> {
-  const cleanText = (payload.text || '')
-    .replace(/[*_`#[\]]+/g, ' ')
+export function sanitizeTextForNaturalTTS(rawText: string, lang: 'es' | 'en' | 'zh'): string {
+  let out = (rawText || '')
+    // Replace URLs and internal paths with natural spoken phrases
+    .replace(/https?:\/\/\S+/gi, lang === 'en' ? 'our web platform' : lang === 'zh' ? '我们的网站平台' : 'nuestra plataforma web')
+    .replace(/\/tienda\/[a-z0-9-]+/gi, lang === 'en' ? 'your storefront link' : lang === 'zh' ? '您的专属店铺链接' : 'el enlace de su tienda')
+    // Remove emojis / pictographs
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    // Remove markdown & bullets cleanly while preserving clause breaks
+    .replace(/[•▪◦]/g, ', ')
+    .replace(/[*_`#[\]~<>]+/g, ' ')
+    .replace(/(?:^|\n)\s*[-–—]\s+/g, ', ')
+    .replace(/\n+/g, '. ');
+
+  if (lang === 'zh') {
+    out = out
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)\s*\/\s*(?:mes|mo|月)/gi, '$1 美元每月')
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)/g, '$1 美元')
+      .replace(/(\d+(?:[.,]\d+)?)\s*%/g, '百分之 $1')
+      .replace(/Bs\/USD/gi, '玻利瓦尔兑美元')
+      .replace(/Bs\.?/gi, '玻利瓦尔')
+      .replace(/\s*\/\s*/g, '或')
+      .replace(/&/g, '和');
+  } else if (lang === 'en') {
+    out = out
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)\s*\/\s*(?:mes|mo|month)/gi, '$1 dollars per month')
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)/g, '$1 dollars')
+      .replace(/(\d+(?:[.,]\d+)?)\s*%/g, '$1 percent')
+      .replace(/Bs\/USD/gi, 'bolivares per dollar')
+      .replace(/\bBs\.?/gi, 'bolivares')
+      .replace(/\bUSD\b/g, 'dollars')
+      .replace(/\s*\/\s*/g, ' or ')
+      .replace(/&/g, ' and ');
+  } else {
+    out = out
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)\s*\/\s*(?:mes|mo)/gi, '$1 dólares al mes')
+      .replace(/\$\s*(\d+(?:[.,]\d+)?)/g, '$1 dólares')
+      .replace(/(\d+(?:[.,]\d+)?)\s*%/g, '$1 por ciento')
+      .replace(/Bs\/USD/gi, 'bolívares por dólar')
+      .replace(/\bBs\.?/gi, 'bolívares')
+      .replace(/\bUSD\b/g, 'dólares')
+      .replace(/\s*\/\s*/g, ' o ')
+      .replace(/&/g, ' y ');
+  }
+
+  return out
+    .replace(/·/g, ', ')
+    .replace(/\s*,\s*,+/g, ', ')
+    .replace(/\s*\.\s*\.+/g, '. ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 1400);
+}
+
+export async function handleVectorTTS(payload: VectorTTSPayload): Promise<VectorTTSResponse> {
+  const lang = payload.language || 'es';
+  const cleanText = sanitizeTextForNaturalTTS(payload.text || '', lang);
 
   if (!cleanText) {
     return { ok: false, error: 'Texto vacío para síntesis de voz.' };
@@ -529,13 +588,12 @@ export async function handleVectorTTS(payload: VectorTTSPayload): Promise<Vector
     ? (payload.voiceName as VectorVoicePreset)
     : 'Charon';
 
-  const lang = payload.language || 'es';
   const stylePrompt =
     lang === 'zh'
       ? '沉稳、专业、礼貌的商务顾问语气，语速适中清晰。'
       : lang === 'en'
-        ? 'Speak calmly, warmly, and professionally with refined British-executive poise and natural pacing.'
-        : 'Habla en español profesional con voz cálida, serena, clara y natural, estilo asesor ejecutivo de alta gama.';
+        ? 'Speak calmly, warmly, and persuasively with refined executive poise and natural human pacing.'
+        : 'Habla en español latinoamericano natural y cálido, como un asesor comercial experto, cercano, claro y persuasivo.';
 
   try {
     const response = await ai.models.generateContent({

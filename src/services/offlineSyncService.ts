@@ -41,7 +41,7 @@ import {
   upsertVectorConsent,
 } from './vectorService';
 
-export type VectorVoicePreset = 'Charon' | 'Fenrir' | 'Kore';
+export type VectorVoicePreset = 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Zephyr';
 
 const IDB_NAME = 'smith_solutions_offline_db';
 const IDB_VERSION = 1;
@@ -763,7 +763,15 @@ export function loadVectorVoicePreset(): VectorVoicePreset {
   if (typeof window === 'undefined') return 'Charon';
   try {
     const raw = localStorage.getItem(KEYS.vectorVoice);
-    if (raw === 'Charon' || raw === 'Fenrir' || raw === 'Kore') return raw;
+    if (
+      raw === 'Charon' ||
+      raw === 'Fenrir' ||
+      raw === 'Kore' ||
+      raw === 'Puck' ||
+      raw === 'Zephyr'
+    ) {
+      return raw;
+    }
   } catch {
     // ignore
   }

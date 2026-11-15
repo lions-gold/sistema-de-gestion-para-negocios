@@ -85,6 +85,8 @@ const VOICE_OPTIONS: Array<{ id: VectorVoicePreset; label: string }> = [
   { id: 'Charon', label: 'Charon · Ejecutiva' },
   { id: 'Fenrir', label: 'Fenrir · Profunda' },
   { id: 'Kore', label: 'Kore · Serena' },
+  { id: 'Puck', label: 'Puck · Dinámica' },
+  { id: 'Zephyr', label: 'Zephyr · Clara' },
 ];
 
 export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
@@ -433,6 +435,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       const result = await sendVectorChat({
         message: raw,
         language: vectorLang,
+        voiceMode: voiceEnabled,
         brandConfig,
         products: activeProducts,
         exchangeRate,

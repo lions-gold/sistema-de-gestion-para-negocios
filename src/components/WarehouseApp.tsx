@@ -27,9 +27,20 @@ import {
   Store,
   TrendingUp,
   Camera,
-  Server
+  Server,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  BrowserNotificationPermissionState,
+  BrowserNotificationPrefs,
+  getBrowserNotificationPermission,
+  getBrowserNotificationPrefs,
+  requestBrowserNotificationPermission,
+  sendTestBrowserNotification,
+  subscribeBrowserNotificationState,
+} from '../services/browserNotificationService';
 
 interface WarehouseAppProps {
   products: Product[];
@@ -107,11 +118,39 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
   const { t } = useLanguage();
   const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
+  const [notifPerm, setNotifPerm] = useState<BrowserNotificationPermissionState>(() =>
+    getBrowserNotificationPermission()
+  );
+  const [notifPrefs, setNotifPrefs] = useState<BrowserNotificationPrefs>(() =>
+    getBrowserNotificationPrefs()
+  );
   const activeTab = controlledTab || internalTab;
 
   useEffect(() => {
     setShowEmailPanel(false);
   }, [controlledTab]);
+
+  useEffect(() => {
+    const syncState = () => {
+      setNotifPerm(getBrowserNotificationPermission());
+      setNotifPrefs(getBrowserNotificationPrefs());
+    };
+    syncState();
+    return subscribeBrowserNotificationState(syncState);
+  }, []);
+
+  const handleHeaderBrowserNotifClick = async () => {
+    if (notifPerm === 'default') {
+      const result = await requestBrowserNotificationPermission();
+      setNotifPerm(result);
+      setNotifPrefs(getBrowserNotificationPrefs());
+      if (result === 'granted') {
+        await sendTestBrowserNotification(activeStore?.storeName || 'Almacén & POS');
+      }
+      return;
+    }
+    setShowEmailPanel(true);
+  };
 
   const handleTabSelect = (tab: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => {
     setShowEmailPanel(false);
@@ -205,6 +244,35 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+            {notifPerm !== 'unsupported' && (
+              <button
+                type="button"
+                onClick={handleHeaderBrowserNotifClick}
+                className={`px-2.5 py-1.5 min-h-[36px] rounded-lg border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                  notifPerm === 'granted' && notifPrefs.enabled
+                    ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/20'
+                    : notifPerm === 'denied'
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/15'
+                      : 'bg-amber-400/15 border-amber-400/40 text-amber-300 hover:bg-amber-400/25'
+                }`}
+                title="Notificaciones del navegador para stock crítico y cierres de caja"
+              >
+                {notifPerm === 'granted' && notifPrefs.enabled ? (
+                  <Bell className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <BellOff className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span>
+                  {notifPerm === 'granted' && notifPrefs.enabled
+                    ? 'Push ON'
+                    : notifPerm === 'denied'
+                      ? 'Push Bloqueado'
+                      : notifPerm === 'granted'
+                        ? 'Push Pausado'
+                        : 'Activar Alertas'}
+                </span>
+              </button>
+            )}
             <span className="text-zinc-400">{t.warehouse.rateLabel}</span>
             <span className="font-mono font-semibold text-amber-400 tabular-nums">
               {exchangeRate.toFixed(2)} Bs / USD
