@@ -1,6 +1,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Sale, PurchaseInvoice, CashClosingRecord, InventoryAuditLog } from '../types';
+import {
+  VENEZUELA_LOCALE,
+  VENEZUELA_TIMEZONE,
+  getCaracasDateString,
+} from './venezuelaTime';
+import { saveBlobResilient, savePdfResilient } from './pdfExport';
 
 /**
  * Generates and downloads the Official SENIAT Libro de Ventas (CSV)
@@ -62,14 +68,11 @@ export const exportLibroVentasCSV = (sales: Sale[], exchangeRate: number, monthN
 
   const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Libro_de_Ventas_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `Libro_de_Ventas_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.csv`,
+    'text/csv;charset=utf-8;'
+  );
 };
 
 /**
@@ -120,14 +123,11 @@ export const exportLibroComprasCSV = (purchases: PurchaseInvoice[], exchangeRate
 
   const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Libro_de_Compras_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `Libro_de_Compras_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.csv`,
+    'text/csv;charset=utf-8;'
+  );
 };
 
 /**
@@ -264,7 +264,7 @@ export const exportLibroVentasPDF = (sales: Sale[], exchangeRate: number, monthN
     }
   });
 
-  doc.save(`Libro_de_Ventas_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.pdf`);
+  savePdfResilient(doc, `Libro_de_Ventas_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.pdf`);
 };
 
 /**
@@ -393,7 +393,7 @@ export const exportLibroComprasPDF = (purchases: PurchaseInvoice[], exchangeRate
     }
   });
 
-  doc.save(`Libro_de_Compras_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.pdf`);
+  savePdfResilient(doc, `Libro_de_Compras_SENIAT_${monthName.replace(/\s+/g, '_')}_LionsGold.pdf`);
 };
 
 /**
@@ -529,7 +529,7 @@ export const exportCashClosingPDF = (closing: CashClosingRecord) => {
   doc.setTextColor(148, 163, 184);
   doc.text('Software Smith Solutions E-Commerce • Smith Bussines Solutions 2026 • +58 422 027 3766', 14, 265);
 
-  doc.save(`Cierre_Caja_${closing.closingNumber}_SmithSolutions.pdf`);
+  savePdfResilient(doc, `Cierre_Caja_${closing.closingNumber}_SmithSolutions.pdf`);
 };
 
 /**
@@ -566,16 +566,13 @@ export const exportInventoryAuditCSV = (audits: InventoryAuditLog[], exchangeRat
     `"${(a.notes || '').replace(/"/g, '""')}"`
   ]);
 
-  const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `Auditoria_Mermas_LionsGold_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `Auditoria_Mermas_LionsGold_${getCaracasDateString()}.csv`,
+    'text/csv;charset=utf-8;'
+  );
 };
 
 /**
@@ -614,7 +611,12 @@ export const exportInventoryAuditPDF = (audits: InventoryAuditLog[], exchangeRat
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(`Fecha Emisión: ${new Date().toLocaleDateString('es-VE')}`, 283, 13, { align: 'right' });
+  doc.text(
+    `Fecha Emisión: ${new Date().toLocaleDateString(VENEZUELA_LOCALE, { timeZone: VENEZUELA_TIMEZONE })}`,
+    283,
+    13,
+    { align: 'right' }
+  );
   doc.setTextColor(251, 191, 36);
   doc.text(`Tasa Oficial BCV: ${exchangeRate.toFixed(2)} Bs/USD`, 283, 20, { align: 'right' });
   doc.setTextColor(148, 163, 184);
@@ -705,6 +707,6 @@ export const exportInventoryAuditPDF = (audits: InventoryAuditLog[], exchangeRat
     doc.text('Firma Gerente General / Administración', 190, finalY + 19);
   }
 
-  doc.save(`Auditoria_Inventario_LionsGold_${new Date().toISOString().split('T')[0]}.pdf`);
+  savePdfResilient(doc, `Auditoria_Inventario_LionsGold_${getCaracasDateString()}.pdf`);
 };
 

@@ -13,6 +13,10 @@ import {
   History,
   AlertCircle
 } from 'lucide-react';
+import {
+  getCaracasDateString,
+  normalizeVenezuelanPhone,
+} from '../utils/venezuelaTime';
 
 interface FiadosModuleProps {
   debtors: Debtor[];
@@ -55,9 +59,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
     onAddDebtor({
       name: newName.trim(),
-      phone: newPhone.replace(/\D/g, ''),
+      phone: normalizeVenezuelanPhone(newPhone) || newPhone.replace(/\D/g, ''),
       balanceUSD: parseFloat(newBalance) || 0,
-      lastPurchaseDate: new Date().toISOString().split('T')[0],
+      lastPurchaseDate: getCaracasDateString(),
       notes: newNotes.trim() || 'Cliente de confianza',
     });
 
@@ -80,7 +84,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
   const generateWhatsAppLink = (debtor: Debtor) => {
     const amountBs = debtor.balanceUSD * exchangeRate;
     const msg = `*LA TABERNA LIONS GOLD*%0AEstimado/a *${debtor.name}*, reciba un cordial saludo.%0A%0ALe contactamos para recordarle su saldo pendiente de *$${debtor.balanceUSD.toFixed(2)} USD* (equivalente a *${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.* a la tasa oficial del día).%0A%0A*Métodos disponibles:*%0A• Pago Móvil%0A• Efectivo (USD / Bs.)%0A• Zelle / Punto de Venta en local%0A%0AQuedamos a su entera disposición. ¡Muchas gracias!%0A_Smith Bussines Solutions 2026_`;
-    const cleanPhone = debtor.phone.replace(/\D/g, '');
+    const cleanPhone = normalizeVenezuelanPhone(debtor.phone);
     return `https://wa.me/${cleanPhone}?text=${msg}`;
   };
 
@@ -328,9 +332,10 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                 <div>
                   <label className="block text-zinc-300 font-medium mb-1">WhatsApp / Celular (Venezuela)</label>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="tel"
                     required
-                    placeholder="584141234567"
+                    placeholder="0414-1234567"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white font-mono"

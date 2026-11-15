@@ -24,6 +24,12 @@ import {
   AuthBackupSyncPayload,
   handleAuthBackupSync,
 } from './lib/authSyncServer';
+import {
+  handleOpenSourceGoogleCallback,
+  handleOpenSourceGoogleStart,
+  handleOpenSourceLogout,
+  handleOpenSourceSession,
+} from './lib/openSourceAuthServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +92,7 @@ app.get('/api/bcv', async (_req, res) => {
   try {
     const response = await fetch('https://ve.dolarapi.com/v1/dolares', {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4500),
     });
 
     if (response.ok) {
@@ -106,7 +113,29 @@ app.get('/api/bcv', async (_req, res) => {
       return res.json({ ...cachedRate, cached: false });
     }
   } catch (error) {
-    console.error('Error fetching BCV rate in server:', error);
+    console.warn('Error fetching BCV primary rate in server:', error);
+  }
+
+  try {
+    const backup = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4500),
+    });
+    if (backup.ok) {
+      const data = await backup.json();
+      const price = Number(data?.monitors?.usd?.price || data?.price || 0);
+      if (price > 0) {
+        cachedRate = {
+          bcv: Number(price.toFixed(2)),
+          paralelo: Number((price * 1.14).toFixed(2)),
+          lastUpdated: new Date().toISOString(),
+          timestamp: now,
+        };
+        return res.json({ ...cachedRate, cached: false });
+      }
+    }
+  } catch (error) {
+    console.warn('Error fetching BCV backup rate in server:', error);
   }
 
   // Fallback if third party is down
@@ -392,6 +421,28 @@ app.post('/api/auth/sync-backup', async (req, res) => {
       message: 'Error interno al sincronizar respaldo Supabase.',
     });
   }
+});
+
+// Open-Source Google OAuth 2.0 PKCE + HTTP-only Session Routes (/api/auth/*)
+app.get('/api/auth/google', (req, res) => {
+  handleOpenSourceGoogleStart(req, res);
+});
+
+app.get('/api/auth/callback/google', async (req, res) => {
+  try {
+    await handleOpenSourceGoogleCallback(req, res);
+  } catch (err) {
+    console.error('Server /api/auth/callback/google error:', err);
+    res.redirect('/?auth_error=Error+al+procesar+OAuth+Open+Source');
+  }
+});
+
+app.get('/api/auth/session', (req, res) => {
+  handleOpenSourceSession(req, res);
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  handleOpenSourceLogout(req, res);
 });
 
 // Explicit JSON 404 for unknown API routes

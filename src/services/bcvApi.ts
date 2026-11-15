@@ -1,3 +1,6 @@
+import { readManualOfflineFlag } from '../hooks/usePWAInstall';
+import { formatCaracasDateTime } from '../utils/venezuelaTime';
+
 export interface DolarRateResponse {
   moneda: string;
   fuente: string;
@@ -19,6 +22,19 @@ export interface BCVRatesState {
 const BCV_CACHE_KEY = 'smith_offline_bcv_v1';
 const FALLBACK_BCV = 896.12;
 const FALLBACK_PARALELO = 1024.24;
+
+async function fetchWithTimeout(url: string, timeoutMs = 4500): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function readCachedBcv(): BCVRatesState | null {
   if (typeof window === 'undefined') return null;
@@ -46,8 +62,8 @@ function saveCachedBcv(rates: BCVRatesState): void {
  * Fetches real-time BCV and parallel dollar rates, caching locally for offline resilience.
  */
 export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
-  // If strictly offline, return last locally saved live rate immediately without failing requests
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // If offline or manual offline mode active, return last locally saved live rate immediately
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     const cached = readCachedBcv();
     if (cached) {
       return {
@@ -66,7 +82,7 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 0: Same-origin server proxy (/api/bcv)
   try {
-    const res = await fetch('/api/bcv', { headers: { Accept: 'application/json' } });
+    const res = await fetchWithTimeout('/api/bcv', 4000);
     if (res.ok) {
       const data = (await res.json()) as Partial<BCVRatesState>;
       if (typeof data.bcv === 'number' && data.bcv > 0) {
@@ -87,9 +103,7 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 1: Direct DolarApi Venezuela
   try {
-    const res = await fetch('https://ve.dolarapi.com/v1/dolares', {
-      headers: { Accept: 'application/json' },
-    });
+    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares', 4500);
 
     if (res.ok) {
       const data: DolarRateResponse[] = await res.json();
@@ -123,7 +137,7 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 2: Single oficial endpoint
   try {
-    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares/oficial', 4500);
     if (res.ok) {
       const data: DolarRateResponse = await res.json();
       const result: BCVRatesState = {
@@ -142,14 +156,14 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 3: PyDolarVenezuela API fallback
   try {
-    const res = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv');
+    const res = await fetchWithTimeout('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', 4500);
     if (res.ok) {
       const data = await res.json();
       const price = data?.monitors?.usd?.price || data?.price;
       if (price) {
         const result: BCVRatesState = {
-          bcv: Number(price.toFixed(2)),
-          paralelo: Number((price * 1.14).toFixed(2)),
+          bcv: Number(Number(price).toFixed(2)),
+          paralelo: Number((Number(price) * 1.14).toFixed(2)),
           lastUpdated: formatDate(new Date().toISOString()),
           isLive: true,
           activeRateType: 'bcv',
@@ -180,17 +194,5 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 }
 
 function formatDate(isoString: string): string {
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return 'Hoy';
-    return d.toLocaleDateString('es-VE', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return 'Hoy';
-  }
+  return formatCaracasDateTime(isoString);
 }

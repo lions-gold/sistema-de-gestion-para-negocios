@@ -19,17 +19,31 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+import { readManualOfflineFlag } from './hooks/usePWAInstall';
 
 export const SUPER_ADMIN_EMAIL = 'empresaalhadiqainvest@gmail.com';
 
+const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env || {};
+
+const envBackedFirebaseConfig = {
+  apiKey: viteEnv.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey,
+  authDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain,
+  projectId: viteEnv.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId,
+  storageBucket: viteEnv.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket,
+  messagingSenderId: viteEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId,
+  appId: viteEnv.VITE_FIREBASE_APP_ID || firebaseConfig.appId,
+  firestoreDatabaseId:
+    viteEnv.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId,
+};
+
 const useSameOriginAuth =
   typeof window !== 'undefined' &&
-  (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_USE_SAME_ORIGIN_AUTH === 'true' &&
+  viteEnv.VITE_USE_SAME_ORIGIN_AUTH === 'true' &&
   window.location.protocol === 'https:';
 
 const resolvedFirebaseConfig = useSameOriginAuth
-  ? { ...firebaseConfig, authDomain: window.location.host }
-  : firebaseConfig;
+  ? { ...envBackedFirebaseConfig, authDomain: window.location.host }
+  : envBackedFirebaseConfig;
 
 const app = initializeApp(resolvedFirebaseConfig);
 
@@ -42,10 +56,10 @@ try {
         tabManager: persistentMultipleTabManager(),
       }),
     },
-    firebaseConfig.firestoreDatabaseId
+    resolvedFirebaseConfig.firestoreDatabaseId
   );
 } catch {
-  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  firestoreInstance = getFirestore(app, resolvedFirebaseConfig.firestoreDatabaseId);
 }
 
 let authInstance: Auth;
@@ -128,7 +142,7 @@ export function handleFirestoreError(
 }
 
 async function testConnection() {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     return;
   }
   try {

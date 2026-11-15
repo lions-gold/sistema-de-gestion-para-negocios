@@ -45,6 +45,10 @@ import {
 } from 'lucide-react';
 import { exportSingleReceiptPDF, printReceiptTicket, exportSalesReportPDF } from '../utils/pdfExport';
 import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
+import {
+  getCaracasDateString,
+  getCaracasYesterdayDateString,
+} from '../utils/venezuelaTime';
 
 interface AnalyticsModuleProps {
   sales: Sale[];
@@ -100,11 +104,8 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   // Filter sales based on period
   const filteredSales = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const todayStr = getCaracasDateString(now);
+    const yesterdayStr = getCaracasYesterdayDateString(now);
 
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

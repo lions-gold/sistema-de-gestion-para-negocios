@@ -12,6 +12,11 @@ import {
   StoreTenant,
 } from '../types';
 import {
+  getCaracasDateTimeStamp,
+  VENEZUELA_LOCALE,
+  VENEZUELA_TIMEZONE,
+} from '../utils/venezuelaTime';
+import {
   Package,
   Search,
   Plus,
@@ -502,7 +507,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     const qty = Math.max(1, parseInt(auditQty) || 1);
     const lossUSD = Number((qty * targetProd.costUSD).toFixed(2));
     const lossBs = Number((lossUSD * exchangeRate).toFixed(2));
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const now = getCaracasDateTimeStamp();
 
     const newAudit: InventoryAuditLog = {
       id: `audit-${Date.now().toString().slice(-5)}`,
@@ -561,7 +566,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     e.preventDefault();
     if (!currentTrace || !newStepDescription.trim()) return;
 
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const now = getCaracasDateTimeStamp();
     const newStep: TraceabilityStep = {
       stage: newStepStage,
       timestamp: now,
@@ -2270,7 +2275,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <div className="pt-2">
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
-                      `*ORDEN DE REPOSICIÓN - ${(activeStore?.storeName || 'SMITH SOLUTIONS').toUpperCase()}*\nFecha: ${new Date().toLocaleDateString('es-VE')}\n----------------------------\n` +
+                      `*ORDEN DE REPOSICIÓN - ${(activeStore?.storeName || 'SMITH SOLUTIONS').toUpperCase()}*\nFecha: ${new Date().toLocaleDateString(VENEZUELA_LOCALE, { timeZone: VENEZUELA_TIMEZONE })}\n----------------------------\n` +
                       reorderList.map((p) => `• ${p.name}: Pedir ${Math.max(1, p.minStock * 2 - p.stock)} ${p.unit}s (Stock actual: ${p.stock})`).join('\n') +
                       `\n----------------------------\nEstimado total: $${totalReorderEstimateUSD.toFixed(2)} USD\nSoftware por Smith Bussines Solutions 2026`
                     )}`}

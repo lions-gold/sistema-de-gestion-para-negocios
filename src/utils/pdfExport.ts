@@ -1,6 +1,85 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Sale, StoreCartItem, StoreOrder, StoreOrderItem, StoreTenant } from '../types';
+import {
+  VENEZUELA_LOCALE,
+  VENEZUELA_TIMEZONE,
+  getCaracasDateString,
+} from './venezuelaTime';
+
+function isIOSStandalonePWA(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const nav = navigator as Navigator & { standalone?: boolean };
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return isIOS && nav.standalone === true;
+}
+
+/**
+ * Triggers resilient file download across PC, Android, iPhone Safari, and iOS Standalone PWA.
+ */
+export function saveBlobResilient(blob: Blob, filename: string, mimeType: string): void {
+  if (isIOSStandalonePWA() && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      const file = new File([blob], filename, { type: mimeType });
+      const navWithShare = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+      };
+      if (!navWithShare.canShare || navWithShare.canShare({ files: [file] })) {
+        navigator
+          .share({ files: [file], title: filename })
+          .catch((err: unknown) => {
+            if (err instanceof Error && err.name === 'AbortError') return;
+            triggerAnchorDownload(blob, filename);
+          });
+        return;
+      }
+    } catch {
+      // Fallback to standard download
+    }
+  }
+  triggerAnchorDownload(blob, filename);
+}
+
+function triggerAnchorDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+/**
+ * Saves jsPDF documents reliably across Desktop, Android, and iPhone Standalone PWA.
+ */
+export function savePdfResilient(doc: jsPDF, filename: string): void {
+  if (isIOSStandalonePWA() && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      const blob = doc.output('blob');
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      const navWithShare = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+      };
+      if (!navWithShare.canShare || navWithShare.canShare({ files: [file] })) {
+        navigator
+          .share({ files: [file], title: filename })
+          .catch((err: unknown) => {
+            if (err instanceof Error && err.name === 'AbortError') return;
+            doc.save(filename);
+          });
+        return;
+      }
+    } catch {
+      // Fall back to doc.save
+    }
+  }
+  doc.save(filename);
+}
 
 /**
  * Exports full batch sales report to PDF
@@ -13,12 +92,14 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
   });
 
   const now = new Date();
-  const dateFormatted = now.toLocaleDateString('es-VE', {
+  const dateFormatted = now.toLocaleDateString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
-  const timeFormatted = now.toLocaleTimeString('es-VE', {
+  const timeFormatted = now.toLocaleTimeString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -145,8 +226,8 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
     );
   }
 
-  const filename = `reporte_ventas_smith_solutions_${now.toISOString().split('T')[0]}.pdf`;
-  doc.save(filename);
+  const filename = `reporte_ventas_smith_solutions_${getCaracasDateString(now)}.pdf`;
+  savePdfResilient(doc, filename);
 }
 
 /**
@@ -333,19 +414,14 @@ export function exportSingleReceiptPDF(sale: Sale): void {
   doc.text('Desarrollado con excelencia por Smith Bussines Solutions 2026', 74, finalY + 39, { align: 'center' });
   doc.text('Contacto: empresaalhadiqainvest@gmail.com | +58 422 027 3766', 74, finalY + 43, { align: 'center' });
 
-  doc.save(`recibo_${sale.receiptNumber}.pdf`);
+  savePdfResilient(doc, `recibo_${sale.receiptNumber}.pdf`);
 }
 
 /**
- * Triggers thermal ticket / browser printer for a sale receipt
+ * Triggers thermal ticket / browser printer for a sale receipt using a hidden iframe
+ * (prevents iPhone Safari / PWA & browser popup blockers from blocking ticket printing).
  */
 export function printReceiptTicket(sale: Sale): void {
-  const printWindow = window.open('', '_blank', 'width=380,height=600');
-  if (!printWindow) {
-    window.print();
-    return;
-  }
-
   const itemsHtml = sale.items
     .map(
       (item) => `
@@ -356,20 +432,21 @@ export function printReceiptTicket(sale: Sale): void {
     )
     .join('');
 
-  printWindow.document.write(`
+  const html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="es">
       <head>
+        <meta charset="UTF-8" />
         <title>Recibo ${sale.receiptNumber}</title>
         <style>
           body {
             font-family: 'Courier New', Courier, monospace;
             font-size: 12px;
-            margin: 0;
+            margin: 0 auto;
             padding: 12px;
             color: #000;
+            background: #fff;
             max-width: 320px;
-            margin: 0 auto;
           }
           .header {
             text-align: center;
@@ -408,6 +485,7 @@ export function printReceiptTicket(sale: Sale): void {
             border-top: 1px dashed #000;
           }
           @media print {
+            @page { margin: 4mm; }
             body { padding: 0; }
           }
         </style>
@@ -468,17 +546,55 @@ export function printReceiptTicket(sale: Sale): void {
           <div>empresaalhadiqainvest@gmail.com</div>
           <div>+58 422 027 3766</div>
         </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() { window.close(); }, 500);
-          };
-        </script>
       </body>
     </html>
-  `);
-  printWindow.document.close();
+  `;
+
+  if (typeof document === 'undefined') return;
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    setTimeout(() => {
+      if (iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    }, 1000);
+  };
+
+  try {
+    const doc = iframe.contentWindow?.document;
+    if (!doc || !iframe.contentWindow) {
+      cleanup();
+      window.print();
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch {
+        window.print();
+      } finally {
+        cleanup();
+      }
+    }, 180);
+  } catch {
+    cleanup();
+    window.print();
+  }
 }
 
 interface NormalizedInvoiceLine {
@@ -576,7 +692,8 @@ function renderStoreInvoicePage(
   );
 
   // Invoice Metadata Top Right
-  const nowStr = new Date().toLocaleDateString('es-VE', {
+  const nowStr = new Date().toLocaleDateString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -782,13 +899,13 @@ export function exportStoreOrderInvoicePDF(
 
   if (mode === 'cliente') {
     renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente');
-    doc.save(`factura_cliente_${store.slug}_${order.invoiceNumber}.pdf`);
+    savePdfResilient(doc, `factura_cliente_${store.slug}_${order.invoiceNumber}.pdf`);
     return;
   }
 
   if (mode === 'dueno') {
     renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno');
-    doc.save(`factura_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
+    savePdfResilient(doc, `factura_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
     return;
   }
 
@@ -796,7 +913,7 @@ export function exportStoreOrderInvoicePDF(
   renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente');
   doc.addPage('a4', 'portrait');
   renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno');
-  doc.save(`facturas_cliente_y_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
+  savePdfResilient(doc, `facturas_cliente_y_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
 }
 
 /**
@@ -814,7 +931,8 @@ export function exportStoreSalesLedgerPDF(
   });
 
   const now = new Date();
-  const dateFormatted = now.toLocaleDateString('es-VE', {
+  const dateFormatted = now.toLocaleDateString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -935,6 +1053,6 @@ export function exportStoreSalesLedgerPDF(
     },
   });
 
-  doc.save(`libro_ventas_${store.slug}_${now.toISOString().split('T')[0]}.pdf`);
+  savePdfResilient(doc, `libro_ventas_${store.slug}_${getCaracasDateString(now)}.pdf`);
 }
 

@@ -4,6 +4,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   try {
     const response = await fetch('https://ve.dolarapi.com/v1/dolares', {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4500),
     });
 
     if (response.ok) {
@@ -28,7 +29,30 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       });
     }
   } catch (error) {
-    console.error('Vercel BCV API error:', error);
+    console.warn('Vercel BCV API primary error:', error);
+  }
+
+  try {
+    const backup = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(4500),
+    });
+    if (backup.ok) {
+      const data = await backup.json();
+      const price = Number(data?.monitors?.usd?.price || data?.price || 0);
+      if (price > 0) {
+        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+        return res.status(200).json({
+          bcv: Number(price.toFixed(2)),
+          paralelo: Number((price * 1.14).toFixed(2)),
+          lastUpdated: new Date().toISOString(),
+          timestamp: Date.now(),
+          cached: false,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Vercel BCV API backup error:', error);
   }
 
   return res.status(200).json({

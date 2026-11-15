@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
-import { Globe, Camera, Store, ShieldCheck, ShoppingBag, Package, Menu, X, LogOut } from 'lucide-react';
+import { Globe, Camera, Store, ShieldCheck, ShoppingBag, Package, Menu, X, LogOut, Wifi, WifiOff } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GoogleAuthButton } from './GoogleAuthButton';
+import { useOnlineStatus } from '../hooks/usePWAInstall';
+import { getOfflineQueue, subscribeOfflineQueue } from '../services/offlineSyncService';
 
 interface HeaderProps {
   currentView: AppMainView;
@@ -17,6 +19,8 @@ interface HeaderProps {
   showWarehousePos?: boolean;
   authUser?: User | null;
   onSignOut?: () => Promise<void>;
+  isOfflinePanelOpen?: boolean;
+  onToggleOfflinePanel?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,9 +30,18 @@ export const Header: React.FC<HeaderProps> = ({
   showWarehousePos = false,
   authUser = null,
   onSignOut,
+  isOfflinePanelOpen = false,
+  onToggleOfflinePanel,
 }) => {
   const { t } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isOnline } = useOnlineStatus();
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => getOfflineQueue().length);
+
+  useEffect(() => {
+    const unsub = subscribeOfflineQueue((next) => setPendingOfflineCount(next.length));
+    return () => unsub();
+  }, []);
 
   const navLinkClass = (active: boolean) =>
     `relative py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap shrink-0 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 rounded ${
@@ -97,8 +110,41 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Language Switcher + Install App + Google Account + Mobile Drawer */}
+        {/* Zone 3: Language Switcher + Offline Guard + Install App + Google Account + Mobile Drawer */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {onToggleOfflinePanel && (
+            <button
+              type="button"
+              onClick={onToggleOfflinePanel}
+              aria-pressed={isOfflinePanelOpen}
+              title={
+                !isOnline
+                  ? 'Modo Offline Activo — Ver datos y ventas locales'
+                  : pendingOfflineCount > 0
+                    ? `${pendingOfflineCount} operación(es) locales por sincronizar`
+                    : 'Respaldo y Modo Offline'
+              }
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors shrink-0 min-h-[40px] sm:min-h-[36px] ${
+                !isOnline || pendingOfflineCount > 0
+                  ? 'bg-amber-500/15 border-amber-400/40 text-amber-300 hover:bg-amber-500/25'
+                  : isOfflinePanelOpen
+                    ? 'bg-zinc-800 border-amber-400/40 text-amber-300'
+                    : 'bg-zinc-900 hover:bg-zinc-800 border-white/[0.1] text-zinc-300 hover:text-white'
+              }`}
+            >
+              {!isOnline ? (
+                <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              ) : (
+                <Wifi className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              )}
+              <span className="hidden lg:inline">{!isOnline ? 'Offline' : 'Respaldo'}</span>
+              {pendingOfflineCount > 0 && (
+                <span className="font-mono font-bold text-[11px] bg-amber-400 text-zinc-950 px-1.5 rounded tabular-nums">
+                  {pendingOfflineCount}
+                </span>
+              )}
+            </button>
+          )}
           <PWAInstallButton />
           <LanguageSwitcher compact />
 

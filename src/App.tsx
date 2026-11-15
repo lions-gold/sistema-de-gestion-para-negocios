@@ -12,6 +12,7 @@ import {
   StoreCartItem,
   StoreProduct,
   StoreTenant,
+  UserPlatformRole,
 } from './types';
 import { INITIAL_EXCHANGE_RATE } from './data/mockData';
 import { Header } from './components/Header';
@@ -65,19 +66,40 @@ import {
   updateWarehouseAndLinkedStorefrontStock,
 } from './services/saasService';
 import {
+  consumeOpenSourceAuthErrorFromUrl,
   mirrorFirebaseUserToBackupServer,
   resolveSupabaseSessionOnMount,
   syncFirebaseAuthLanguage,
 } from './services/authService';
 import { Lock, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from './i18n/LanguageContext';
-import { VectorAssistantWidget } from './components/VectorAssistantWidget';
+import { VectorAssistantWidget, VectorOpenSignal } from './components/VectorAssistantWidget';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
+import { getCaracasDateString, getCaracasDateTimeStamp } from './utils/venezuelaTime';
 import {
+  clearCachedAuthSnapshot,
+  getOfflineQueue,
   getStoreWarehouseState,
+  hydrateOfflineStoreFromIDB,
+  isAppEffectivelyOffline,
+  loadCachedAdminStores,
+  loadCachedAuthSnapshot,
   loadCachedBcvRates,
+  loadCachedOwnerStores,
+  loadCachedPlatformBilling,
+  loadCachedStoreProducts,
+  loadSelectedWarehouseStoreId,
+  queueOfflineMutation,
+  saveCachedAdminStores,
+  saveCachedAuthSnapshot,
+  saveCachedOwnerStores,
+  saveCachedPlatformBilling,
+  saveCachedStorefrontWarehouseProducts,
+  saveCachedStoreProducts,
   saveLocalWarehouseState,
+  saveSelectedWarehouseStoreId,
   syncPendingOfflineActions,
+  CachedAuthSnapshot,
 } from './services/offlineSyncService';
 
 export default function App() {
@@ -130,15 +152,24 @@ export default function App() {
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Admin-controlled Almacén & POS access state
+  // Admin-controlled Almacén & POS access state (hydrated from cache if offline)
   const [authUser, setAuthUser] = useState<User | null>(auth.currentUser);
+  const [cachedAuthSnapshot, setCachedAuthSnapshot] = useState<CachedAuthSnapshot | null>(() =>
+    loadCachedAuthSnapshot()
+  );
+  const [isOfflinePanelOpen, setIsOfflinePanelOpen] = useState(false);
   const [redirectAuthError, setRedirectAuthError] = useState<GoogleAuthFriendlyError | null>(null);
   const [platformBilling, setPlatformBilling] = useState<PlatformBillingSettings>(
-    DEFAULT_BILLING_SETTINGS
+    () => loadCachedPlatformBilling() || DEFAULT_BILLING_SETTINGS
   );
-  const [ownerStores, setOwnerStores] = useState<StoreTenant[]>([]);
-  const [adminStores, setAdminStores] = useState<StoreTenant[]>([]);
-  const [selectedWarehouseStoreId, setSelectedWarehouseStoreId] = useState<string>('');
+  const [ownerStores, setOwnerStores] = useState<StoreTenant[]>(() => {
+    const snap = loadCachedAuthSnapshot();
+    return snap?.uid ? loadCachedOwnerStores(snap.uid) : [];
+  });
+  const [adminStores, setAdminStores] = useState<StoreTenant[]>(() => loadCachedAdminStores());
+  const [selectedWarehouseStoreId, setSelectedWarehouseStoreId] = useState<string>(() =>
+    loadSelectedWarehouseStoreId()
+  );
   const [activeVectorContext, setActiveVectorContext] = useState<{
     store: StoreTenant | null;
     products: StoreProduct[];
@@ -161,6 +192,45 @@ export default function App() {
     },
     []
   );
+
+  const [userRole, setUserRole] = useState<UserPlatformRole>(() => {
+    if (initialRoute.view === 'merchant') return 'seller';
+    if (initialRoute.view === 'marketplace') return 'buyer';
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('smith_platform_role_v1');
+        if (saved === 'buyer' || saved === 'seller') return saved;
+      } catch {
+        // ignore storage errors
+      }
+    }
+    return 'buyer';
+  });
+
+  const handleChangeUserRole = useCallback((role: UserPlatformRole) => {
+    setUserRole(role);
+    try {
+      localStorage.setItem('smith_platform_role_v1', role);
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const [vectorOpenSignal, setVectorOpenSignal] = useState<VectorOpenSignal | null>(null);
+
+  const openVectorGuide = useCallback(
+    (role?: UserPlatformRole, autoPrompt?: string) => {
+      if (role) {
+        handleChangeUserRole(role);
+      }
+      setVectorOpenSignal({
+        nonce: Date.now(),
+        role,
+        autoPrompt,
+      });
+    },
+    [handleChangeUserRole]
+  );
   const [capturedReferralCode, setCapturedReferralCode] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -181,14 +251,51 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
-    const unsubBilling = subscribePlatformBillingSettings(setPlatformBilling);
+    hydrateOfflineStoreFromIDB().then(() => {
+      const restoredBilling = loadCachedPlatformBilling();
+      if (restoredBilling) setPlatformBilling(restoredBilling);
+      const restoredAuth = loadCachedAuthSnapshot();
+      if (restoredAuth) {
+        setCachedAuthSnapshot(restoredAuth);
+        if (restoredAuth.uid) {
+          const restoredOwnerStores = loadCachedOwnerStores(restoredAuth.uid);
+          if (restoredOwnerStores.length > 0) setOwnerStores(restoredOwnerStores);
+        }
+      }
+      const restoredAdminStores = loadCachedAdminStores();
+      if (restoredAdminStores.length > 0) setAdminStores(restoredAdminStores);
+    });
+
+    const unsubBilling = subscribePlatformBillingSettings((nextBilling) => {
+      setPlatformBilling(nextBilling);
+      saveCachedPlatformBilling(nextBilling);
+    });
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       setAuthUser(u);
       if (u) {
         setRedirectAuthError(null);
+        const snap: CachedAuthSnapshot = {
+          uid: u.uid,
+          email: u.email || '',
+          displayName: u.displayName || '',
+          emailVerified: Boolean(u.emailVerified),
+          isSuperAdmin: isSuperAdminUser(u),
+          cachedAt: new Date().toISOString(),
+        };
+        setCachedAuthSnapshot(snap);
+        saveCachedAuthSnapshot(snap);
         mirrorFirebaseUserToBackupServer(u).catch(() => {});
       }
     });
+    const openSourceUrlError = consumeOpenSourceAuthErrorFromUrl();
+    if (openSourceUrlError) {
+      setRedirectAuthError(
+        new GoogleAuthFriendlyError({
+          code: 'auth/opensource-oauth-error',
+          message: openSourceUrlError,
+        })
+      );
+    }
     resolveGoogleRedirectOnMount().then(({ user, error }) => {
       if (user) setAuthUser(user);
       if (error) setRedirectAuthError(error);
@@ -200,25 +307,58 @@ export default function App() {
     };
   }, []);
 
+  const effectiveUid =
+    authUser && authUser.emailVerified
+      ? authUser.uid
+      : !authUser && cachedAuthSnapshot?.emailVerified
+        ? cachedAuthSnapshot.uid
+        : '';
+
   useEffect(() => {
     if (!authUser || !authUser.emailVerified) {
-      setOwnerStores([]);
+      if (cachedAuthSnapshot?.uid && isAppEffectivelyOffline()) {
+        const cached = loadCachedOwnerStores(cachedAuthSnapshot.uid);
+        if (cached.length > 0) setOwnerStores(cached);
+        return;
+      }
+      if (!cachedAuthSnapshot) {
+        setOwnerStores([]);
+      }
       return;
     }
-    const unsubStores = subscribeOwnerStores(authUser.uid, setOwnerStores);
+    const cached = loadCachedOwnerStores(authUser.uid);
+    if (cached.length > 0) {
+      setOwnerStores((prev) => (prev.length === 0 ? cached : prev));
+    }
+    const unsubStores = subscribeOwnerStores(authUser.uid, (list) => {
+      setOwnerStores(list);
+      saveCachedOwnerStores(authUser.uid, list);
+    });
     return () => unsubStores();
-  }, [authUser]);
+  }, [authUser, cachedAuthSnapshot]);
 
-  const isSuperAdmin = isSuperAdminUser(authUser);
+  const isSuperAdmin =
+    isSuperAdminUser(authUser) ||
+    (!authUser && isAppEffectivelyOffline() && Boolean(cachedAuthSnapshot?.isSuperAdmin));
 
   useEffect(() => {
     if (!isSuperAdmin) {
-      setAdminStores([]);
+      if (!cachedAuthSnapshot?.isSuperAdmin) {
+        setAdminStores([]);
+      }
       return;
     }
-    const unsubAdminStores = subscribeAllStoresForAdmin(setAdminStores);
+    const cached = loadCachedAdminStores();
+    if (cached.length > 0) {
+      setAdminStores((prev) => (prev.length === 0 ? cached : prev));
+    }
+    if (!authUser) return;
+    const unsubAdminStores = subscribeAllStoresForAdmin((list) => {
+      setAdminStores(list);
+      saveCachedAdminStores(list);
+    });
     return () => unsubAdminStores();
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, authUser, cachedAuthSnapshot]);
 
   const availableWarehouseStores = useMemo(() => {
     const map = new Map<string, StoreTenant>();
@@ -237,6 +377,12 @@ export default function App() {
     }
   }, [availableWarehouseStores, selectedWarehouseStoreId]);
 
+  useEffect(() => {
+    if (selectedWarehouseStoreId) {
+      saveSelectedWarehouseStoreId(selectedWarehouseStoreId);
+    }
+  }, [selectedWarehouseStoreId]);
+
   const activeWarehouseStore = useMemo(
     () =>
       availableWarehouseStores.find((s) => s.id === selectedWarehouseStoreId) ||
@@ -245,9 +391,9 @@ export default function App() {
     [availableWarehouseStores, selectedWarehouseStoreId]
   );
 
-  // Subscribe strictly to the active store's isolated Almacén & POS data (always empty for a new store)
+  // Subscribe strictly to the active store's isolated Almacén & POS data (always works offline too)
   useEffect(() => {
-    if (!activeWarehouseStore || !authUser || !authUser.emailVerified) {
+    if (!activeWarehouseStore || !effectiveUid) {
       setProducts([]);
       setDebtors([]);
       setMovements([]);
@@ -263,7 +409,7 @@ export default function App() {
     const storeId = activeWarehouseStore.id;
     const ownerUid = activeWarehouseStore.ownerUid;
 
-    // 1. Instant local per-store hydration (empty arrays for brand-new stores)
+    // 1. Instant local per-store hydration (IndexedDB + localStorage)
     const local = getStoreWarehouseState(storeId, exchangeRate);
     setProducts(local.products);
     setDebtors(local.debtors);
@@ -274,35 +420,60 @@ export default function App() {
     setPurchases(local.purchases || []);
     setClosings(local.closings || []);
 
-    // 2. Cloud Firestore live listeners scoped to storeId + ownerUid
+    if (!authUser || !authUser.emailVerified) {
+      return;
+    }
+
+    // 2. Cloud Firestore live listeners scoped to storeId + ownerUid (preserving unsynced offline mutations)
     const unsubWhProds = subscribeStoreWarehouseProducts(storeId, ownerUid, (cloudProducts) => {
       if (cloudProducts.length > 0) {
-        setProducts(cloudProducts);
+        const queuedStockAdjustments = getOfflineQueue().filter(
+          (q) =>
+            (q.type === 'stock_adjustment' && q.payload.storeId === storeId) ||
+            (q.type === 'pos_sale' && q.payload.storeId === storeId)
+        );
+        if (queuedStockAdjustments.length > 0) {
+          const currentLocal = getStoreWarehouseState(storeId, exchangeRate).products;
+          const localMap = new Map(currentLocal.map((p) => [p.id, p]));
+          const merged = cloudProducts.map((cp) => localMap.get(cp.id) || cp);
+          setProducts(merged);
+        } else {
+          setProducts(cloudProducts);
+        }
       }
     });
 
     const unsubWhLedgers = subscribeStoreWarehouseLedgers(storeId, ownerUid, (cloudLedgers) => {
+      const pendingQueue = getOfflineQueue();
+      const pendingPosSales = pendingQueue
+        .filter((q) => q.type === 'pos_sale' && q.payload.storeId === storeId)
+        .map((q) => (q.type === 'pos_sale' ? q.payload.sale : null))
+        .filter(Boolean) as Sale[];
+
       if (Array.isArray(cloudLedgers.debtors)) setDebtors(cloudLedgers.debtors);
       if (Array.isArray(cloudLedgers.movements)) setMovements(cloudLedgers.movements);
-      if (Array.isArray(cloudLedgers.sales)) setSales(cloudLedgers.sales);
+      if (Array.isArray(cloudLedgers.sales)) {
+        const cloudIds = new Set(cloudLedgers.sales.map((s) => s.id));
+        const unsynced = pendingPosSales.filter((ps) => !cloudIds.has(ps.id));
+        setSales(unsynced.length > 0 ? [...unsynced, ...cloudLedgers.sales] : cloudLedgers.sales);
+      }
       if (Array.isArray(cloudLedgers.audits)) setAudits(cloudLedgers.audits);
       if (Array.isArray(cloudLedgers.traces)) setTraces(cloudLedgers.traces);
       if (Array.isArray(cloudLedgers.purchases)) setPurchases(cloudLedgers.purchases);
       if (Array.isArray(cloudLedgers.closings)) setClosings(cloudLedgers.closings);
     });
 
-    const unsubSfProds = subscribeOwnerStoreProducts(
-      storeId,
-      ownerUid,
-      setWarehouseStorefrontProducts
-    );
+    const unsubSfProds = subscribeOwnerStoreProducts(storeId, ownerUid, (sfList) => {
+      setWarehouseStorefrontProducts(sfList);
+      saveCachedStorefrontWarehouseProducts(storeId, sfList);
+    });
 
     return () => {
       unsubWhProds();
       unsubWhLedgers();
       unsubSfProds();
     };
-  }, [activeWarehouseStore?.id, activeWarehouseStore?.ownerUid, authUser?.uid]);
+  }, [activeWarehouseStore?.id, activeWarehouseStore?.ownerUid, authUser?.uid, effectiveUid]);
 
   const canAccessWarehousePos =
     isSuperAdmin ||
@@ -364,20 +535,41 @@ export default function App() {
     exchangeRate,
   ]);
 
-  // Auto-sync queued offline operations whenever network returns or user authenticates
+  // Auto-sync queued offline operations whenever network returns, manual offline ends, or periodically
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (navigator.onLine && authUser && authUser.emailVerified) {
-      syncPendingOfflineActions(authUser).catch(() => {});
-    }
-    const handleOnline = () => {
-      refreshBCVRate();
-      if (authUser && authUser.emailVerified) {
+    const trySyncNow = () => {
+      if (!isAppEffectivelyOffline() && authUser && authUser.emailVerified) {
         syncPendingOfflineActions(authUser).catch(() => {});
       }
     };
+
+    trySyncNow();
+
+    const handleOnline = () => {
+      refreshBCVRate();
+      trySyncNow();
+    };
+    const handleOfflineModeChanged = () => {
+      if (!isAppEffectivelyOffline()) {
+        refreshBCVRate();
+        trySyncNow();
+      }
+    };
+
+    const retryTimer = setInterval(() => {
+      if (!isAppEffectivelyOffline() && getOfflineQueue().length > 0) {
+        trySyncNow();
+      }
+    }, 30000);
+
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    window.addEventListener('smith:offline-mode-changed', handleOfflineModeChanged);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('smith:offline-mode-changed', handleOfflineModeChanged);
+      clearInterval(retryTimer);
+    };
   }, [authUser]);
 
   // Sync browser back/forward navigation (popstate)
@@ -445,6 +637,7 @@ export default function App() {
       nextPath = '/';
       setSelectedStoreSlug(undefined);
     } else if (view === 'marketplace') {
+      handleChangeUserRole('buyer');
       nextPath = customPath || '/tiendas';
       if (customPath && customPath.startsWith('/tienda/')) {
         setSelectedStoreSlug(customPath.replace('/tienda/', ''));
@@ -452,6 +645,7 @@ export default function App() {
         setSelectedStoreSlug(undefined);
       }
     } else if (view === 'merchant') {
+      handleChangeUserRole('seller');
       nextPath = '/mi-tienda';
       setSelectedStoreSlug(undefined);
     } else if (view === 'admin') {
@@ -472,7 +666,33 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Inventory stock updater (syncs Warehouse + linked Storefront product)
+  // Helper to persist warehouse ledgers to cloud or enqueue cleanly when offline
+  const syncLedgerWithOfflineFallback = (
+    ledgerKey: 'debtors' | 'movements' | 'sales' | 'audits' | 'traces' | 'purchases' | 'closings',
+    label: string,
+    entries: unknown[]
+  ) => {
+    if (!activeWarehouseStore) return;
+    const storeId = activeWarehouseStore.id;
+    const ownerUid = activeWarehouseStore.ownerUid;
+    if (isAppEffectivelyOffline()) {
+      queueOfflineMutation({
+        type: 'warehouse_ledger_sync',
+        label: `${label} (${activeWarehouseStore.storeName})`,
+        payload: { storeId, ownerUid, ledgerKey, entries },
+      });
+      return;
+    }
+    saveStoreWarehouseLedgerInCloud(storeId, ownerUid, ledgerKey, entries).catch(() => {
+      queueOfflineMutation({
+        type: 'warehouse_ledger_sync',
+        label: `${label} (${activeWarehouseStore.storeName})`,
+        payload: { storeId, ownerUid, ledgerKey, entries },
+      });
+    });
+  };
+
+  // Inventory stock updater (syncs Warehouse + linked Storefront product + offline queue)
   const handleUpdateProductStock = (id: string, delta: number) => {
     const target = products.find((p) => p.id === id);
     if (!target) return;
@@ -481,9 +701,33 @@ export default function App() {
       prev.map((p) => (p.id === id ? { ...p, stock: nextStock } : p))
     );
     if (activeWarehouseStore) {
-      updateWarehouseAndLinkedStorefrontStock(activeWarehouseStore.id, target, nextStock).catch(
-        () => {}
-      );
+      if (isAppEffectivelyOffline()) {
+        queueOfflineMutation({
+          type: 'stock_adjustment',
+          label: `Stock ${target.name}: ${nextStock} ${target.unit}`,
+          payload: {
+            storeId: activeWarehouseStore.id,
+            product: target,
+            nextStock,
+            delta,
+          },
+        });
+      } else {
+        updateWarehouseAndLinkedStorefrontStock(activeWarehouseStore.id, target, nextStock).catch(
+          () => {
+            queueOfflineMutation({
+              type: 'stock_adjustment',
+              label: `Stock ${target.name}: ${nextStock} ${target.unit}`,
+              payload: {
+                storeId: activeWarehouseStore.id,
+                product: target,
+                nextStock,
+                delta,
+              },
+            });
+          }
+        );
+      }
     }
   };
 
@@ -498,7 +742,22 @@ export default function App() {
     };
     setProducts((prev) => [product, ...prev]);
 
-    if (activeWarehouseStore && authUser) {
+    if (activeWarehouseStore) {
+      if (isAppEffectivelyOffline() || !authUser) {
+        queueOfflineMutation({
+          type: 'warehouse_product_upsert',
+          label: `Producto Almacén: ${product.name}`,
+          payload: {
+            storeId: activeWarehouseStore.id,
+            ownerUid: activeWarehouseStore.ownerUid,
+            product,
+            publishToStore,
+            store: activeWarehouseStore,
+          },
+        });
+        return;
+      }
+
       try {
         await saveWarehouseProductInCloud(
           activeWarehouseStore.id,
@@ -516,7 +775,18 @@ export default function App() {
           );
         }
       } catch (err) {
-        console.warn('Error guardando producto de almacén en nube:', err);
+        console.warn('Error guardando producto de almacén en nube, encolando offline:', err);
+        queueOfflineMutation({
+          type: 'warehouse_product_upsert',
+          label: `Producto Almacén: ${product.name}`,
+          payload: {
+            storeId: activeWarehouseStore.id,
+            ownerUid: activeWarehouseStore.ownerUid,
+            product,
+            publishToStore,
+            store: activeWarehouseStore,
+          },
+        });
       }
     }
   };
@@ -562,7 +832,23 @@ export default function App() {
       return computedList;
     });
 
-    if (activeWarehouseStore && authUser && computedList.length > 0) {
+    if (activeWarehouseStore && computedList.length > 0) {
+      if (isAppEffectivelyOffline() || !authUser) {
+        computedList.forEach((prod) => {
+          queueOfflineMutation({
+            type: 'warehouse_product_upsert',
+            label: `Importación Producto: ${prod.name}`,
+            payload: {
+              storeId: activeWarehouseStore.id,
+              ownerUid: activeWarehouseStore.ownerUid,
+              product: prod,
+              publishToStore,
+              store: activeWarehouseStore,
+            },
+          });
+        });
+        return;
+      }
       try {
         await importWarehouseProductsBatchInCloud(
           activeWarehouseStore.id,
@@ -586,6 +872,20 @@ export default function App() {
 
   const handlePublishProductToStore = async (prod: Product) => {
     if (!activeWarehouseStore) return;
+    if (isAppEffectivelyOffline()) {
+      queueOfflineMutation({
+        type: 'warehouse_product_upsert',
+        label: `Publicar en tienda: ${prod.name}`,
+        payload: {
+          storeId: activeWarehouseStore.id,
+          ownerUid: activeWarehouseStore.ownerUid,
+          product: prod,
+          publishToStore: true,
+          store: activeWarehouseStore,
+        },
+      });
+      return;
+    }
     const matchedSf =
       warehouseStorefrontProducts.find((sp) => sp.id === prod.storefrontProductId) ||
       (prod.sku
@@ -620,35 +920,154 @@ export default function App() {
     }
   };
 
-  // Process completed sale from POS
+  // Process completed sale from POS (with full Offline Guard for sold products, stock & cash/fiados)
   const handleCompleteSale = (sale: Sale) => {
     const nextSales = [sale, ...sales];
     setSales(nextSales);
+
+    const offlineNow = isAppEffectivelyOffline();
+    const stockDeltas: Array<{
+      productId: string;
+      storefrontProductId?: string;
+      quantitySold: number;
+      nextStock: number;
+    }> = [];
+
+    // Check if any product dropped to critical stock & compute next stock
+    const criticalProducts: Product[] = [];
+    const nextProducts = products.map((p) => {
+      const itemSold = sale.items.find((i) => i.product.id === p.id);
+      if (itemSold) {
+        const nextStock = Math.max(0, p.stock - itemSold.quantity);
+        if (nextStock <= p.minStock && p.stock > p.minStock) {
+          criticalProducts.push({ ...p, stock: nextStock });
+        }
+        stockDeltas.push({
+          productId: p.id,
+          storefrontProductId: p.storefrontProductId,
+          quantitySold: itemSold.quantity,
+          nextStock,
+        });
+        return { ...p, stock: nextStock };
+      }
+      return p;
+    });
+    setProducts(nextProducts);
+
+    // Also keep cached storefront catalog stock consistent locally
     if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'sales',
-        nextSales
-      ).catch(() => {});
+      const cachedSf = loadCachedStoreProducts(activeWarehouseStore.id);
+      if (cachedSf.length > 0) {
+        const updatedSf = cachedSf.map((sp) => {
+          const matchedDelta = stockDeltas.find((d) => d.storefrontProductId === sp.id);
+          return matchedDelta ? { ...sp, stock: matchedDelta.nextStock } : sp;
+        });
+        saveCachedStoreProducts(activeWarehouseStore.id, updatedSf);
+      }
     }
 
-    // Check if any product dropped to critical stock
-    const criticalProducts: Product[] = [];
-    sale.items.forEach((item) => {
-      const prod = products.find((p) => p.id === item.product.id);
-      if (prod) {
-        const remaining = Math.max(0, prod.stock - item.quantity);
-        if (remaining <= prod.minStock && prod.stock > prod.minStock) {
-          criticalProducts.push({ ...prod, stock: remaining });
-        }
-      }
-    });
+    // Build cash movement OR fiado debtor update
+    let createdMovement: CashMovement | undefined;
+    let updatedDebtor: Debtor | undefined;
+    let nextMovementsSnapshot = movements;
+    let nextDebtorsSnapshot = debtors;
 
-    const emailStoreId = activeWarehouseStore?.id || 'default-warehouse';
-    const emailStoreName = activeWarehouseStore?.storeName || 'Almacén & POS';
+    if (sale.paymentMethod !== 'Fiado (Crédito)') {
+      createdMovement = {
+        id: `mov-${Date.now()}`,
+        type: 'ingreso',
+        category: 'Venta',
+        description: `Venta Mostrador #${sale.receiptNumber} (${sale.paymentMethod})`,
+        amountUSD: sale.subtotalUSD,
+        date: sale.date,
+      };
+      nextMovementsSnapshot = [createdMovement, ...movements];
+      setMovements(nextMovementsSnapshot);
+    } else {
+      const existing = debtors.find(
+        (d) => d.name.toLowerCase() === sale.customerName.toLowerCase()
+      );
+      if (existing) {
+        updatedDebtor = {
+          ...existing,
+          balanceUSD: existing.balanceUSD + sale.subtotalUSD,
+          lastPurchaseDate: sale.date.split(' ')[0],
+          history: [
+            {
+              date: sale.date.split(' ')[0],
+              description: `Compra fiada #${sale.receiptNumber}`,
+              amountUSD: sale.subtotalUSD,
+              type: 'cargo' as const,
+            },
+            ...existing.history,
+          ],
+        };
+        nextDebtorsSnapshot = debtors.map((d) => (d.id === existing.id ? updatedDebtor! : d));
+      } else {
+        updatedDebtor = {
+          id: `deb-${Date.now()}`,
+          name: sale.customerName,
+          phone: '584140000000',
+          balanceUSD: sale.subtotalUSD,
+          lastPurchaseDate: sale.date.split(' ')[0],
+          notes: `Cuenta fiada creada desde POS (#${sale.receiptNumber})`,
+          history: [
+            {
+              date: sale.date.split(' ')[0],
+              description: `Compra fiada #${sale.receiptNumber}`,
+              amountUSD: sale.subtotalUSD,
+              type: 'cargo' as const,
+            },
+          ],
+        };
+        nextDebtorsSnapshot = [updatedDebtor, ...debtors];
+      }
+      setDebtors(nextDebtorsSnapshot);
+    }
+
+    const storeId = activeWarehouseStore?.id || 'default-warehouse';
+    const ownerUid = activeWarehouseStore?.ownerUid || effectiveUid || 'offline_local_user';
+    const storeName = activeWarehouseStore?.storeName || 'Almacén & POS';
+
+    const enqueuePosSale = () => {
+      queueOfflineMutation({
+        type: 'pos_sale',
+        label: `Venta POS #${sale.receiptNumber} ($${(sale.totalWithIgtfUSD || sale.subtotalUSD).toFixed(2)})`,
+        payload: {
+          storeId,
+          ownerUid,
+          storeName,
+          sale,
+          stockDeltas,
+          cashMovement: createdMovement,
+          debtorSnapshot: updatedDebtor,
+        },
+      });
+    };
+
+    if (offlineNow || !activeWarehouseStore) {
+      enqueuePosSale();
+    } else {
+      // Attempt cloud sync; automatically enqueue if any cloud write drops due to weak signal
+      Promise.all([
+        saveStoreWarehouseLedgerInCloud(storeId, ownerUid, 'sales', nextSales),
+        createdMovement
+          ? saveStoreWarehouseLedgerInCloud(storeId, ownerUid, 'movements', nextMovementsSnapshot)
+          : saveStoreWarehouseLedgerInCloud(storeId, ownerUid, 'debtors', nextDebtorsSnapshot),
+        ...stockDeltas.map((d) => {
+          const prodObj = nextProducts.find((p) => p.id === d.productId);
+          return prodObj
+            ? updateWarehouseAndLinkedStorefrontStock(storeId, prodObj, d.nextStock)
+            : Promise.resolve();
+        }),
+      ]).catch(() => {
+        enqueuePosSale();
+      });
+    }
+
+    // Email stock alerts & per-sale reports (queue automatically when offline)
     const storeEmailCfg = getLocalStoreEmailConfig(
-      emailStoreId,
+      storeId,
       activeWarehouseStore?.ownerUid || '',
       authUser?.email || ''
     );
@@ -661,15 +1080,40 @@ export default function App() {
 
     if (criticalProducts.length > 0) {
       if (hasRealEmailProvider && storeEmailCfg.alertOnCriticalStock && storeEmailCfg.notifyOnPOS) {
-        dispatchStoreEmail({
-          action: 'stock_alert',
-          storeId: emailStoreId,
-          storeName: emailStoreName,
+        const alertPayload = {
+          action: 'stock_alert' as const,
+          storeId,
+          storeName,
           exchangeRate,
           config: storeEmailCfg,
           triggerEvent: `Venta procesada en Caja POS #${sale.receiptNumber}`,
           products: criticalProducts,
-        }).catch(() => {});
+        };
+        if (offlineNow) {
+          queueOfflineMutation({
+            type: 'email_dispatch',
+            label: `Alerta Stock Crítico #${sale.receiptNumber}`,
+            payload: alertPayload,
+          });
+        } else {
+          dispatchStoreEmail(alertPayload)
+            .then((res) => {
+              if (!res.ok && res.queuedOffline) {
+                queueOfflineMutation({
+                  type: 'email_dispatch',
+                  label: `Alerta Stock Crítico #${sale.receiptNumber}`,
+                  payload: alertPayload,
+                });
+              }
+            })
+            .catch(() => {
+              queueOfflineMutation({
+                type: 'email_dispatch',
+                label: `Alerta Stock Crítico #${sale.receiptNumber}`,
+                payload: alertPayload,
+              });
+            });
+        }
       } else {
         const emailConfig = getStoredEmailConfig();
         if (emailConfig.isEnabled && emailConfig.notifyOnPOS) {
@@ -687,107 +1131,39 @@ export default function App() {
       storeEmailCfg.sendSalesReports &&
       storeEmailCfg.salesReportFrequency === 'per_sale'
     ) {
-      dispatchStoreEmail({
-        action: 'sales_report',
-        storeId: emailStoreId,
-        storeName: emailStoreName,
+      const reportPayload = {
+        action: 'sales_report' as const,
+        storeId,
+        storeName,
         exchangeRate,
         config: storeEmailCfg,
         triggerEvent: `Venta procesada en Caja POS #${sale.receiptNumber}`,
         sale,
-      }).catch(() => {});
-    }
-
-    // Deduct stock for all items in Almacén & linked Storefront products
-    setProducts((prev) =>
-      prev.map((p) => {
-        const itemSold = sale.items.find((i) => i.product.id === p.id);
-        if (itemSold) {
-          const nextStock = Math.max(0, p.stock - itemSold.quantity);
-          if (activeWarehouseStore) {
-            updateWarehouseAndLinkedStorefrontStock(
-              activeWarehouseStore.id,
-              p,
-              nextStock
-            ).catch(() => {});
-          }
-          return { ...p, stock: nextStock };
-        }
-        return p;
-      })
-    );
-
-    // If sale is paid immediately (not fiado), record cash movement
-    if (sale.paymentMethod !== 'Fiado (Crédito)') {
-      const newMov: CashMovement = {
-        id: `mov-${Date.now()}`,
-        type: 'ingreso',
-        category: 'Venta',
-        description: `Venta Mostrador #${sale.receiptNumber} (${sale.paymentMethod})`,
-        amountUSD: sale.subtotalUSD,
-        date: sale.date,
       };
-      const nextMovements = [newMov, ...movements];
-      setMovements(nextMovements);
-      if (activeWarehouseStore) {
-        saveStoreWarehouseLedgerInCloud(
-          activeWarehouseStore.id,
-          activeWarehouseStore.ownerUid,
-          'movements',
-          nextMovements
-        ).catch(() => {});
-      }
-    } else {
-      // If sold on credit (fiado), automatically update or create debtor record
-      const existing = debtors.find(
-        (d) => d.name.toLowerCase() === sale.customerName.toLowerCase()
-      );
-      const nextDebtors = existing
-        ? debtors.map((d) =>
-            d.id === existing.id
-              ? {
-                  ...d,
-                  balanceUSD: d.balanceUSD + sale.subtotalUSD,
-                  lastPurchaseDate: sale.date.split(' ')[0],
-                  history: [
-                    {
-                      date: sale.date.split(' ')[0],
-                      description: `Compra fiada #${sale.receiptNumber}`,
-                      amountUSD: sale.subtotalUSD,
-                      type: 'cargo' as const,
-                    },
-                    ...d.history,
-                  ],
-                }
-              : d
-          )
-        : [
-            {
-              id: `deb-${Date.now()}`,
-              name: sale.customerName,
-              phone: '584140000000',
-              balanceUSD: sale.subtotalUSD,
-              lastPurchaseDate: sale.date.split(' ')[0],
-              notes: `Cuenta fiada creada desde POS (#${sale.receiptNumber})`,
-              history: [
-                {
-                  date: sale.date.split(' ')[0],
-                  description: `Compra fiada #${sale.receiptNumber}`,
-                  amountUSD: sale.subtotalUSD,
-                  type: 'cargo' as const,
-                },
-              ],
-            },
-            ...debtors,
-          ];
-      setDebtors(nextDebtors);
-      if (activeWarehouseStore) {
-        saveStoreWarehouseLedgerInCloud(
-          activeWarehouseStore.id,
-          activeWarehouseStore.ownerUid,
-          'debtors',
-          nextDebtors
-        ).catch(() => {});
+      if (offlineNow) {
+        queueOfflineMutation({
+          type: 'email_dispatch',
+          label: `Reporte Venta #${sale.receiptNumber}`,
+          payload: reportPayload,
+        });
+      } else {
+        dispatchStoreEmail(reportPayload)
+          .then((res) => {
+            if (!res.ok && res.queuedOffline) {
+              queueOfflineMutation({
+                type: 'email_dispatch',
+                label: `Reporte Venta #${sale.receiptNumber}`,
+                payload: reportPayload,
+              });
+            }
+          })
+          .catch(() => {
+            queueOfflineMutation({
+              type: 'email_dispatch',
+              label: `Reporte Venta #${sale.receiptNumber}`,
+              payload: reportPayload,
+            });
+          });
       }
     }
   };
@@ -808,19 +1184,12 @@ export default function App() {
     };
     const nextDebtors = [newDebtor, ...debtors];
     setDebtors(nextDebtors);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'debtors',
-        nextDebtors
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('debtors', 'Clientes / Fiados', nextDebtors);
   };
 
   // Record payment / abono on debt
   const handleRecordPayment = (debtorId: string, amountUSD: number, description: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getCaracasDateString();
     let debtorName = '';
 
     const nextDebtors = debtors.map((d) => {
@@ -852,25 +1221,13 @@ export default function App() {
       category: 'Venta',
       description: `Abono de deuda: ${debtorName || 'Cliente'} (${description})`,
       amountUSD,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      date: getCaracasDateTimeStamp(),
     };
     const nextMovements = [newMov, ...movements];
     setMovements(nextMovements);
 
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'debtors',
-        nextDebtors
-      ).catch(() => {});
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'movements',
-        nextMovements
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('debtors', 'Abono de deuda', nextDebtors);
+    syncLedgerWithOfflineFallback('movements', 'Movimiento de Caja', nextMovements);
   };
 
   // Add manual cash movement
@@ -878,72 +1235,45 @@ export default function App() {
     const newMov: CashMovement = {
       ...movData,
       id: `mov-${Date.now()}`,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      date: getCaracasDateTimeStamp(),
     };
     const nextMovements = [newMov, ...movements];
     setMovements(nextMovements);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'movements',
-        nextMovements
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('movements', 'Movimiento de Caja', nextMovements);
   };
 
   const handleAuditsChange = (nextAudits: InventoryAuditLog[]) => {
     setAudits(nextAudits);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'audits',
-        nextAudits
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('audits', 'Auditorías de Inventario', nextAudits);
   };
 
   const handleTracesChange = (nextTraces: ProductBatchTrace[]) => {
     setTraces(nextTraces);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'traces',
-        nextTraces
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('traces', 'Trazabilidad de Lotes', nextTraces);
   };
 
   const handlePurchasesChange = (nextPurchases: PurchaseInvoice[]) => {
     setPurchases(nextPurchases);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'purchases',
-        nextPurchases
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('purchases', 'Facturas de Compra', nextPurchases);
   };
 
   const handleClosingsChange = (nextClosings: CashClosingRecord[]) => {
     setClosings(nextClosings);
-    if (activeWarehouseStore) {
-      saveStoreWarehouseLedgerInCloud(
-        activeWarehouseStore.id,
-        activeWarehouseStore.ownerUid,
-        'closings',
-        nextClosings
-      ).catch(() => {});
-    }
+    syncLedgerWithOfflineFallback('closings', 'Cierres de Caja', nextClosings);
   };
 
   const handleOpenAppToModule = (
     module?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'
   ) => {
     navigateTo('app', module || appInitialTab);
+  };
+
+  const handleSignOutWithCacheClear = async () => {
+    clearCachedAuthSnapshot();
+    setCachedAuthSnapshot(null);
+    setOwnerStores([]);
+    setAdminStores([]);
+    await signOutAccount();
   };
 
   return (
@@ -957,7 +1287,9 @@ export default function App() {
         onOpenScanner={() => setIsScannerOpen(true)}
         showWarehousePos={canAccessWarehousePos}
         authUser={authUser}
-        onSignOut={signOutAccount}
+        onSignOut={handleSignOutWithCacheClear}
+        isOfflinePanelOpen={isOfflinePanelOpen}
+        onToggleOfflinePanel={() => setIsOfflinePanelOpen((prev) => !prev)}
       />
 
       {redirectAuthError && (
@@ -1026,7 +1358,12 @@ export default function App() {
       />
 
       {/* Offline Mode & Local Sync Status Banner */}
-      <OfflineSyncBanner user={authUser} onRequestLogin={signInWithGoogleAccount} />
+      <OfflineSyncBanner
+        user={authUser}
+        onRequestLogin={signInWithGoogleAccount}
+        isPanelOpen={isOfflinePanelOpen}
+        onTogglePanel={() => setIsOfflinePanelOpen((prev) => !prev)}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
@@ -1060,6 +1397,10 @@ export default function App() {
               if (storeId) setSelectedWarehouseStoreId(storeId);
               navigateTo('app', 'inventory');
             }}
+            onNavigateMarketplace={() => navigateTo('marketplace')}
+            onOpenVectorSellerGuide={(autoPrompt) =>
+              openVectorGuide('seller', autoPrompt || 'Guía paso a paso para registrar mi tienda')
+            }
             onActiveBrandContext={handleMerchantVectorContext}
           />
         ) : currentView === 'admin' ? (
@@ -1075,6 +1416,10 @@ export default function App() {
               onOpenApp={() => handleOpenAppToModule('inventory')}
               onOpenMerchant={() => navigateTo('merchant')}
               onOpenMarketplace={() => navigateTo('marketplace')}
+              onAskVectorSellerGuide={() =>
+                openVectorGuide('seller', 'Guía paso a paso para registrar mi tienda')
+              }
+              userRole={userRole}
               showWarehousePos={canAccessWarehousePos}
               exchangeRate={exchangeRate}
             />
@@ -1201,6 +1546,12 @@ export default function App() {
         activeProducts={activeVectorContext.products}
         activeCart={activeVectorContext.cart}
         exchangeRate={exchangeRate}
+        currentView={currentView}
+        userRole={userRole}
+        onChangeUserRole={handleChangeUserRole}
+        onNavigateView={(view) => navigateTo(view)}
+        ownedStores={ownerStores}
+        openSignal={vectorOpenSignal}
         onAddProductToCart={activeVectorContext.addToCart}
         onOpenCartDrawer={activeVectorContext.openCart}
       />

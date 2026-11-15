@@ -5,7 +5,7 @@ import {
   signOut,
   User,
 } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, SUPER_ADMIN_EMAIL } from '../firebase';
 import {
   isSupabaseBackupConfigured,
@@ -15,12 +15,25 @@ import {
   signOutSupabaseBackup,
   SupabaseBackupSession,
 } from './supabaseAuthClient';
+import {
+  consumeOpenSourceAuthErrorFromUrl,
+  fetchOpenSourceSessionState,
+  type OpenSourceSessionState,
+  type OpenSourceSessionUser,
+  signOutOpenSourceSession,
+  startOpenSourceGoogleSignIn,
+} from './openSourceAuthClient';
 
 export {
+  consumeOpenSourceAuthErrorFromUrl,
+  fetchOpenSourceSessionState,
   isSupabaseBackupConfigured,
   mirrorFirebaseUserToBackupServer,
+  type OpenSourceSessionState,
+  type OpenSourceSessionUser,
   resolveSupabaseSessionOnMount,
   signInWithSupabaseGoogleBackup,
+  startOpenSourceGoogleSignIn,
   type SupabaseBackupSession,
 };
 
@@ -153,17 +166,16 @@ async function syncAdminBootstrapIfMatch(user: User): Promise<void> {
     user.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()
   ) {
     try {
-      await setDoc(
-        doc(db, 'admins', user.uid),
-        {
+      const ref = doc(db, 'admins', user.uid);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, {
           uid: user.uid,
           email: user.email,
-          displayName: user.displayName || 'Administrador Smith Solutions',
-          role: 'super_admin',
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+          role: 'superadmin',
+          createdAt: serverTimestamp(),
+        });
+      }
     } catch {
       // non-fatal during auth completion
     }
@@ -274,7 +286,8 @@ export function mapGoogleAuthError(
   }
 
   if (rawCode === 'auth/unauthorized-domain') {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const originHost =
+      typeof window !== 'undefined' ? window.location.hostname : 'sistema-de-gestion-para-negocios.vercel.app';
     return new GoogleAuthFriendlyError({
       code: rawCode,
       message:
@@ -283,7 +296,7 @@ export function mapGoogleAuthError(
           : lang === 'zh'
             ? '当前域名尚未在 Firebase 身份验证中授权。'
             : 'Este dominio aún no está autorizado en Firebase Authentication.',
-      hint: `Agrega "${host || 'sistema-de-gestion-para-negocios.vercel.app'}" en Firebase Console → Authentication → Settings → Authorized domains.`,
+      hint: `Agrega "${originHost}" en Firebase Console → Authentication → Settings → Authorized domains, o usa el acceso alternativo Open Source / Supabase.`,
     });
   }
 
@@ -498,5 +511,9 @@ export async function signOutGoogleResilient(): Promise<void> {
   } catch {
     // ignore
   }
-  await Promise.allSettled([signOut(auth), signOutSupabaseBackup()]);
+  await Promise.allSettled([
+    signOut(auth),
+    signOutSupabaseBackup(),
+    signOutOpenSourceSession(),
+  ]);
 }

@@ -1,14 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { User } from 'firebase/auth';
 import { AlertTriangle, Check, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import {
   detectAuthEnvironment,
+  fetchOpenSourceSessionState,
   GoogleAuthFriendlyError,
   isSupabaseBackupConfigured,
   mapGoogleAuthError,
   signInWithGoogleRedirectDirect,
   signInWithGoogleResilient,
   signInWithSupabaseGoogleBackup,
+  startOpenSourceGoogleSignIn,
 } from '../services/authService';
 
 interface GoogleAuthButtonProps {
@@ -56,8 +58,19 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
   const [isBusy, setIsBusy] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [authError, setAuthError] = useState<GoogleAuthFriendlyError | null>(null);
+  const [openSourceOAuthReady, setOpenSourceOAuthReady] = useState(false);
 
   const env = useMemo(() => detectAuthEnvironment(), []);
+
+  useEffect(() => {
+    let active = true;
+    fetchOpenSourceSessionState().then((st) => {
+      if (active) setOpenSourceOAuthReady(st.configured);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleClick = () => {
     if (isBusy) return;
@@ -205,6 +218,19 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
                 className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/35 text-emerald-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
               >
                 <span>Usar respaldo Supabase</span>
+              </button>
+            )}
+
+            {openSourceOAuthReady && !env.isInIframe && !env.isInAppBrowser && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBusy(true);
+                  startOpenSourceGoogleSignIn();
+                }}
+                className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-amber-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <span>Acceso Open Source (Google)</span>
               </button>
             )}
 

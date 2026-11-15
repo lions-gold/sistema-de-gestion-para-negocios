@@ -41,6 +41,7 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
       GOTRUE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET (min 32 chars) is required}
+      GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED: 'true'
 
       # Google OAuth 2.0 (Web + Móvil PKCE para iPhone, iPad, Android y Mac)
       GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${ENABLE_GOOGLE_AUTH:-true}
@@ -48,13 +49,24 @@ services:
       GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SUPABASE_PUBLIC_URL}/auth/v1/callback
 
+      # Correo Transaccional (Confirmación de cuenta & Recuperación de contraseña)
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
       GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM:-false}
+      GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED: 'true'
+      GOTRUE_MAILER_OTP_EXP: ${MAILER_OTP_EXP:-3600}
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+
       GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
       GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
       GOTRUE_SMTP_USER: ${SMTP_USER:-}
       GOTRUE_SMTP_PASS: ${SMTP_PASS:-}
-      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-admin@example.com}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL:-no-reply@tu-dominio.com}
       GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-Smith Solutions}
+      GOTRUE_SMTP_MAX_FREQUENCY: ${SMTP_MAX_FREQUENCY:-1m0s}
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: ${RATE_LIMIT_EMAIL_SENT:-30}
     networks:
       - supabase_internal
     healthcheck:
@@ -86,8 +98,11 @@ services:
         condition: service_healthy
       rest:
         condition: service_started
+    expose:
+      - '8000'
     ports:
-      - '${KONG_HTTP_PORT:-8000}:8000'
+      # SEGURIDAD TLS: Solo escucha en localhost/red Docker; el tráfico externo entra cifrado vía Coolify/Traefik HTTPS
+      - '127.0.0.1:${KONG_HTTP_PORT:-8000}:8000'
     environment:
       KONG_DATABASE: 'off'
       KONG_DECLARATIVE_CONFIG: /tmp/kong.yml

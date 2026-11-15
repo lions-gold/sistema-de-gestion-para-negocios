@@ -3,15 +3,19 @@ import { User } from 'firebase/auth';
 import {
   BellOff,
   Compass,
+  ExternalLink,
   Globe2,
   Loader2,
+  LogIn,
   Minus,
   Play,
   Send,
   ShieldAlert,
+  ShoppingBag,
   ShoppingCart,
   Sparkles,
   Square,
+  Store,
   UserCheck,
   Volume2,
   VolumeX,
@@ -21,13 +25,16 @@ import {
   StoreCartItem,
   StoreProduct,
   StoreTenant,
+  UserPlatformRole,
   VectorBrandConfig,
   VectorChatMessage,
   VectorConsentRecord,
   VectorConsentStatus,
   VectorLanguage,
+  VectorSuggestedAction,
   VectorTicket,
 } from '../types';
+import { AppMainView } from '../utils/seoAndAnalytics';
 import {
   createOrUpdateVectorTicket,
   defaultVectorBrandConfig,
@@ -43,6 +50,7 @@ import {
 } from '../services/vectorService';
 import { signInWithGoogleAccount, isSuperAdminUser } from '../services/saasService';
 import {
+  isAppEffectivelyOffline,
   loadCachedVectorMessages,
   loadVectorVoicePreset,
   queueOfflineMutation,
@@ -51,12 +59,24 @@ import {
   VectorVoicePreset,
 } from '../services/offlineSyncService';
 
+export interface VectorOpenSignal {
+  nonce: number;
+  role?: UserPlatformRole;
+  autoPrompt?: string;
+}
+
 interface VectorAssistantWidgetProps {
   user: User | null;
   activeStore: StoreTenant | null;
   activeProducts: StoreProduct[];
   activeCart: StoreCartItem[];
   exchangeRate: number;
+  currentView?: AppMainView;
+  userRole: UserPlatformRole;
+  onChangeUserRole: (role: UserPlatformRole) => void;
+  onNavigateView: (view: AppMainView) => void;
+  ownedStores?: StoreTenant[];
+  openSignal?: VectorOpenSignal | null;
   onAddProductToCart?: (product: StoreProduct) => void;
   onOpenCartDrawer?: () => void;
 }
@@ -73,6 +93,12 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
   activeProducts,
   activeCart,
   exchangeRate,
+  currentView = 'landing',
+  userRole,
+  onChangeUserRole,
+  onNavigateView,
+  ownedStores = [],
+  openSignal = null,
   onAddProductToCart,
   onOpenCartDrawer,
 }) => {
@@ -287,7 +313,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
   };
 
   const persistConsentSafely = async (status: 'si' | 'no' | 'solo_importante') => {
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isOffline = isAppEffectivelyOffline();
     if (!user || !user.emailVerified || isOffline) {
       queueOfflineMutation({
         type: 'vector_consent',
@@ -331,7 +357,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
   };
 
   const handleSaveConsent = async (status: 'si' | 'no' | 'solo_importante') => {
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isOffline = isAppEffectivelyOffline();
     if (!isOffline && (!user || !user.emailVerified)) {
       try {
         await signInWithGoogleAccount();
@@ -376,12 +402,16 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
     }));
   };
 
-  const handleSend = async (customText?: string) => {
+  const primaryOwnedStore = ownedStores[0] || null;
+  const lastSignalNonceRef = useRef<number>(0);
+
+  const handleSend = async (customText?: string, overrideRole?: UserPlatformRole) => {
     const raw = (customText !== undefined ? customText : inputText).trim();
     if (!raw || isThinking) return;
 
     if (customText === undefined) setInputText('');
 
+    const effectiveRole = overrideRole || userRole;
     const userMsg: VectorChatMessage = {
       id: `u-${Date.now()}`,
       role: 'user',
@@ -397,7 +427,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
     const prevAttempts = botAttemptsByBrand[brandKey] || 0;
     const remindersSent = cartRemindersByBrand[brandKey] || 0;
     const cartTotalUSD = activeCart.reduce((acc, i) => acc + i.product.priceUSD * i.quantity, 0);
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isOffline = isAppEffectivelyOffline();
 
     try {
       const result = await sendVectorChat({
@@ -414,6 +444,11 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
         hasOpenTicket: Boolean(openTicketForBrand),
         history: nextHistory.map((m) => ({ role: m.role, text: m.text })),
         user,
+        userRole: effectiveRole,
+        currentView,
+        hasOwnedStore: ownedStores.length > 0,
+        ownedStoreStatus: primaryOwnedStore?.status,
+        ownedStoreName: primaryOwnedStore?.storeName,
       });
 
       if (result.detectedLanguage !== vectorLang) {
@@ -558,6 +593,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
         leversUsed: result.leversUsed,
         leverEvidence: result.leverEvidence,
         recommendedProductIds: result.recommendedProductIds,
+        suggestedActions: result.suggestedActions,
         escalationTicketNumber: ticketNumber,
         handoffPacketText,
         adminReportText,
@@ -577,17 +613,59 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (!openSignal || openSignal.nonce === lastSignalNonceRef.current) return;
+    lastSignalNonceRef.current = openSignal.nonce;
+    if (openSignal.role) {
+      onChangeUserRole(openSignal.role);
+    }
+    setIsOpen(true);
+    if (openSignal.autoPrompt) {
+      handleSend(openSignal.autoPrompt, openSignal.role);
+    }
+  }, [openSignal]);
+
+  const handleSuggestedAction = async (action: VectorSuggestedAction) => {
+    if (action.type === 'navigate_merchant') {
+      onChangeUserRole('seller');
+      onNavigateView('merchant');
+      setIsOpen(false);
+      return;
+    }
+    if (action.type === 'navigate_marketplace') {
+      onChangeUserRole('buyer');
+      onNavigateView('marketplace');
+      setIsOpen(false);
+      return;
+    }
+    if (action.type === 'prompt_google_auth') {
+      try {
+        await signInWithGoogleAccount();
+        onChangeUserRole('seller');
+        onNavigateView('merchant');
+        setIsOpen(false);
+      } catch {
+        // user dismissed popup or redirect initiated
+      }
+    }
+  };
+
   const uiCopy = {
     es: {
       assistantTitle: 'Vector · Asistente Comercial',
       subtitle: 'La dirección correcta, en el momento exacto',
+      launcherBuyer: 'Comprador y Registro',
+      launcherSeller: 'Guía Registro Tienda',
+      roleLabel: 'Tu perfil:',
+      roleBuyer: 'Comprador',
+      roleSeller: 'Vendedor · Crear Tienda',
       isolatedBrand: 'Marca aislada:',
       adminVerified: 'Super Admin Verificado',
       thinking: 'Vector analizando contexto verificado...',
       voiceLabel: 'Voz HD:',
       listenBtn: 'Escuchar',
       stopBtn: 'Detener',
-      inputPlaceholder: 'Consulta productos, envíos, pedidos o escribe en ES / EN / 中文...',
+      inputPlaceholder: 'Pregunta cómo comprar, registrar tienda, envíos o escribe en ES / EN / 中文...',
       addCart: '+ Carrito',
       openCart: 'Ir a Carrito',
       consentLabel: 'Notificaciones de ofertas de esta marca:',
@@ -597,17 +675,28 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickCatalog: 'Ver catálogo',
       quickShipping: 'Envíos',
       quickHuman: 'Hablar con humano',
+      quickRegisterGuide: 'Guía registrar tienda',
+      quickStep2: 'Paso 2: RIF y datos',
+      quickStep3: 'Paso 3: Pago $25/mes',
+      quickHowBuy: '¿Cómo comprar?',
+      quickBrowseStores: 'Ver tiendas activas',
+      quickBecomeSeller: 'Quiero vender',
     },
     en: {
       assistantTitle: 'Vector · Commercial Assistant',
       subtitle: 'The right direction, at the exact moment',
+      launcherBuyer: 'Buyer & Onboarding',
+      launcherSeller: 'Store Registration Guide',
+      roleLabel: 'Your role:',
+      roleBuyer: 'Buyer',
+      roleSeller: 'Seller · Open Store',
       isolatedBrand: 'Isolated brand:',
       adminVerified: 'Verified Super Admin',
       thinking: 'Vector analyzing verified context...',
       voiceLabel: 'HD Voice:',
       listenBtn: 'Listen',
       stopBtn: 'Stop',
-      inputPlaceholder: 'Ask about products, shipping, orders, or switch ES / EN / 中文...',
+      inputPlaceholder: 'Ask how to buy, register a store, shipping, or switch ES / EN / 中文...',
       addCart: '+ Add Cart',
       openCart: 'Open Cart',
       consentLabel: 'Brand offer notifications:',
@@ -617,17 +706,28 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickCatalog: 'Browse catalog',
       quickShipping: 'Shipping',
       quickHuman: 'Human agent',
+      quickRegisterGuide: 'Store setup guide',
+      quickStep2: 'Step 2: Tax ID & details',
+      quickStep3: 'Step 3: $25/mo payment',
+      quickHowBuy: 'How to buy?',
+      quickBrowseStores: 'Browse active stores',
+      quickBecomeSeller: 'I want to sell',
     },
     zh: {
       assistantTitle: '维克托（Vector）· 商务助手',
       subtitle: '精准方向，恰逢其时',
+      launcherBuyer: '买家与开店向导',
+      launcherSeller: '开店注册向导',
+      roleLabel: '当前身份：',
+      roleBuyer: '买家',
+      roleSeller: '卖家 · 我要开店',
       isolatedBrand: '隔离品牌：',
       adminVerified: '已验证超级管理员',
       thinking: '维克托正在核对品牌实时数据...',
       voiceLabel: '高清语音：',
       listenBtn: '朗读',
       stopBtn: '停止',
-      inputPlaceholder: '咨询商品、物流、订单，或随时切换 中文 / ES / EN...',
+      inputPlaceholder: '咨询如何购物、注册店铺、配送，或随时切换 中文 / ES / EN...',
       addCart: '+ 加入购物车',
       openCart: '打开购物车',
       consentLabel: '本品牌优惠通知授权：',
@@ -637,6 +737,12 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickCatalog: '查看现货',
       quickShipping: '配送政策',
       quickHuman: '转接人工',
+      quickRegisterGuide: '开店注册指南',
+      quickStep2: '第2步：税号与资料',
+      quickStep3: '第3步：$25月费支付',
+      quickHowBuy: '如何下单购买？',
+      quickBrowseStores: '查看已激活店铺',
+      quickBecomeSeller: '我想开店卖货',
     },
   }[vectorLang];
 
@@ -658,7 +764,11 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
               <span className="text-[10px] font-mono text-amber-400 hidden sm:inline">维克托</span>
             </div>
             <div className="text-[10px] text-zinc-400 truncate max-w-[110px] sm:max-w-[140px] hidden sm:block">
-              {activeStore ? activeStore.storeName : 'Asistente Multi-SaaS'}
+              {activeStore
+                ? activeStore.storeName
+                : userRole === 'seller'
+                  ? uiCopy.launcherSeller
+                  : uiCopy.launcherBuyer}
             </div>
           </div>
         </button>
@@ -666,7 +776,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
 
       {/* Slide-up Obsidian Noir Drawer */}
       {isOpen && (
-        <aside className="fixed inset-x-2 top-16 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:top-auto sm:inset-auto sm:left-5 sm:bottom-5 sm:w-[420px] sm:h-[560px] sm:max-h-[82dvh] z-[60] bg-[#0c0c0f] border border-white/[0.12] rounded-2xl shadow-2xl shadow-black flex flex-col overflow-hidden">
+        <aside className="fixed inset-x-2 top-16 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:top-auto sm:inset-auto sm:left-5 sm:bottom-5 sm:w-[430px] sm:h-[585px] sm:max-h-[84dvh] z-[60] bg-[#0c0c0f] border border-white/[0.12] rounded-2xl shadow-2xl shadow-black flex flex-col overflow-hidden">
           {/* Header */}
           <div className="px-4 py-3 bg-[#111114] border-b border-white/[0.08] flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -716,6 +826,37 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                 aria-label="Cerrar asistente"
               >
                 <Minus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Buyer vs. Seller Mode Switcher Bar */}
+          <div className="px-3.5 py-1.5 bg-[#0e0e12] border-b border-white/[0.07] flex items-center justify-between gap-2 text-[10px]">
+            <span className="text-zinc-400 shrink-0">{uiCopy.roleLabel}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => onChangeUserRole('buyer')}
+                className={`px-2.5 py-1 rounded-md border text-[10px] font-semibold whitespace-nowrap flex items-center gap-1 transition-colors ${
+                  userRole === 'buyer'
+                    ? 'bg-zinc-800 border-zinc-500/60 text-white'
+                    : 'bg-zinc-950 border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <ShoppingBag className="w-3 h-3 text-amber-400" />
+                <span>{uiCopy.roleBuyer}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeUserRole('seller')}
+                className={`px-2.5 py-1 rounded-md border text-[10px] font-semibold whitespace-nowrap flex items-center gap-1 transition-colors ${
+                  userRole === 'seller'
+                    ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
+                    : 'bg-zinc-950 border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Store className="w-3 h-3 text-amber-400" />
+                <span>{uiCopy.roleSeller}</span>
               </button>
             </div>
           </div>
@@ -799,6 +940,33 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                   >
                     {msg.text}
                   </div>
+
+                  {/* Interactive Guided Navigation Actions */}
+                  {msg.role === 'assistant' && msg.suggestedActions && msg.suggestedActions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 max-w-[90%]">
+                      {msg.suggestedActions.map((act, idx) => (
+                        <button
+                          key={`${msg.id}-act-${idx}`}
+                          type="button"
+                          onClick={() => handleSuggestedAction(act)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                            act.type === 'navigate_merchant' || act.type === 'prompt_google_auth'
+                              ? 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
+                              : 'bg-[#111114] hover:bg-zinc-800 border border-white/[0.12] text-zinc-100'
+                          }`}
+                        >
+                          {act.type === 'prompt_google_auth' ? (
+                            <LogIn className="w-3 h-3 shrink-0" />
+                          ) : act.type === 'navigate_merchant' ? (
+                            <Store className="w-3 h-3 shrink-0" />
+                          ) : (
+                            <ExternalLink className="w-3 h-3 shrink-0 text-amber-400" />
+                          )}
+                          <span>{act.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Verified Catalog Cards (Only for active isolated store) */}
                   {recommended.length > 0 && (
@@ -942,22 +1110,78 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
             </div>
           </div>
 
-          {/* Quick Chips */}
+          {/* Contextual Quick Chips (Role & Storefront Aware) */}
           <div className="px-3 py-1.5 bg-[#0c0c0f] border-t border-white/[0.05] flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-            <button
-              type="button"
-              onClick={() => handleSend(uiCopy.quickCatalog)}
-              className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
-            >
-              {uiCopy.quickCatalog}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSend(uiCopy.quickShipping)}
-              className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
-            >
-              {uiCopy.quickShipping}
-            </button>
+            {activeStore ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickCatalog)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickCatalog}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickShipping)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickShipping}
+                </button>
+              </>
+            ) : userRole === 'seller' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickRegisterGuide)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/35 text-[11px] sm:text-[10px] text-amber-300 font-semibold whitespace-nowrap"
+                >
+                  {uiCopy.quickRegisterGuide}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickStep2)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickStep2}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickStep3)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickStep3}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickHowBuy)}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickHowBuy}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSend(uiCopy.quickRegisterGuide, 'seller')}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/35 text-[11px] sm:text-[10px] text-amber-300 font-semibold whitespace-nowrap"
+                >
+                  {uiCopy.quickRegisterGuide}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChangeUserRole('buyer');
+                    onNavigateView('marketplace');
+                    setIsOpen(false);
+                  }}
+                  className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-[11px] sm:text-[10px] text-zinc-300 whitespace-nowrap"
+                >
+                  {uiCopy.quickBrowseStores}
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() =>

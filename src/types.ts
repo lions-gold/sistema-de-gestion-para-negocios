@@ -659,6 +659,18 @@ export interface VectorConversationStat {
   updatedAt?: unknown;
 }
 
+export type UserPlatformRole = 'buyer' | 'seller';
+
+export type VectorSuggestedActionType =
+  | 'navigate_merchant'
+  | 'navigate_marketplace'
+  | 'prompt_google_auth';
+
+export interface VectorSuggestedAction {
+  type: VectorSuggestedActionType;
+  label: string;
+}
+
 export interface VectorChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -668,6 +680,7 @@ export interface VectorChatMessage {
   leversUsed?: VectorInfluenceLever[];
   leverEvidence?: string[];
   recommendedProductIds?: string[];
+  suggestedActions?: VectorSuggestedAction[];
   escalationTicketNumber?: string;
   adminReportText?: string;
   handoffPacketText?: string;

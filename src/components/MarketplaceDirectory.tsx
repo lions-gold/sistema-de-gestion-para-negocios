@@ -39,8 +39,12 @@ import { mapGoogleAuthError } from '../services/authService';
 import { GoogleAuthButton } from './GoogleAuthButton';
 import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
+import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 import {
+  applyOfflineOrderStockToCache,
   createLocalOfflineOrderSnapshot,
+  isAppEffectivelyOffline,
+  isNetworkOrOfflineError,
   loadCachedStoreProducts,
   loadCachedStores,
   queueOfflineMutation,
@@ -146,7 +150,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     );
     if (match) {
       setSelectedStore(match);
-    } else if (typeof navigator === 'undefined' || navigator.onLine) {
+    } else if (!isAppEffectivelyOffline()) {
       fetchStoreByIdOrSlug(initialStoreSlug).then((found) => {
         if (found && found.status === 'active') setSelectedStore(found);
       });
@@ -283,7 +287,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     order: StoreOrder,
     items: StoreCartItem[]
   ) => {
-    const cleanPhone = store.businessWhatsapp.replace(/[^0-9]/g, '');
+    const cleanPhone = normalizeVenezuelanPhone(store.businessWhatsapp);
     const lines = [
       `*NUEVO PEDIDO #${order.invoiceNumber}*`,
       `*Tienda:* ${store.storeName}`,
@@ -346,8 +350,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         saleChannel: 'Carrito Web' as const,
       };
 
-      const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
-      if (isOfflineNow) {
+      const isOfflineNow = isAppEffectivelyOffline();
+      const saveOfflineMarketplaceOrder = () => {
         queueOfflineMutation({
           type: 'marketplace_order',
           label: `Pedido #${invoiceNumber} (${selectedStore.storeName})`,
@@ -357,6 +361,10 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
             items: snapshotItems,
           },
         });
+        const updatedCatalog = applyOfflineOrderStockToCache(selectedStore.id, snapshotItems);
+        if (updatedCatalog.length > 0) {
+          setProducts(updatedCatalog);
+        }
         const localOrder = createLocalOfflineOrderSnapshot(
           selectedStore,
           baseOrderInput,
@@ -371,6 +379,10 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         exportStoreOrderInvoicePDF(selectedStore, localOrder, snapshotItems, 'dual');
         clearStoreCart();
         setIsCartOpen(false);
+      };
+
+      if (isOfflineNow) {
+        saveOfflineMarketplaceOrder();
         return;
       }
 
@@ -398,27 +410,35 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         return;
       }
 
-      const savedOrder = await createStoreOrderInCloud(
-        activeUser,
-        selectedStore,
-        {
-          ...baseOrderInput,
-          customerEmail: baseOrderInput.customerEmail || activeUser.email || undefined,
-        },
-        snapshotItems
-      );
+      try {
+        const savedOrder = await createStoreOrderInCloud(
+          activeUser,
+          selectedStore,
+          {
+            ...baseOrderInput,
+            customerEmail: baseOrderInput.customerEmail || activeUser.email || undefined,
+          },
+          snapshotItems
+        );
 
-      setCompletedOrder({
-        order: savedOrder,
-        items: snapshotItems,
-        store: selectedStore,
-        registeredInCloud: true,
-      });
+        setCompletedOrder({
+          order: savedOrder,
+          items: snapshotItems,
+          store: selectedStore,
+          registeredInCloud: true,
+        });
 
-      // Genera el PDF Dual: Página 1 Factura Original Cliente + Página 2 Factura Copia Dueño de Tienda
-      exportStoreOrderInvoicePDF(selectedStore, savedOrder, snapshotItems, 'dual');
-      clearStoreCart();
-      setIsCartOpen(false);
+        // Genera el PDF Dual: Página 1 Factura Original Cliente + Página 2 Factura Copia Dueño de Tienda
+        exportStoreOrderInvoicePDF(selectedStore, savedOrder, snapshotItems, 'dual');
+        clearStoreCart();
+        setIsCartOpen(false);
+      } catch (cloudErr) {
+        if (isNetworkOrOfflineError(cloudErr)) {
+          saveOfflineMarketplaceOrder();
+          return;
+        }
+        throw cloudErr;
+      }
     } catch (err) {
       console.error('Error procesando orden:', err);
       setOrderError(
@@ -560,7 +580,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </div>
 
           <a
-            href={`https://wa.me/${selectedStore.businessWhatsapp.replace(/[^0-9]/g, '')}`}
+            href={`https://wa.me/${normalizeVenezuelanPhone(selectedStore.businessWhatsapp)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shrink-0 min-h-[44px]"

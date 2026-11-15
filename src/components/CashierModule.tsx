@@ -47,6 +47,20 @@ import {
   exportLibroComprasPDF, 
   exportCashClosingPDF 
 } from '../utils/seniatExport';
+import {
+  getCaracasDateString,
+  getCaracasDateTimeStamp,
+  VENEZUELA_LOCALE,
+  VENEZUELA_TIMEZONE,
+} from '../utils/venezuelaTime';
+
+const formatCaracasClock = () =>
+  new Date().toLocaleTimeString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 
 interface CashierModuleProps {
   movements: CashMovement[];
@@ -118,9 +132,9 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
   // Terminal / Command Log for Fiscal Printer
   const [fiscalLogs, setFiscalLogs] = useState<string[]>([
-    `[${new Date().toLocaleTimeString()}] Impresora fiscal detectada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port}`,
-    `[${new Date().toLocaleTimeString()}] Memoria fiscal activa: ${fiscalConfig.serialNumber} • Reporte Z actual: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
-    `[${new Date().toLocaleTimeString()}] Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G`,
+    `[${formatCaracasClock()}] Impresora fiscal detectada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port}`,
+    `[${formatCaracasClock()}] Memoria fiscal activa: ${fiscalConfig.serialNumber} • Reporte Z actual: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
+    `[${formatCaracasClock()}] Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G`,
   ]);
 
   // Petty Cash Movement Modal
@@ -212,8 +226,8 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     const newClosing: CashClosingRecord = {
       id: `closing-${Date.now()}`,
       closingNumber: nextClosingNum,
-      date: new Date().toISOString().split('T')[0],
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      date: getCaracasDateString(),
+      timestamp: getCaracasDateTimeStamp(),
       cashierName: 'Administración Smith Solutions',
       exchangeRate,
       zReportNumber: zReportStr,
@@ -246,10 +260,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     setClosings([newClosing, ...closings]);
     onClosingCompleted?.(newClosing);
     setFiscalLogs((prev) => [
-      `[${new Date().toLocaleTimeString()}] *** REPORTE Z GENERADO: ${zReportStr} ***`,
-      `[${new Date().toLocaleTimeString()}] Total ventas: $${paymentMethodStats.totalSalesUSD.toFixed(2)} (${paymentMethodStats.totalSalesBs.toLocaleString('es-VE')} Bs.)`,
-      `[${new Date().toLocaleTimeString()}] IGTF 3% Divisas consolidado: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
-      `[${new Date().toLocaleTimeString()}] Memoria fiscal grabada con éxito. Cierre Nro ${nextClosingNum}`,
+      `[${formatCaracasClock()}] *** REPORTE Z GENERADO: ${zReportStr} ***`,
+      `[${formatCaracasClock()}] Total ventas: $${paymentMethodStats.totalSalesUSD.toFixed(2)} (${paymentMethodStats.totalSalesBs.toLocaleString('es-VE')} Bs.)`,
+      `[${formatCaracasClock()}] IGTF 3% Divisas consolidado: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
+      `[${formatCaracasClock()}] Memoria fiscal grabada con éxito. Cierre Nro ${nextClosingNum}`,
       ...prev,
     ]);
 
@@ -261,9 +275,9 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const handlePrintReportX = () => {
     const { commandText, jsonPayload } = generateReportXCommand(fiscalConfig);
     setFiscalLogs((prev) => [
-      `[${new Date().toLocaleTimeString()}] [COMANDO ENVIADO: ${commandText}] Emisión de Reporte X (Lectura Parcial sin corte)`,
-      `[${new Date().toLocaleTimeString()}] Ventas acumuladas en jornada: $${paymentMethodStats.totalSalesUSD.toFixed(2)} • IVA: $${paymentMethodStats.totalIVAUSD.toFixed(2)} • IGTF: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
-      `[${new Date().toLocaleTimeString()}] Memoria de trabajo leída correctamente.`,
+      `[${formatCaracasClock()}] [COMANDO ENVIADO: ${commandText}] Emisión de Reporte X (Lectura Parcial sin corte)`,
+      `[${formatCaracasClock()}] Ventas acumuladas en jornada: $${paymentMethodStats.totalSalesUSD.toFixed(2)} • IVA: $${paymentMethodStats.totalIVAUSD.toFixed(2)} • IGTF: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
+      `[${formatCaracasClock()}] Memoria de trabajo leída correctamente.`,
       ...prev,
     ]);
     downloadFiscalSpoolerFile(commandText, `ReporteX_${fiscalConfig.brand.replace(/\s+/g, '_')}.txt`);
@@ -277,7 +291,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     e.preventDefault();
     saveStoredFiscalConfig(fiscalConfig);
     setFiscalLogs((prev) => [
-      `[${new Date().toLocaleTimeString()}] Configuración de impresora fiscal actualizada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port} @ ${fiscalConfig.baudRate}bps`,
+      `[${formatCaracasClock()}] Configuración de impresora fiscal actualizada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port} @ ${fiscalConfig.baudRate}bps`,
       ...prev,
     ]);
   };
@@ -295,7 +309,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     const newPurchase: PurchaseInvoice = {
       id: `pur-${Date.now()}`,
       operationNumber: purchases.length + 1,
-      date: new Date().toISOString().split('T')[0],
+      date: getCaracasDateString(),
       invoiceNumber: newInvoiceNum.trim() || `00${Math.floor(100000 + Math.random() * 900000)}`,
       controlNumber: newControlNum.trim() || `00-${Math.floor(100000 + Math.random() * 900000)}`,
       supplierName: newSupplierName.trim(),

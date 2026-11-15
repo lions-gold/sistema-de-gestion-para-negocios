@@ -23,7 +23,9 @@ import {
 import { makeSafeDocId, isSuperAdminUser } from './saasService';
 import {
   StoreProduct,
+  StoreStatus,
   StoreTenant,
+  UserPlatformRole,
   VectorBrandConfig,
   VectorCampaign,
   VectorCampaignVariant,
@@ -35,6 +37,8 @@ import {
   VectorLanguage,
   VectorPriority,
   VectorRiskType,
+  VectorSuggestedAction,
+  VectorSuggestedActionType,
   VectorTicket,
   VectorTriggerDefinition,
 } from '../types';
@@ -56,10 +60,10 @@ export const VECTOR_IDENTITY = {
     zh: '我是维克托（Vector）。精准、简练，始终领先一步。',
   },
   greetings: {
-    es: 'Buen día. Soy Vector, su asistente. ¿Con qué empezamos?',
-    esTu: 'Buen día. Soy Vector, tu asistente. ¿Con qué empezamos?',
-    en: "Good morning. I'm Vector, your assistant. Where shall we begin?",
-    zh: '您好，我是维克托（Vector），您的助手。我们从哪里开始？',
+    es: 'Buen día. Soy Vector. Puedo orientarle para comprar en tiendas verificadas o guiarle paso a paso en el registro de su propia tienda ($25/mes). ¿Qué desea hacer hoy?',
+    esTu: 'Buen día. Soy Vector. Puedo orientarte para comprar en tiendas verificadas o guiarte paso a paso en el registro de tu propia tienda ($25/mes). ¿Qué deseas hacer hoy?',
+    en: "Good morning. I'm Vector. I can help you shop across verified stores or guide you step-by-step through registering your own store ($25/mo). How would you like to begin?",
+    zh: '您好，我是维克托（Vector）。我可以协助您在已认证店铺购物，或一步步指导您完成自有店铺入驻（$25/月）。请问今天想办理哪项？',
   },
   pronunciation: {
     es: 'vek-tor',
@@ -864,9 +868,266 @@ export interface DeterministicVectorReply {
   leversUsed: VectorInfluenceLever[];
   leverEvidence: string[];
   recommendedProductIds: string[];
+  suggestedActions?: VectorSuggestedAction[];
   consentIntent: 'si' | 'no' | 'solo_importante' | 'none';
   triggerId: number;
   blockedSecurityNotice?: boolean;
+}
+
+export function buildVectorSuggestedAction(
+  lang: VectorLanguage,
+  actionType?: 'none' | VectorSuggestedActionType
+): VectorSuggestedAction[] {
+  if (!actionType || actionType === 'none') return [];
+  if (actionType === 'prompt_google_auth') {
+    return [
+      {
+        type: 'prompt_google_auth',
+        label:
+          lang === 'zh'
+            ? '使用 Google 账号登录'
+            : lang === 'en'
+              ? 'Sign in with Google'
+              : 'Continuar con Google',
+      },
+      {
+        type: 'navigate_merchant',
+        label:
+          lang === 'zh'
+            ? '前往卖家开店中心'
+            : lang === 'en'
+              ? 'Go to Seller Store Portal'
+              : 'Ir a Registrar Mi Tienda',
+      },
+    ];
+  }
+  if (actionType === 'navigate_merchant') {
+    return [
+      {
+        type: 'navigate_merchant',
+        label:
+          lang === 'zh'
+            ? '前往「卖家 · 我的店铺」'
+            : lang === 'en'
+              ? 'Open Sell · My Store'
+              : 'Ir a Vender · Mi Tienda',
+      },
+    ];
+  }
+  return [
+    {
+      type: 'navigate_marketplace',
+      label:
+        lang === 'zh'
+          ? '前往「买家 · 店铺目录」'
+          : lang === 'en'
+            ? 'Browse Buy · Stores'
+            : 'Ir a Comprar · Tiendas',
+    },
+  ];
+}
+
+function resolveStoreOnboardingOrRoleGuidance(params: {
+  text: string;
+  lang: VectorLanguage;
+  userRole?: UserPlatformRole;
+  isAuthenticated?: boolean;
+  hasOwnedStore?: boolean;
+  ownedStoreStatus?: StoreStatus;
+  ownedStoreName?: string;
+}): DeterministicVectorReply | null {
+  const { text, lang, userRole, isAuthenticated, hasOwnedStore, ownedStoreStatus, ownedStoreName } =
+    params;
+
+  const asksRoleDifference =
+    /(comprador.*vendedor|vendedor.*comprador|diferencia|como funciona|cómo funciona|soy comprador|modo comprador|como comprar|cómo comprar|ver tiendas|buyer.*seller|seller.*buyer|how to buy|how does it work|difference|买家.*卖家|区别|怎么买)/i.test(
+      text
+    );
+
+  const asksStep1 = /(paso\s*1|step\s*1|google|cuenta google|requisito|iniciar sesion|iniciar sesión|第\s*1\s*步)/i.test(
+    text
+  );
+  const asksStep2 =
+    /(paso\s*2|step\s*2|formulario|rif\b|logo|whatsapp comercial|datos fiscales|envio nacional|delivery local|第\s*2\s*步)/i.test(
+      text
+    );
+  const asksStep3 =
+    /(paso\s*3|step\s*3|suscripci[oó]n|\$?25|mensualidad|pago m[oó]vil|binance|bybit|comprobante|referencia|cup[oó]n|第\s*3\s*步)/i.test(
+      text
+    );
+  const asksStep4 =
+    /(paso\s*4|step\s*4|activar tienda|activaci[oó]n|subir productos|importar csv|csv|json|cat[aá]logo|第\s*4\s*步)/i.test(
+      text
+    );
+
+  const asksStoreRegistration =
+    /(registrar|registro|crear.*tienda|abrir.*tienda|mi tienda|quiero vender|soy vendedor|como vendo|cómo vendo|vendedor|comerciante|emprender|planes|precio.*tienda|cuanto cuesta.*tienda|cuánto cuesta.*tienda|register.*store|open.*store|create.*store|sell here|become a seller|merchant onboarding|注册店铺|开店|我要开店|卖家)/i.test(
+      text
+    );
+
+  if (asksRoleDifference && !asksStoreRegistration) {
+    const reply =
+      lang === 'zh'
+        ? '平台明确区分两种角色：\n• 买家模式（免费）：无需订阅，直接浏览已认证店铺，按 BCV 汇率以美元或玻利瓦尔下单，获取双联 PDF 发票。\n• 卖家模式（$25/月）：在「卖家 · 我的店铺」用 Google 账号注册品牌、RIF、Logo 与商品库，自主收款接单。\n下一步：选择您要进入的空间即可开始。'
+        : lang === 'en'
+          ? 'The platform clearly separates both roles:\n• Buyer Mode (Free): Browse verified stores, pay with live BCV dual-currency totals, download dual PDF invoices, and order via WhatsApp with zero subscription fee.\n• Seller Mode ($25/mo): Register your own store with tax ID (RIF), logo, CSV/JSON catalog, and independent cart inside Sell · My Store.\nNext step: choose whether you want to browse stores to buy or register your own store.'
+          : 'La plataforma separa ambos perfiles con claridad:\n• Compradores (Sin costo): Exploran tiendas activas en «Comprar · Tiendas», calculan USD/Bs a tasa BCV, descargan factura dual PDF y envían su pedido por WhatsApp.\n• Vendedores / Comercios ($25/mes): Crean su tienda propia en «Vender · Mi Tienda» con RIF (opcional), logo, envíos y catálogo importable.\nSiguiente paso: elija si desea explorar tiendas para comprar o iniciar el registro de su tienda.';
+
+    return {
+      reply,
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: [
+        ...buildVectorSuggestedAction(lang, 'navigate_marketplace'),
+        ...buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      ],
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksStep1) {
+    const authDoneText = isAuthenticated
+      ? lang === 'zh'
+        ? '您已完成 Google 账号验证，可以直接进入第 2 步填写店铺资料。'
+        : lang === 'en'
+          ? 'Your Google account is already verified. You can move straight to Step 2 and fill in your store profile.'
+          : 'Su sesión de Google ya está verificada; puede pasar directo al Paso 2 para completar el formulario de tienda.'
+      : lang === 'zh'
+        ? '第 1 步（身份验证）：点击「使用 Google 账号继续」完成邮箱验证，这是您管理店铺与收款的唯一安全身份凭证。'
+        : lang === 'en'
+          ? 'Step 1 (Verified Identity): Click "Continue with Google" inside Sell · My Store. Your verified Google email secures store ownership and payouts.'
+          : 'Paso 1 (Identidad Google): Ingrese a «Vender · Mi Tienda» y pulse «Continuar con Google». Su correo verificado protege la propiedad de su tienda y sus registros.';
+    return {
+      reply:
+        lang === 'zh'
+          ? `${authDoneText}\n下一步：进入「卖家 · 我的店铺」确认或填写店铺名称与 WhatsApp。`
+          : lang === 'en'
+            ? `${authDoneText}\nNext step: open Sell · My Store to start your storefront form.`
+            : `${authDoneText}\nSiguiente paso: abra «Vender · Mi Tienda» para completar los datos de su comercio.`,
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(
+        lang,
+        isAuthenticated ? 'navigate_merchant' : 'prompt_google_auth'
+      ),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksStep2) {
+    return {
+      reply:
+        lang === 'zh'
+          ? '第 2 步（店铺资料与配送设置）：\n• 必填项：店铺名称、注册主体/店主姓名、接单 WhatsApp（+58）。\n• 选填项：税号 RIF（暂无可留空）、行业分类、店铺 Logo（上传图片或粘贴链接）、推荐码。\n• 配送选项：勾选全国快递（MRW/Zoom/Tealca）、同城配送或到店自提。\n下一步：在注册表单提交后进入 $25/月 订阅付款页面。'
+          : lang === 'en'
+            ? 'Step 2 (Store Profile & Shipping):\n• Required: Store name, Legal Owner / Company name, and Business WhatsApp (+58).\n• Optional: Tax ID / RIF (can be left blank), Category, Store Logo upload/URL, and referral code.\n• Delivery: Enable National Courier, Local Delivery, and/or Store Pickup.\nNext step: submit the form in Sell · My Store to proceed to billing.'
+            : 'Paso 2 (Datos de Tienda, RIF y Envíos):\n• Obligatorios: Nombre de la Tienda, Titular / Razón Social y WhatsApp comercial (+58).\n• Opcionales: RIF (puede dejarlo vacío si aún no posee), Categoría, Logo (subir archivo o URL) y código de referido.\n• Logística: Active Envío Nacional (MRW/Zoom/Tealca), Delivery Local y/o Retiro en Tienda.\nSiguiente paso: envíe el formulario en «Vender · Mi Tienda» para pasar al pago.',
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksStep3) {
+    return {
+      reply:
+        lang === 'zh'
+          ? '第 3 步（$25/月 订阅付款与凭证提交）：\n• 在店铺控制台「月度订阅 $25/月」查看委内瑞拉银行转账、Pago Móvil、Binance Pay 或 Bybit 官方账号。\n• 如有推荐优惠券可勾选抵扣；付款后填写流水号或交易哈希（TxHash）并提交凭证。\n下一步：前往订阅页核对收款信息并提交付款报告。'
+          : lang === 'en'
+            ? 'Step 3 ($25/mo Subscription & Payment Report):\n• Open the "Subscription $25/mo" tab in Sell · My Store to view verified Bank Transfers, Pago Móvil, Binance Pay, or Bybit accounts.\n• Apply a referral coupon if available, complete the transfer, and submit your Reference / TxHash.\nNext step: report your receipt in Sell · My Store.'
+            : 'Paso 3 (Suscripción $25/mes y Reporte de Pago):\n• En la pestaña «Suscripción $25/mes» verá los datos oficiales de Bancos VE, Pago Móvil, Binance Pay y Bybit (con conversión exacta a Bs. a tasa BCV).\n• Si tiene un cupón de referido puede aplicarlo; tras transferir, registre el número de referencia / TxHash.\nSiguiente paso: entre a «Vender · Mi Tienda» para reportar su comprobante.',
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksStep4) {
+    return {
+      reply:
+        lang === 'zh'
+          ? '第 4 步（店铺激活与上架商品）：\n• 管理员核实付款后，店铺即自动展示在公共目录，并拥有独立链接 /tienda/店铺标识。\n• 在「商品与数据库导入导出」可逐个添加商品，或一键导入含图片、美元价格和星级评分的 CSV/JSON 文件。\n下一步：打开您的店铺控制台上传商品并测试公开链接。'
+          : lang === 'en'
+            ? 'Step 4 (Activation & Catalog Upload):\n• Once Admin approves your payment, your storefront goes live in the Active Stores Directory with your own /tienda/slug link.\n• Use "Products & Export/Import" to add items manually or bulk-import a CSV/JSON file with photos and prices.\nNext step: open Sell · My Store to upload or import your catalog.'
+            : 'Paso 4 (Activación y Carga de Catálogo):\n• Al aprobar el pago, el Administrador activa su tienda en el Directorio Público con enlace propio (/tienda/su-slug).\n• En «Productos y Export/Import» puede agregar artículos uno a uno o importar masivamente un CSV/JSON con fotos, precios USD y calificación.\nSiguiente paso: ingrese a «Vender · Mi Tienda» para revisar su estado o cargar productos.',
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksStoreRegistration || (userRole === 'seller' && text.length > 0)) {
+    const statusHintEs = !isAuthenticated
+      ? 'Estado actual: aún no ha iniciado sesión con Google (Paso 1 pendiente).'
+      : !hasOwnedStore
+        ? 'Estado actual: sesión Google verificada; listo para completar el formulario (Paso 2).'
+        : ownedStoreStatus === 'pending'
+          ? `Estado actual: su tienda «${ownedStoreName || 'registrada'}» está pendiente de activación; solo falta reportar o esperar aprobación del pago $25 (Paso 3).`
+          : ownedStoreStatus === 'active'
+            ? `Estado actual: su tienda «${ownedStoreName || 'activa'}» ya está activa (Paso 4). Puede gestionar catálogo y órdenes.`
+            : `Estado actual: tienda «${ownedStoreName || 'en revisión'}» requiere revisar suscripción en el panel.`;
+
+    const statusHintEn = !isAuthenticated
+      ? 'Current status: Google sign-in pending (Step 1).'
+      : !hasOwnedStore
+        ? 'Current status: Google verified; ready to fill out the Store Registration form (Step 2).'
+        : ownedStoreStatus === 'pending'
+          ? `Current status: "${ownedStoreName || 'your store'}" is pending activation; submit or await approval of your $25 payment (Step 3).`
+          : ownedStoreStatus === 'active'
+            ? `Current status: "${ownedStoreName || 'your store'}" is already active (Step 4). You can publish products and manage orders.`
+            : `Current status: check billing tab for "${ownedStoreName || 'your store'}".`;
+
+    const statusHintZh = !isAuthenticated
+      ? '当前进度：尚未完成 Google 账号登录（待完成第 1 步）。'
+      : !hasOwnedStore
+        ? '当前进度：已完成 Google 验证，可直接填写开店注册表（第 2 步）。'
+        : ownedStoreStatus === 'pending'
+          ? `当前进度：店铺「${ownedStoreName || '已登记'}」处于待激活状态，请提交或等待 $25 订阅审核（第 3 步）。`
+          : ownedStoreStatus === 'active'
+            ? `当前进度：店铺「${ownedStoreName || '已激活'}」已上线（第 4 步），可随时上架商品与接单。`
+            : `当前进度：请在店铺订阅页核对店铺状态。`;
+
+    const reply =
+      lang === 'zh'
+        ? `注册并激活店铺仅需 4 步（$25/月）：\n1. Google 验证登录（保障店主身份安全）。\n2. 填写店名、店主名、+58 WhatsApp、RIF（可选）、Logo 与配送方式。\n3. 通过委内瑞拉银行转账、Pago Móvil、Binance Pay 或 Bybit 提交 $25 付款凭证。\n4. 审核激活后上传或 CSV 导入商品，即刻在商城接单。\n${statusHintZh}\n下一步：点击下方按钮前往开店，或回复「第1步」~「第4步」查看细节。`
+        : lang === 'en'
+          ? `Registering and launching your store takes 4 steps ($25/mo):\n1. Sign in with verified Google in Sell · My Store.\n2. Enter Store Name, Owner, +58 WhatsApp, optional RIF, Logo, and Shipping options.\n3. Submit your $25 receipt via VE Banks, Pago Móvil, Binance Pay, or Bybit.\n4. Once activated, add or import CSV/JSON products and start selling.\n${statusHintEn}\nNext step: click below to open your registration form, or ask about "Step 1" to "Step 4".`
+          : `Registrar y activar su tienda en Smith Solutions E-Commerce consta de 4 pasos ($25/mes):\n1. Cuenta Google verificada en «Vender · Mi Tienda».\n2. Datos de tienda: Nombre, Titular, WhatsApp (+58), RIF opcional, Logo y modalidades de envío.\n3. Reporte de pago $25/mes por Bancos VE, Pago Móvil, Binance Pay o Bybit.\n4. Activación por Admin y carga manual o CSV/JSON de productos.\n${statusHintEs}\nSiguiente paso: pulse el botón de abajo para ir directo al registro, o escriba «Paso 1», «Paso 2», «Paso 3» o «Paso 4» para detalle exacto.`;
+
+    return {
+      reply,
+      detectedLanguage: lang,
+      leversUsed: [],
+      leverEvidence: [],
+      recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(
+        lang,
+        !isAuthenticated ? 'prompt_google_auth' : 'navigate_merchant'
+      ),
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  return null;
 }
 
 export function runVectorDeterministicFallback(params: {
@@ -881,6 +1142,11 @@ export function runVectorDeterministicFallback(params: {
   botAttemptsOnIssue: number;
   hasOpenTicket: boolean;
   offerConsent: VectorConsentStatus;
+  userRole?: UserPlatformRole;
+  isAuthenticated?: boolean;
+  hasOwnedStore?: boolean;
+  ownedStoreStatus?: StoreStatus;
+  ownedStoreName?: string;
 }): DeterministicVectorReply {
   const text = params.message.trim();
   const detectedLang = detectLanguageFromText(text, params.currentLanguage);
@@ -1065,20 +1331,69 @@ export function runVectorDeterministicFallback(params: {
     };
   }
 
+  // Rule 7.5: Guided Store Registration & Buyer vs. Seller Differentiation
+  const isGeneralPlatformScope = params.brandConfig.storeId === 'platform';
+  const onboardingOrRoleHit = resolveStoreOnboardingOrRoleGuidance({
+    text,
+    lang: detectedLang,
+    userRole: params.userRole,
+    isAuthenticated: params.isAuthenticated,
+    hasOwnedStore: params.hasOwnedStore,
+    ownedStoreStatus: params.ownedStoreStatus,
+    ownedStoreName: params.ownedStoreName,
+  });
+  if (onboardingOrRoleHit && (isGeneralPlatformScope || /registrar|crear.*tienda|abrir.*tienda|comprador.*vendedor|paso\s*[1-4]|register.*store|step\s*[1-4]|注册|开店|第\s*[1-4]\s*步/i.test(text))) {
+    return onboardingOrRoleHit;
+  }
+
   // Rule 8: Store catalog lookup & verifiable influence levers (§3)
   const activeCatalog = params.products.filter((p) => p.isActive && p.stock > 0);
   if (activeCatalog.length === 0) {
+    if (isGeneralPlatformScope) {
+      if (params.userRole === 'seller') {
+        const sellerGuide = resolveStoreOnboardingOrRoleGuidance({
+          text: 'registrar tienda',
+          lang: detectedLang,
+          userRole: 'seller',
+          isAuthenticated: params.isAuthenticated,
+          hasOwnedStore: params.hasOwnedStore,
+          ownedStoreStatus: params.ownedStoreStatus,
+          ownedStoreName: params.ownedStoreName,
+        });
+        if (sellerGuide) return sellerGuide;
+      }
+      return {
+        reply:
+          detectedLang === 'en'
+            ? 'You are in platform view. To shop, open "Buy · Stores" and pick an active store. To open your own store ($25/mo), switch to Seller mode or ask me for the registration guide.'
+            : detectedLang === 'zh'
+              ? '当前位于平台主页视图。如需购物请进入「买家 · 店铺目录」选择门店；如需开店（$25/月），请切换卖家模式或向我咨询开店步骤。'
+              : 'Está en la vista general de la plataforma. Para comprar, entre a «Comprar · Tiendas» y elija una tienda activa. Si desea vender y abrir su propia tienda ($25/mes), pregúnteme por los pasos de registro.',
+        detectedLanguage: detectedLang,
+        leversUsed: [],
+        leverEvidence: [],
+        recommendedProductIds: [],
+        suggestedActions: [
+          ...buildVectorSuggestedAction(detectedLang, 'navigate_marketplace'),
+          ...buildVectorSuggestedAction(detectedLang, 'navigate_merchant'),
+        ],
+        consentIntent: 'none',
+        triggerId: 0,
+      };
+    }
+
     return {
       reply:
         detectedLang === 'en'
-          ? `I do not have published in-stock items for ${storeName} right now. You can browse active stores in the Marketplace directory or leave a question for the store owner.`
+          ? `I do not have published in-stock items for ${storeName} right now. You can browse other active stores in Buy · Stores or open your own storefront in Sell · My Store.`
           : detectedLang === 'zh'
-            ? `${storeName} 目前暂无可查询的在售库存商品信息。您可以前往活跃店铺目录查看，或让我为您转接店铺客服。`
-            : `En este momento no tengo productos activos con stock cargados para ${storeName}. Puedes explorar el directorio de tiendas activas o indicarme qué referencia buscas para confirmarla.`,
+            ? `${storeName} 目前暂无可查询的在售库存商品信息。您可以前往活跃店铺目录查看其他门店，或创建自己的店铺。`
+            : `En este momento no tengo productos activos con stock cargados para ${storeName}. Puede explorar otras tiendas activas en «Comprar · Tiendas» o registrar su propia tienda en «Vender · Mi Tienda».`,
       detectedLanguage: detectedLang,
       leversUsed: [],
       leverEvidence: [],
       recommendedProductIds: [],
+      suggestedActions: buildVectorSuggestedAction(detectedLang, 'navigate_marketplace'),
       consentIntent: 'none',
       triggerId: 0,
     };
@@ -1984,8 +2299,14 @@ export async function sendVectorChat(params: {
   hasOpenTicket: boolean;
   history: Array<{ role: 'user' | 'assistant'; text: string }>;
   user: User | null;
+  userRole?: UserPlatformRole;
+  currentView?: string;
+  hasOwnedStore?: boolean;
+  ownedStoreStatus?: StoreStatus;
+  ownedStoreName?: string;
 }): Promise<DeterministicVectorReply> {
   const isVerifiedAdmin = isSuperAdminUser(params.user);
+  const isAuthenticated = Boolean(params.user && params.user.emailVerified);
 
   // Security check first
   const claimsAdmin =
@@ -2042,6 +2363,11 @@ export async function sendVectorChat(params: {
         message: params.message,
         language: params.language,
         storeId: params.brandConfig.storeId,
+        userRole: params.userRole || 'buyer',
+        currentView: params.currentView || 'landing',
+        isAuthenticated,
+        hasOwnedStore: Boolean(params.hasOwnedStore),
+        ownedStoreStatus: params.ownedStoreStatus,
         brandConfig: params.brandConfig,
         products: params.products.filter((p) => p.isActive).slice(0, 30),
         exchangeRate: params.exchangeRate,
@@ -2062,16 +2388,19 @@ export async function sendVectorChat(params: {
         leversUsed?: VectorInfluenceLever[];
         leverEvidence?: string[];
         recommendedProductIds?: string[];
+        suggestedActionType?: 'none' | VectorSuggestedActionType;
         consentIntent?: 'si' | 'no' | 'solo_importante' | 'none';
         triggerId?: number;
       };
       if (data.ok && data.reply && !data.fallbackRequired) {
+        const resolvedLang = data.detectedLanguage || params.language;
         return {
           reply: data.reply,
-          detectedLanguage: data.detectedLanguage || params.language,
+          detectedLanguage: resolvedLang,
           leversUsed: (data.leversUsed || []) as VectorInfluenceLever[],
           leverEvidence: data.leverEvidence || [],
           recommendedProductIds: data.recommendedProductIds || [],
+          suggestedActions: buildVectorSuggestedAction(resolvedLang, data.suggestedActionType),
           consentIntent: data.consentIntent || 'none',
           triggerId: data.triggerId || 0,
         };
@@ -2093,6 +2422,11 @@ export async function sendVectorChat(params: {
     botAttemptsOnIssue: params.botAttemptsOnIssue,
     hasOpenTicket: params.hasOpenTicket,
     offerConsent: params.offerConsent,
+    userRole: params.userRole,
+    isAuthenticated,
+    hasOwnedStore: params.hasOwnedStore,
+    ownedStoreStatus: params.ownedStoreStatus,
+    ownedStoreName: params.ownedStoreName,
   });
 }
 

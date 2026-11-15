@@ -1,6 +1,7 @@
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { getFreshFirebaseIdToken } from './authService';
+import { readManualOfflineFlag } from '../hooks/usePWAInstall';
 import { Product, Sale, StockAlertEmailLog, StoreEmailConfig } from '../types';
 import { playAlertNotificationSound, triggerMobileVibration } from '../utils/alertNotifications';
 
@@ -79,7 +80,7 @@ export async function fetchStoreEmailConfigFromCloud(
 ): Promise<StoreEmailConfig> {
   const local = getLocalStoreEmailConfig(storeId, ownerUid, fallbackEmail);
   if (!storeId || !ownerUid) return local;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return local;
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) return local;
 
   const path = `stores/${storeId}/private/emailConfig`;
   try {
@@ -127,7 +128,7 @@ export async function saveStoreEmailConfig(config: StoreEmailConfig): Promise<vo
   saveLocalStoreEmailConfig(normalized);
 
   if (!normalized.storeId || !normalized.ownerUid) return;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
 
   const path = `stores/${normalized.storeId}/private/emailConfig`;
   const firestoreDoc: Record<string, unknown> = {
@@ -223,6 +224,7 @@ export interface DispatchStoreEmailParams {
 
 export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Promise<{
   ok: boolean;
+  queuedOffline?: boolean;
   message: string;
   deliveryChannel?: 'smtp' | 'resend';
   log: StockAlertEmailLog;
@@ -284,7 +286,7 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     return entry;
   };
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     const log = buildLog(
       'En Cola Offline',
       'offline_queue',
@@ -292,7 +294,8 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     );
     return {
       ok: false,
-      message: 'Sin internet: el evento quedó registrado localmente.',
+      queuedOffline: true,
+      message: 'Sin internet: el correo quedó en cola local para reintento al reconectar.',
       log,
     };
   }

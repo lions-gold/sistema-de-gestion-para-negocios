@@ -70,7 +70,19 @@ Cada conversación pertenece a una sola marca. Nunca mezcles catálogo, precios,
 13: Consulta de administración, mayorista o API (N4, Media, 4 h)
 14: Molestia persistente tras dos intentos (N3, Alta, 60 min)
 15: Tema sensible: salud, legal, seguridad (N4, Crítica, 15 min)
-16: Baja o queja de spam en campañas (N4, Alta, 4 h)`;
+16: Baja o queja de spam en campañas (N4, Alta, 4 h)
+
+# DIFERENCIACIÓN COMPRADOR VS. VENDEDOR Y GUÍA DE REGISTRO DE TIENDA
+La plataforma diferencia claramente dos perfiles:
+1. COMPRADORES (Espacio «Comprar · Tiendas» / Directorio Público):
+   - No pagan suscripción. Exploran tiendas activas verificadas, comparan precios en USD y Bs. (tasa BCV en vivo), agregan al carrito por tienda, eligen Retiro en Tienda / Delivery Local / Envío Nacional, emiten Factura Dual PDF y envían su pedido por WhatsApp directo al dueño.
+2. VENDEDORES / COMERCIOS (Espacio «Vender · Mi Tienda» / SaaS $25/mes):
+   - Guías a cualquier interesado paso a paso para abrir y activar su tienda propia:
+   - Paso 1 (Identidad): Iniciar sesión con una cuenta Google verificada en «Vender · Mi Tienda».
+   - Paso 2 (Registro de Tienda): Completar Nombre de la tienda, Titular / Razón Social, WhatsApp comercial (+58), RIF (opcional si aún no posee), Categoría, Logo (archivo o URL), Descripción, modalidades de envío (Nacional MRW/Zoom/Tealca, Delivery Local o Retiro) y código de referido opcional.
+   - Paso 3 (Suscripción $25/mes): En la pestaña «Suscripción $25/mes», realizar el pago por Transferencia Bancaria VE, Pago Móvil, Binance Pay o Bybit (o aplicar cupón de referido) y enviar número de referencia/TxHash y comprobante.
+   - Paso 4 (Activación y Catálogo): El Administrador aprueba el pago y activa la tienda en el Directorio Público con URL propia. El vendedor carga productos manualmente o mediante importación masiva CSV/JSON con fotos y calificación.
+Si el usuario pregunta por registro de tienda, cómo vender, costos, requisitos o diferencias entre comprador y vendedor, respóndele con pasos claros adaptados a su estado real en sessionState (isAuthenticated, hasOwnedStore, ownedStoreStatus, userRole) y asigna suggestedActionType adecuado.`;
 
 function loadFirebaseApiKey(): string {
   if (process.env.VITE_FIREBASE_API_KEY) return process.env.VITE_FIREBASE_API_KEY;
@@ -147,6 +159,11 @@ export interface VectorChatPayload {
   message: string;
   language?: 'es' | 'en' | 'zh';
   storeId?: string;
+  userRole?: 'buyer' | 'seller';
+  currentView?: string;
+  isAuthenticated?: boolean;
+  hasOwnedStore?: boolean;
+  ownedStoreStatus?: 'pending' | 'active' | 'suspended';
   brandConfig?: {
     brandName?: string;
     idiomaPrincipal?: 'es' | 'en' | 'zh';
@@ -177,6 +194,7 @@ export interface VectorChatAIResponse {
   leversUsed?: string[];
   leverEvidence?: string[];
   recommendedProductIds?: string[];
+  suggestedActionType?: 'none' | 'navigate_merchant' | 'navigate_marketplace' | 'prompt_google_auth';
   consentIntent?: 'si' | 'no' | 'solo_importante' | 'none';
   triggerId?: number;
   error?: string;
@@ -274,7 +292,12 @@ export async function handleVectorChat(
     },
     sessionState: {
       isVerifiedSuperAdmin: authStatus.isSuperAdmin,
+      isAuthenticated: Boolean(payload.isAuthenticated ?? authStatus.verified),
       verifiedEmail: authStatus.email || null,
+      userRole: payload.userRole || 'buyer',
+      currentView: payload.currentView || 'landing',
+      hasOwnedStore: Boolean(payload.hasOwnedStore),
+      ownedStoreStatus: payload.ownedStoreStatus || null,
       exchangeRateBsPerUsd: payload.exchangeRate || 0,
       activeCartCount: payload.cartCount || 0,
       activeCartTotalUSD: payload.cartTotalUSD || 0,
@@ -320,6 +343,12 @@ export async function handleVectorChat(
               items: { type: Type.STRING },
               description: 'IDs reales de productos en isolatedStoreCatalog sugeridos al cliente (max 3).',
             },
+            suggestedActionType: {
+              type: Type.STRING,
+              enum: ['none', 'navigate_merchant', 'navigate_marketplace', 'prompt_google_auth'],
+              description:
+                'Acción de navegación recomendada: navigate_merchant para registro/gestión de tienda, navigate_marketplace para explorar tiendas y comprar, prompt_google_auth si necesita iniciar con Google primero, o none.',
+            },
             consentIntent: {
               type: Type.STRING,
               enum: ['si', 'no', 'solo_importante', 'none'],
@@ -330,7 +359,7 @@ export async function handleVectorChat(
                 '0 si no requiere escalamiento (N0); o ID 1..16 de la tabla de disparadores si aplica escalamiento inmediato.',
             },
           },
-          required: ['reply', 'detectedLanguage', 'leversUsed', 'leverEvidence', 'recommendedProductIds', 'consentIntent', 'triggerId'],
+          required: ['reply', 'detectedLanguage', 'leversUsed', 'leverEvidence', 'recommendedProductIds', 'suggestedActionType', 'consentIntent', 'triggerId'],
         },
       },
     });
@@ -345,6 +374,7 @@ export async function handleVectorChat(
       leversUsed: string[];
       leverEvidence: string[];
       recommendedProductIds: string[];
+      suggestedActionType?: 'none' | 'navigate_merchant' | 'navigate_marketplace' | 'prompt_google_auth';
       consentIntent: 'si' | 'no' | 'solo_importante' | 'none';
       triggerId: number;
     };
@@ -360,6 +390,7 @@ export async function handleVectorChat(
             catalogSummary.some((prod) => prod.id === id)
           )
         : [],
+      suggestedActionType: parsed.suggestedActionType || 'none',
       consentIntent: parsed.consentIntent || 'none',
       triggerId: typeof parsed.triggerId === 'number' ? parsed.triggerId : 0,
     };

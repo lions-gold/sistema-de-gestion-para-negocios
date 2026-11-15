@@ -28,6 +28,8 @@ import {
   generateFiscalCommandStream, 
   downloadFiscalSpoolerFile 
 } from '../utils/fiscalPrinter';
+import { useOnlineStatus } from '../hooks/usePWAInstall';
+import { getCaracasDateTimeStamp, normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 
 interface POSModuleProps {
   products: Product[];
@@ -53,6 +55,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const [lastScannedFeedback, setLastScannedFeedback] = useState<string | null>(null);
   const [fiscalPrintSuccess, setFiscalPrintSuccess] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<'catalog' | 'cart'>('catalog');
+  const { isOnline } = useOnlineStatus();
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) return;
@@ -174,7 +177,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
     if (cart.length === 0) return;
 
     const receiptNum = `LG-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const now = getCaracasDateTimeStamp();
     const fiscalNum = `FAC-00${Math.floor(1000 + Math.random() * 9000)}`;
     const controlNum = `00-${Math.floor(10000 + Math.random() * 90000)}`;
 
@@ -448,10 +451,11 @@ export const POSModule: React.FC<POSModuleProps> = ({
             <div>
               <label className="text-zinc-400 block mb-1">WhatsApp / Móvil</label>
               <input
-                type="text"
+                type="tel"
+                inputMode="tel"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="58414..."
+                placeholder="0414-1234567"
                 className="w-full bg-[#09090b] border border-white/[0.08] rounded px-2.5 py-1.5 text-white"
               />
             </div>
@@ -667,6 +671,11 @@ export const POSModule: React.FC<POSModuleProps> = ({
               <p className="text-zinc-400 text-[11px]">
                 Comprobante #{completedSale.receiptNumber} • Factura Fiscal {completedSale.fiscalInvoiceNumber || 'FAC-0084'}
               </p>
+              {!isOnline && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/35 text-amber-200 text-[11px] font-medium">
+                  Modo Offline: Los productos vendidos, el descuento de stock y este recibo se guardaron localmente (IndexedDB + LocalStorage) y se sincronizarán al volver la señal.
+                </div>
+              )}
             </div>
 
             {/* Fiscal Print Toast */}
@@ -781,7 +790,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
               </div>
 
               <a
-                href={`https://wa.me/?text=${generateWhatsAppReceiptText(completedSale)}`}
+                href={`https://wa.me/${normalizeVenezuelanPhone(customerPhone)}?text=${generateWhatsAppReceiptText(completedSale)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"

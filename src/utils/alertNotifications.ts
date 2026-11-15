@@ -1,4 +1,5 @@
 import { Product, EmailAlertConfig, StockAlertEmailLog } from '../types';
+import { VENEZUELA_LOCALE, VENEZUELA_TIMEZONE } from './venezuelaTime';
 
 const CONFIG_STORAGE_KEY = 'lions_gold_email_alert_config';
 const LOGS_STORAGE_KEY = 'lions_gold_email_alert_logs';
@@ -110,7 +111,8 @@ export const recordSimulatedEmailDispatch = (
   const recipient = customRecipient || currentConfig.recipientEmail;
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('es-VE', {
+  const dateStr = now.toLocaleDateString(VENEZUELA_LOCALE, {
+    timeZone: VENEZUELA_TIMEZONE,
     day: '2-digit',
     month: 'short',
     year: 'numeric',

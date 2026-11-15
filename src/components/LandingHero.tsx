@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { ArrowRight, Store, ShoppingBag } from 'lucide-react';
+import { ArrowRight, Store, ShoppingBag, Compass } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
+import { UserPlatformRole } from '../types';
 
 interface LandingHeroProps {
   onOpenApp: () => void;
   onOpenMerchant?: () => void;
   onOpenMarketplace?: () => void;
+  onAskVectorSellerGuide?: () => void;
+  userRole?: UserPlatformRole;
   showWarehousePos?: boolean;
   exchangeRate: number;
 }
@@ -15,6 +18,8 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   onOpenApp,
   onOpenMerchant,
   onOpenMarketplace,
+  onAskVectorSellerGuide,
+  userRole = 'buyer',
   showWarehousePos = false,
   exchangeRate,
 }) => {
@@ -82,6 +87,86 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 )}
+              </div>
+
+              {/* Explicit Dual-Audience Role Split: Buyers vs. Sellers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                {/* Buyer Card */}
+                <div
+                  className={`rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
+                    userRole === 'buyer'
+                      ? 'border-zinc-500/50'
+                      : 'border-white/[0.08] hover:border-white/[0.16]'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-300">
+                      <ShoppingBag className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
+                      <span>{t.hero.buyerCardLabel}</span>
+                    </div>
+                    <h2 className="text-sm font-bold text-zinc-50 font-display">
+                      {t.hero.buyerCardTitle}
+                    </h2>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {t.hero.buyerCardDesc}
+                    </p>
+                  </div>
+                  {onOpenMarketplace && (
+                    <button
+                      type="button"
+                      onClick={onOpenMarketplace}
+                      className="w-full py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-zinc-100 flex items-center justify-between gap-2 transition-colors min-h-[40px]"
+                    >
+                      <span>{t.hero.buyerCardCta}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Seller Card */}
+                <div
+                  className={`rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
+                    userRole === 'seller'
+                      ? 'border-amber-400/50'
+                      : 'border-amber-400/20 hover:border-amber-400/40'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-400">
+                      <Store className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{t.hero.sellerCardLabel}</span>
+                    </div>
+                    <h2 className="text-sm font-bold text-zinc-50 font-display">
+                      {t.hero.sellerCardTitle}
+                    </h2>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {t.hero.sellerCardDesc}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {onOpenMerchant && (
+                      <button
+                        type="button"
+                        onClick={onOpenMerchant}
+                        className="flex-1 py-2 px-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-bold text-zinc-950 flex items-center justify-center gap-1.5 transition-colors min-h-[40px] whitespace-nowrap"
+                      >
+                        <span>{t.hero.sellerCardCta}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {onAskVectorSellerGuide && (
+                      <button
+                        type="button"
+                        onClick={onAskVectorSellerGuide}
+                        className="py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5 transition-colors min-h-[40px] whitespace-nowrap shrink-0"
+                        title={t.hero.sellerGuideCta}
+                      >
+                        <Compass className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{t.hero.sellerGuideCta}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

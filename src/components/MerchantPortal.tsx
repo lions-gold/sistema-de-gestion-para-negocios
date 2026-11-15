@@ -37,6 +37,7 @@ import { MerchantVectorTab } from './MerchantVectorTab';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
+import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 import {
   PlatformBillingSettings,
   ReferralCodeLookup,
@@ -91,6 +92,23 @@ import {
   exportStoreSalesLedgerPDF,
 } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  applyOfflineOrderStockToCache,
+  createLocalOfflineOrderSnapshot,
+  isAppEffectivelyOffline,
+  isNetworkOrOfflineError,
+  loadCachedAuthSnapshot,
+  loadCachedOwnerStoreOrders,
+  loadCachedOwnerStores,
+  loadCachedPlatformBilling,
+  loadCachedStorefrontWarehouseProducts,
+  queueOfflineMutation,
+  saveCachedOwnerStoreOrders,
+  saveCachedOwnerStores,
+  saveCachedPlatformBilling,
+  saveCachedStorefrontWarehouseProducts,
+  saveCachedStoreProducts,
+} from '../services/offlineSyncService';
 
 interface MerchantPortalProps {
   exchangeRate: number;
@@ -98,6 +116,8 @@ interface MerchantPortalProps {
   onClearCapturedReferral?: () => void;
   onOpenStorefront: (slug: string) => void;
   onOpenWarehouseApp?: (storeId?: string) => void;
+  onNavigateMarketplace?: () => void;
+  onOpenVectorSellerGuide?: (autoPrompt?: string) => void;
   onActiveBrandContext?: (ctx: { store: StoreTenant | null; products: StoreProduct[] }) => void;
 }
 
@@ -107,6 +127,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   onClearCapturedReferral,
   onOpenStorefront,
   onOpenWarehouseApp,
+  onNavigateMarketplace,
+  onOpenVectorSellerGuide,
   onActiveBrandContext,
 }) => {
   const { t } = useLanguage();
@@ -115,7 +137,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
   const [isCreatingNewStore, setIsCreatingNewStore] = useState(false);
 
-  const [billing, setBilling] = useState<PlatformBillingSettings>(DEFAULT_BILLING_SETTINGS);
+  const [billing, setBilling] = useState<PlatformBillingSettings>(
+    () => loadCachedPlatformBilling() || DEFAULT_BILLING_SETTINGS
+  );
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [orders, setOrders] = useState<StoreOrder[]>([]);
@@ -189,7 +213,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [saleShippingDetails, setSaleShippingDetails] = useState('');
 
   useEffect(() => {
-    getPlatformBillingSettings().then(setBilling);
+    getPlatformBillingSettings().then((b) => {
+      setBilling(b);
+      saveCachedPlatformBilling(b);
+    });
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       if (u?.displayName) {
@@ -199,16 +226,43 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     return () => unsub();
   }, []);
 
+  const cachedAuth = loadCachedAuthSnapshot();
+  const effectiveUid =
+    user && user.emailVerified
+      ? user.uid
+      : !user && isAppEffectivelyOffline() && cachedAuth?.emailVerified
+        ? cachedAuth.uid
+        : '';
+  const effectiveEmail = user?.email || cachedAuth?.email || '';
+  const effectiveDisplayName = user?.displayName || cachedAuth?.displayName || '';
+  const effectivePhotoURL = user?.photoURL || '';
+
   useEffect(() => {
     if (!user || !user.emailVerified) {
+      if (effectiveUid) {
+        const cachedStores = loadCachedOwnerStores(effectiveUid);
+        if (cachedStores.length > 0) {
+          setStores(cachedStores);
+          setSelectedStoreId((prev) => prev || cachedStores[0].id);
+        }
+        return;
+      }
       setStores([]);
       setPayments([]);
       setReferrals([]);
       setCoupons([]);
       return;
     }
+
+    const cachedStores = loadCachedOwnerStores(user.uid);
+    if (cachedStores.length > 0) {
+      setStores((prev) => (prev.length === 0 ? cachedStores : prev));
+      setSelectedStoreId((prev) => prev || cachedStores[0].id);
+    }
+
     const unsubStores = subscribeOwnerStores(user.uid, (list) => {
       setStores(list);
+      saveCachedOwnerStores(user.uid, list);
       if (list.length > 0) {
         setSelectedStoreId((prev) => prev || list[0].id);
       }
@@ -222,22 +276,36 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       unsubRefs();
       unsubCoups();
     };
-  }, [user]);
+  }, [user, effectiveUid]);
 
   const activeStore = stores.find((s) => s.id === selectedStoreId) || stores[0] || null;
 
   useEffect(() => {
-    if (!activeStore || !user) {
+    if (!activeStore || !effectiveUid) {
       setProducts([]);
       setOrders([]);
       setInboxMessages([]);
       return;
     }
-    const unsubProds = subscribeOwnerStoreProducts(activeStore.id, user.uid, setProducts);
-    const unsubOrds = subscribeOwnerStoreOrders(activeStore.id, user.uid, setOrders);
+
+    const cachedProds = loadCachedStorefrontWarehouseProducts(activeStore.id);
+    if (cachedProds.length > 0) setProducts(cachedProds);
+    const cachedOrders = loadCachedOwnerStoreOrders(activeStore.id);
+    if (cachedOrders.length > 0) setOrders(cachedOrders);
+
+    if (!user) return;
+
+    const unsubProds = subscribeOwnerStoreProducts(activeStore.id, user.uid, (list) => {
+      setProducts(list);
+      saveCachedStorefrontWarehouseProducts(activeStore.id, list);
+    });
+    const unsubOrds = subscribeOwnerStoreOrders(activeStore.id, user.uid, (list) => {
+      setOrders(list);
+      saveCachedOwnerStoreOrders(activeStore.id, list);
+    });
     const unsubInbox = subscribeStoreInbox(activeStore.id, user.uid, setInboxMessages);
 
-    if (!activeStore.referralCode) {
+    if (!activeStore.referralCode && !isAppEffectivelyOffline()) {
       ensureStoreReferralCode(activeStore).catch(() => {});
     }
 
@@ -246,7 +314,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       unsubOrds();
       unsubInbox();
     };
-  }, [activeStore, user]);
+  }, [activeStore, user, effectiveUid]);
 
   const onActiveBrandContextRef = React.useRef(onActiveBrandContext);
   onActiveBrandContextRef.current = onActiveBrandContext;
@@ -466,27 +534,23 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !activeStore) return;
-    setIsBusy(true);
-    try {
-      await saveStoreProduct(
-        activeStore.id,
-        user.uid,
-        {
-          name: prodName,
-          description: prodDesc,
-          priceUSD: Number(prodPrice) || 0,
-          costUSD: prodCost ? Number(prodCost) : undefined,
-          rating: Number(prodRating) || 5,
-          imageUrl: prodImage,
-          category: prodCategory,
-          sku: prodSku,
-          stock: Number(prodStock) || 0,
-          unit: prodUnit,
-          isActive: true,
-        },
-        editingProduct || undefined
-      );
+    if (!activeStore || !effectiveUid) return;
+    const productInput: StoreProductInput = {
+      id: editingProduct?.id,
+      name: prodName,
+      description: prodDesc,
+      priceUSD: Number(prodPrice) || 0,
+      costUSD: prodCost ? Number(prodCost) : undefined,
+      rating: Number(prodRating) || 5,
+      imageUrl: prodImage,
+      category: prodCategory,
+      sku: prodSku,
+      stock: Number(prodStock) || 0,
+      unit: prodUnit,
+      isActive: true,
+    };
+
+    const resetProductForm = () => {
       setEditingProduct(null);
       setProdName('');
       setProdDesc('');
@@ -496,9 +560,70 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setProdImage('');
       setProdSku('');
       setProdStock('15');
+    };
+
+    const saveProductLocally = () => {
+      const localProd: StoreProduct = {
+        id: editingProduct?.id || `local-prod-${Date.now()}`,
+        storeId: activeStore.id,
+        ownerUid: effectiveUid,
+        name: productInput.name.trim() || 'Producto',
+        description: productInput.description.trim() || 'Producto disponible en catálogo',
+        priceUSD: Math.max(0, productInput.priceUSD),
+        costUSD: productInput.costUSD,
+        rating: productInput.rating,
+        imageUrl: productInput.imageUrl,
+        category: productInput.category,
+        sku: productInput.sku,
+        stock: Math.max(0, productInput.stock),
+        unit: productInput.unit,
+        isActive: true,
+        createdAt: editingProduct?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setProducts((prev) => {
+        const next = editingProduct
+          ? prev.map((p) => (p.id === localProd.id ? localProd : p))
+          : [localProd, ...prev];
+        saveCachedStorefrontWarehouseProducts(activeStore.id, next);
+        saveCachedStoreProducts(activeStore.id, next);
+        return next;
+      });
+      queueOfflineMutation({
+        type: 'storefront_product_upsert',
+        label: `Catálogo ${activeStore.storeName}: ${localProd.name}`,
+        payload: {
+          storeId: activeStore.id,
+          ownerUid: effectiveUid,
+          input: { ...productInput, id: localProd.id },
+          existingProduct: editingProduct || undefined,
+        },
+      });
+      resetProductForm();
+      notify('Producto guardado localmente en Modo Offline. Se sincronizará automáticamente al volver internet.');
+    };
+
+    if (isAppEffectivelyOffline() || !user) {
+      saveProductLocally();
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      await saveStoreProduct(
+        activeStore.id,
+        user.uid,
+        productInput,
+        editingProduct || undefined
+      );
+      resetProductForm();
       notify('Producto guardado en el catálogo de tu tienda.');
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error guardando producto.');
+      if (isNetworkOrOfflineError(err)) {
+        saveProductLocally();
+      } else {
+        notifyError(err instanceof Error ? err.message : 'Error guardando producto.');
+      }
     } finally {
       setIsBusy(false);
     }
@@ -620,7 +745,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
   const handleCreateDirectStoreSale = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !activeStore || directCart.length === 0) return;
+    if (!activeStore || !effectiveUid || directCart.length === 0) return;
     if (!saleCustomerName.trim() || !saleCustomerPhone.trim()) return;
 
     setIsBusy(true);
@@ -641,39 +766,97 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         .slice(0, 1950);
 
       const snapshot = [...directCart];
-      const savedOrder = await createStoreOrderInCloud(
-        user,
-        activeStore,
-        {
-          invoiceNumber,
-          customerName: saleCustomerName.trim(),
-          customerRif: saleCustomerRif.trim() || undefined,
-          customerPhone: saleCustomerPhone.trim(),
-          shippingType: saleShippingType,
-          shippingDetails: saleShippingDetails.trim() || undefined,
-          shippingFeeUSD,
-          paymentMethod: salePaymentMethod,
-          subtotalUSD,
-          totalUSD,
-          totalBs,
-          exchangeRate,
-          itemsSummary,
-          saleChannel: 'Venta Directa Tienda',
-        },
-        snapshot,
-        { initialStatus: 'completed', deductStockImmediately: true }
-      );
+      const baseOrderInput = {
+        invoiceNumber,
+        customerName: saleCustomerName.trim(),
+        customerRif: saleCustomerRif.trim() || undefined,
+        customerPhone: saleCustomerPhone.trim(),
+        shippingType: saleShippingType,
+        shippingDetails: saleShippingDetails.trim() || undefined,
+        shippingFeeUSD,
+        paymentMethod: salePaymentMethod,
+        subtotalUSD,
+        totalUSD,
+        totalBs,
+        exchangeRate,
+        itemsSummary,
+        saleChannel: 'Venta Directa Tienda' as const,
+      };
+      const saleOptions = {
+        initialStatus: 'completed' as const,
+        deductStockImmediately: true,
+      };
 
-      exportStoreOrderInvoicePDF(activeStore, savedOrder, snapshot, 'dual');
-      setDirectCart([]);
-      setSaleCustomerName('');
-      setSaleCustomerRif('');
-      setSaleCustomerPhone('');
-      setSaleShippingDetails('');
-      setShowDirectSaleModal(false);
-      notify(
-        `Venta #${savedOrder.invoiceNumber} registrada en ${activeStore.storeName}, stock descontado y Factura Dual (Cliente + Dueño) generada.`
-      );
+      const finishDirectSaleReset = (order: StoreOrder, offlineSaved: boolean) => {
+        exportStoreOrderInvoicePDF(activeStore, order, snapshot, 'dual');
+        setDirectCart([]);
+        setSaleCustomerName('');
+        setSaleCustomerRif('');
+        setSaleCustomerPhone('');
+        setSaleShippingDetails('');
+        setShowDirectSaleModal(false);
+        notify(
+          offlineSaved
+            ? `Venta Offline #${order.invoiceNumber} guardada localmente en ${activeStore.storeName} (stock descontado y PDF Dual generado). Se sincronizará al volver la señal.`
+            : `Venta #${order.invoiceNumber} registrada en ${activeStore.storeName}, stock descontado y Factura Dual (Cliente + Dueño) generada.`
+        );
+      };
+
+      const saveDirectSaleOffline = () => {
+        queueOfflineMutation({
+          type: 'marketplace_order',
+          label: `Venta Directa #${invoiceNumber} (${activeStore.storeName})`,
+          payload: {
+            store: activeStore,
+            orderInput: baseOrderInput,
+            items: snapshot,
+            options: saleOptions,
+          },
+        });
+        const nextProducts = products.map((p) => {
+          const sold = snapshot.find((i) => i.product.id === p.id);
+          return sold ? { ...p, stock: Math.max(0, (Number(p.stock) || 0) - sold.quantity) } : p;
+        });
+        setProducts(nextProducts);
+        saveCachedStorefrontWarehouseProducts(activeStore.id, nextProducts);
+        applyOfflineOrderStockToCache(activeStore.id, snapshot);
+
+        const localOrder = createLocalOfflineOrderSnapshot(
+          activeStore,
+          baseOrderInput,
+          snapshot,
+          effectiveUid,
+          'completed'
+        );
+        setOrders((prev) => {
+          const next = [localOrder, ...prev];
+          saveCachedOwnerStoreOrders(activeStore.id, next);
+          return next;
+        });
+        finishDirectSaleReset(localOrder, true);
+      };
+
+      if (isAppEffectivelyOffline() || !user) {
+        saveDirectSaleOffline();
+        return;
+      }
+
+      try {
+        const savedOrder = await createStoreOrderInCloud(
+          user,
+          activeStore,
+          baseOrderInput,
+          snapshot,
+          saleOptions
+        );
+        finishDirectSaleReset(savedOrder, false);
+      } catch (cloudErr) {
+        if (isNetworkOrOfflineError(cloudErr)) {
+          saveDirectSaleOffline();
+          return;
+        }
+        throw cloudErr;
+      }
     } catch (err) {
       notifyError(err instanceof Error ? err.message : 'No se pudo registrar la venta directa.');
     } finally {
@@ -682,11 +865,58 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   };
 
   // ---------------------------------------------------------------------------
-  // Unauthenticated Google Gate
+  // Unauthenticated Google Gate (skipped when offline cache holds verified merchant session)
   // ---------------------------------------------------------------------------
-  if (!user) {
+  if (!user && !effectiveUid) {
     return (
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-5">
+        {/* Clear Seller Space Role Header */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-amber-400 font-semibold">
+            <Store className="w-4 h-4 shrink-0" />
+            <span>{t.merchant.roleBanner}</span>
+          </div>
+          {onNavigateMarketplace && (
+            <button
+              type="button"
+              onClick={onNavigateMarketplace}
+              className="text-zinc-300 hover:text-white font-medium flex items-center gap-1.5 transition-colors"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-zinc-400" />
+              <span>{t.merchant.switchToBuyer}</span>
+            </button>
+          )}
+        </div>
+
+        {/* 4-Step Guided Onboarding Tracker */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+            {t.merchant.stepsTitle}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            {[
+              { title: t.merchant.step1Title, desc: t.merchant.step1Desc, active: true },
+              { title: t.merchant.step2Title, desc: t.merchant.step2Desc, active: false },
+              { title: t.merchant.step3Title, desc: t.merchant.step3Desc, active: false },
+              { title: t.merchant.step4Title, desc: t.merchant.step4Desc, active: false },
+            ].map((step) => (
+              <div
+                key={step.title}
+                className={`p-3 rounded-xl border ${
+                  step.active
+                    ? 'bg-amber-400/10 border-amber-400/40 text-zinc-100'
+                    : 'bg-[#09090b] border-white/[0.06] text-zinc-400'
+                }`}
+              >
+                <div className={`font-bold ${step.active ? 'text-amber-300' : 'text-zinc-200'}`}>
+                  {step.title}
+                </div>
+                <div className="text-[11px] mt-0.5 text-zinc-400">{step.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="bg-[#111114] border border-amber-500/30 rounded-2xl p-8 text-center space-y-6">
           <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto">
             <Store className="w-8 h-8 text-amber-400" />
@@ -699,8 +929,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               {t.merchant.gateDesc}
             </p>
           </div>
-          <div className="flex justify-center">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <GoogleAuthButton label={t.merchant.gateBtn} variant="primary" />
+            {onOpenVectorSellerGuide && (
+              <button
+                type="button"
+                onClick={() => onOpenVectorSellerGuide('Guía para registrar mi tienda paso a paso')}
+                className="px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs sm:text-sm font-semibold text-amber-300 flex items-center gap-2 min-h-[44px]"
+              >
+                <Compass className="w-4 h-4 text-amber-400" />
+                <span>{t.merchant.askVectorGuide}</span>
+              </button>
+            )}
           </div>
           <p className="text-[11px] text-zinc-400">
             {t.merchant.gateFooter}
@@ -716,19 +956,72 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   if (!activeStore || isCreatingNewStore) {
     return (
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Clear Seller Space Header */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-amber-400 font-semibold">
+            <Store className="w-4 h-4 shrink-0" />
+            <span>{t.merchant.roleBanner}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {onOpenVectorSellerGuide && (
+              <button
+                type="button"
+                onClick={() => onOpenVectorSellerGuide('Paso 2: Cómo llenar los datos y RIF de mi tienda')}
+                className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1.5"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>{t.merchant.askVectorGuide}</span>
+              </button>
+            )}
+            {onNavigateMarketplace && (
+              <button
+                type="button"
+                onClick={onNavigateMarketplace}
+                className="text-zinc-300 hover:text-white font-medium flex items-center gap-1.5"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-zinc-400" />
+                <span>{t.merchant.switchToBuyer}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 4-Step Progress Bar (Step 1 done, Step 2 active) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/35 text-emerald-200">
+            <div className="font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{t.merchant.step1Title}</span>
+            </div>
+            <div className="text-[11px] mt-0.5 text-emerald-200/75">{t.merchant.step1Desc}</div>
+          </div>
+          <div className="p-3 rounded-xl bg-amber-400/10 border border-amber-400/45 text-zinc-100">
+            <div className="font-bold text-amber-300">{t.merchant.step2Title}</div>
+            <div className="text-[11px] mt-0.5 text-zinc-300">{t.merchant.step2Desc}</div>
+          </div>
+          <div className="p-3 rounded-xl bg-[#111114] border border-white/[0.08] text-zinc-400">
+            <div className="font-bold text-zinc-200">{t.merchant.step3Title}</div>
+            <div className="text-[11px] mt-0.5">{t.merchant.step3Desc}</div>
+          </div>
+          <div className="p-3 rounded-xl bg-[#111114] border border-white/[0.08] text-zinc-400">
+            <div className="font-bold text-zinc-200">{t.merchant.step4Title}</div>
+            <div className="text-[11px] mt-0.5">{t.merchant.step4Desc}</div>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-4 bg-[#111114] border border-white/[0.08] rounded-2xl p-4">
           <div className="flex items-center gap-3">
-            {user.photoURL && (
+            {effectivePhotoURL && (
               <img
-                src={user.photoURL}
-                alt={user.displayName || ''}
+                src={effectivePhotoURL}
+                alt={effectiveDisplayName || ''}
                 className="w-10 h-10 rounded-full object-cover shrink-0"
                 referrerPolicy="no-referrer"
               />
             )}
             <div>
-              <div className="text-sm font-bold text-white">{user.displayName || user.email}</div>
-              <div className="text-xs text-zinc-400">{user.email}</div>
+              <div className="text-sm font-bold text-white">{effectiveDisplayName || effectiveEmail}</div>
+              <div className="text-xs text-zinc-400">{effectiveEmail}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -993,8 +1286,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               )}
             </div>
             <div className="text-xs text-zinc-400">
-              {t.merchant.ownerPrefix}: {activeStore.registeredOwnerName} · RIF: {activeStore.rif || t.merchant.noRif} ·{' '}
-              {user.email}
+              {t.merchant.ownerPrefix}: {activeStore.registeredOwnerName} · RIF: {activeStore.rif || t.merchant.noRif}
+              {effectiveEmail ? ` · ${effectiveEmail}` : ''}
             </div>
           </div>
         </div>
@@ -1958,7 +2251,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       </button>
 
                       <a
-                        href={`https://wa.me/${ord.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                        href={`https://wa.me/${normalizeVenezuelanPhone(ord.customerPhone)}?text=${encodeURIComponent(
                           `Hola ${ord.customerName}, te escribimos de ${activeStore.storeName} respecto a tu factura #${ord.invoiceNumber}.`
                         )}`}
                         target="_blank"

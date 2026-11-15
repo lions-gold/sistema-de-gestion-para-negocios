@@ -1,4 +1,6 @@
 import { Product } from '../types';
+import { getCaracasDateString } from './venezuelaTime';
+import { saveBlobResilient } from './pdfExport';
 
 export interface PortableInventoryItem {
   nombre: string;
@@ -67,12 +69,11 @@ export function exportInventoryCatalogCSV(products: Product[]): void {
 
   const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `catalogo_inventario_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `catalogo_inventario_${getCaracasDateString()}.csv`,
+    'text/csv;charset=utf-8'
+  );
 }
 
 export function exportInventoryCatalogJSON(products: Product[]): void {
@@ -102,12 +103,11 @@ export function exportInventoryCatalogJSON(products: Product[]): void {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json;charset=utf-8',
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `catalogo_inventario_${new Date().toISOString().split('T')[0]}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `catalogo_inventario_${getCaracasDateString()}.json`,
+    'application/json;charset=utf-8'
+  );
 }
 
 export function downloadInventoryCSVTemplate(): void {

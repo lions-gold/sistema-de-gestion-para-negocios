@@ -30,6 +30,13 @@ import {
   signOutGoogleResilient,
 } from './authService';
 import {
+  getCaracasDateString,
+  normalizeVenezuelanPhone,
+  VENEZUELA_LOCALE,
+  VENEZUELA_TIMEZONE,
+} from '../utils/venezuelaTime';
+import { saveBlobResilient } from '../utils/pdfExport';
+import {
   AdminEmailDispatch,
   CashClosingRecord,
   CashMovement,
@@ -650,7 +657,7 @@ export function buildPaymentVoucherLinks(params: {
 }): { whatsappHref: string; mailtoHref: string; voucherText: string } {
   const { payment, store, exchangeRate, supportWhatsapp } = params;
   const cleanWa =
-    (supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp).replace(/\D/g, '') ||
+    normalizeVenezuelanPhone(supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp) ||
     '584220273766';
   const amountBs =
     exchangeRate && exchangeRate > 0
@@ -681,7 +688,7 @@ export function buildPaymentVoucherLinks(params: {
     payment.notes ? `Notas: ${payment.notes}` : '',
     payment.proofImageUrl ? 'Captura adjunta: Sí (adjunta imagen en este chat si es necesario)' : '',
     '-----------------------------------',
-    `Fecha: ${new Date().toLocaleString('es-VE')}`,
+    `Fecha: ${new Date().toLocaleString(VENEZUELA_LOCALE, { timeZone: VENEZUELA_TIMEZONE })}`,
     'Solicito verificación y activación de cuenta.',
   ].filter(Boolean);
 
@@ -1637,12 +1644,11 @@ export function exportStoreSalesToCSV(store: StoreTenant, orders: StoreOrder[]):
 
   const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `ventas_${store.slug}_${new Date().toISOString().split('T')[0]}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobResilient(
+    blob,
+    `ventas_${store.slug}_${getCaracasDateString()}.csv`,
+    'text/csv;charset=utf-8'
+  );
 }
 
 export async function fetchStoreByIdOrSlug(slugOrId: string): Promise<StoreTenant | null> {
