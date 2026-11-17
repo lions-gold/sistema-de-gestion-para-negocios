@@ -32,6 +32,8 @@ import {
   Sparkles,
   Compass,
   Server,
+  Wallet,
+  Save,
 } from 'lucide-react';
 import { MerchantVectorTab } from './MerchantVectorTab';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
@@ -40,23 +42,30 @@ import { auth } from '../firebase';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 import {
   PlatformBillingSettings,
+  PlatformPaymentCurrency,
+  PlatformPaymentMethod,
   ReferralCodeLookup,
   ReferralCoupon,
+  SalesPaymentMethod,
   ShippingType,
   StoreCartItem,
   StoreInboxMessage,
   StoreOrder,
+  StorePaymentMethod,
   StoreProduct,
   StoreReferral,
+  StoreSubscriptionPaymentMethod,
   StoreTenant,
   SubscriptionPayment,
   SubscriptionPaymentMethod,
 } from '../types';
 import {
   buildPaymentVoucherLinks,
+  claimPendingAdminStoresForUser,
   compressImageFileToDataURL,
   createStoreOrderInCloud,
   DEFAULT_BILLING_SETTINGS,
+  deleteStorePaymentMethod,
   deleteStoreProduct,
   dispatchSubscriptionPaymentProof,
   ensureStoreReferralCode,
@@ -72,10 +81,14 @@ import {
   PaymentVoucherDispatchResult,
   registerStoreTenant,
   resolveReferralCode,
+  saveStorePaymentMethod,
   saveStoreProduct,
   signOutAccount,
   StoreProductInput,
   submitSubscriptionPayment,
+  subscribeActivePlatformPaymentMethods,
+  subscribeActiveSalesPaymentMethods,
+  subscribeAllStorePaymentMethodsForOwner,
   subscribeOwnerCoupons,
   subscribeOwnerPayments,
   subscribeOwnerReferrals,
@@ -83,6 +96,8 @@ import {
   subscribeOwnerStoreProducts,
   subscribeOwnerStores,
   subscribeStoreInbox,
+  subscribeStoreSubscriptionMethodsForOwner,
+  toggleStorePaymentMethodActive,
   updateStoreOrderStatus,
   updateStoreTenantByOwner,
 } from '../services/saasService';
@@ -101,13 +116,21 @@ import {
   loadCachedOwnerStoreOrders,
   loadCachedOwnerStores,
   loadCachedPlatformBilling,
+  loadCachedPlatformPaymentMethods,
+  loadCachedSalesPaymentMethods,
   loadCachedStorefrontWarehouseProducts,
+  loadCachedStorePaymentMethods,
+  loadCachedStoreSubscriptionMethods,
   queueOfflineMutation,
   saveCachedOwnerStoreOrders,
   saveCachedOwnerStores,
   saveCachedPlatformBilling,
+  saveCachedPlatformPaymentMethods,
+  saveCachedSalesPaymentMethods,
   saveCachedStorefrontWarehouseProducts,
+  saveCachedStorePaymentMethods,
   saveCachedStoreProducts,
+  saveCachedStoreSubscriptionMethods,
 } from '../services/offlineSyncService';
 
 interface MerchantPortalProps {
@@ -140,6 +163,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [billing, setBilling] = useState<PlatformBillingSettings>(
     () => loadCachedPlatformBilling() || DEFAULT_BILLING_SETTINGS
   );
+  const [customPaymentMethods, setCustomPaymentMethods] = useState<PlatformPaymentMethod[]>(() =>
+    loadCachedPlatformPaymentMethods()
+  );
+  const [salesPaymentMethods, setSalesPaymentMethods] = useState<SalesPaymentMethod[]>(() =>
+    loadCachedSalesPaymentMethods()
+  );
+  const [storePaymentMethods, setStorePaymentMethods] = useState<StorePaymentMethod[]>([]);
+  const [storeSubscriptionMethods, setStoreSubscriptionMethods] = useState<
+    StoreSubscriptionPaymentMethod[]
+  >([]);
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [orders, setOrders] = useState<StoreOrder[]>([]);
@@ -148,7 +181,15 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [inboxMessages, setInboxMessages] = useState<StoreInboxMessage[]>([]);
 
   const [activeTab, setActiveTab] = useState<
-    'catalog' | 'billing' | 'orders' | 'referrals' | 'inbox' | 'vector' | 'email_smtp' | 'settings'
+    | 'catalog'
+    | 'billing'
+    | 'payment_methods'
+    | 'orders'
+    | 'referrals'
+    | 'inbox'
+    | 'vector'
+    | 'email_smtp'
+    | 'settings'
   >('billing');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -173,6 +214,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
   // Payment Report Form State
   const [payMethod, setPayMethod] = useState<SubscriptionPaymentMethod>('Pago Móvil');
+  const [hasManualPayMethodSelection, setHasManualPayMethodSelection] = useState(false);
   const [payRef, setPayRef] = useState('');
   const [payPayerInfo, setPayPayerInfo] = useState('');
   const [payWhatsapp, setPayWhatsapp] = useState('');
@@ -212,10 +254,29 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [saleShippingType, setSaleShippingType] = useState<ShippingType>('Retiro en Tienda');
   const [saleShippingDetails, setSaleShippingDetails] = useState('');
 
+  // Store Owner Manual Payment / Collection Method Form State
+  const [editingStoreMethod, setEditingStoreMethod] = useState<StorePaymentMethod | null>(null);
+  const [stPmName, setStPmName] = useState('');
+  const [stPmCurrency, setStPmCurrency] = useState<PlatformPaymentCurrency>('USD');
+  const [stPmHolder, setStPmHolder] = useState('');
+  const [stPmDetails, setStPmDetails] = useState('');
+  const [stPmInstructions, setStPmInstructions] = useState('');
+  const [stPmAppliesIgtf, setStPmAppliesIgtf] = useState(false);
+  const [stPmActive, setStPmActive] = useState(true);
+  const [confirmDeleteStoreMethodId, setConfirmDeleteStoreMethodId] = useState<string | null>(null);
+
   useEffect(() => {
     getPlatformBillingSettings().then((b) => {
       setBilling(b);
       saveCachedPlatformBilling(b);
+    });
+    const unsubCustomMethods = subscribeActivePlatformPaymentMethods((list) => {
+      setCustomPaymentMethods(list);
+      saveCachedPlatformPaymentMethods(list);
+    });
+    const unsubSalesMethods = subscribeActiveSalesPaymentMethods((list) => {
+      setSalesPaymentMethods(list);
+      saveCachedSalesPaymentMethods(list);
     });
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -223,7 +284,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         setRegOwnerName((prev) => prev || u.displayName || '');
       }
     });
-    return () => unsub();
+    return () => {
+      unsub();
+      unsubCustomMethods();
+      unsubSalesMethods();
+    };
   }, []);
 
   const cachedAuth = loadCachedAuthSnapshot();
@@ -260,6 +325,17 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setSelectedStoreId((prev) => prev || cachedStores[0].id);
     }
 
+    let cancelled = false;
+    if (!isAppEffectivelyOffline()) {
+      claimPendingAdminStoresForUser(user).then((claimed) => {
+        if (cancelled || claimed.length === 0) return;
+        setSelectedStoreId((prev) => prev || claimed[0].id);
+        setStatusMessage(
+          `Tienda vinculada automáticamente: ${claimed.map((s) => s.storeName).join(', ')}`
+        );
+      });
+    }
+
     const unsubStores = subscribeOwnerStores(user.uid, (list) => {
       setStores(list);
       saveCachedOwnerStores(user.uid, list);
@@ -271,6 +347,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     const unsubRefs = subscribeOwnerReferrals(user.uid, setReferrals);
     const unsubCoups = subscribeOwnerCoupons(user.uid, setCoupons);
     return () => {
+      cancelled = true;
       unsubStores();
       unsubPays();
       unsubRefs();
@@ -285,6 +362,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setProducts([]);
       setOrders([]);
       setInboxMessages([]);
+      setStorePaymentMethods([]);
+      setStoreSubscriptionMethods([]);
       return;
     }
 
@@ -292,6 +371,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     if (cachedProds.length > 0) setProducts(cachedProds);
     const cachedOrders = loadCachedOwnerStoreOrders(activeStore.id);
     if (cachedOrders.length > 0) setOrders(cachedOrders);
+    const cachedPayMethods = loadCachedStorePaymentMethods(activeStore.id);
+    if (cachedPayMethods.length > 0) setStorePaymentMethods(cachedPayMethods);
+    const cachedSubMethods = loadCachedStoreSubscriptionMethods(activeStore.id);
+    setStoreSubscriptionMethods(cachedSubMethods);
 
     if (!user) return;
 
@@ -304,6 +387,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       saveCachedOwnerStoreOrders(activeStore.id, list);
     });
     const unsubInbox = subscribeStoreInbox(activeStore.id, user.uid, setInboxMessages);
+    const unsubStorePm = subscribeAllStorePaymentMethodsForOwner(activeStore.id, user.uid, (list) => {
+      setStorePaymentMethods(list);
+      saveCachedStorePaymentMethods(activeStore.id, list);
+    });
+    const unsubStoreSubPm = subscribeStoreSubscriptionMethodsForOwner(
+      activeStore.id,
+      user.uid,
+      (list) => {
+        setStoreSubscriptionMethods(list);
+        saveCachedStoreSubscriptionMethods(activeStore.id, list);
+      }
+    );
 
     if (!activeStore.referralCode && !isAppEffectivelyOffline()) {
       ensureStoreReferralCode(activeStore).catch(() => {});
@@ -313,6 +408,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       unsubProds();
       unsubOrds();
       unsubInbox();
+      unsubStorePm();
+      unsubStoreSubPm();
     };
   }, [activeStore, user, effectiveUid]);
 
@@ -471,6 +568,133 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     ? Math.max(0, Number((baseSubscriptionUSD - selectedCoupon.discountUSD).toFixed(2)))
     : baseSubscriptionUSD;
 
+  const isConfiguredBaseMethod = (text?: string) => {
+    const clean = (text || '').trim();
+    return Boolean(clean) && !clean.toLowerCase().startsWith('por configurar');
+  };
+
+  const activeStoreSubscriptionMethods = storeSubscriptionMethods.filter((m) => m.isActive);
+  const storeSpecificMethodNames = new Set(
+    activeStoreSubscriptionMethods.map((m) => m.name.trim().toLowerCase())
+  );
+
+  const configuredBaseAccounts = [
+    {
+      key: 'Pago Móvil',
+      title: t.merchant.pagoMovil,
+      currency: 'Bs' as PlatformPaymentCurrency,
+      value: billing.pagoMovil,
+    },
+    {
+      key: 'Transferencia Bancaria',
+      title: t.merchant.bankTransfers,
+      currency: 'Bs' as PlatformPaymentCurrency,
+      value: billing.bankTransfers,
+    },
+    {
+      key: 'Binance Pay',
+      title: t.merchant.binancePay,
+      currency: 'USDT' as PlatformPaymentCurrency,
+      value: billing.binancePay,
+    },
+    {
+      key: 'Bybit',
+      title: t.merchant.bybitPay,
+      currency: 'USDT' as PlatformPaymentCurrency,
+      value: billing.bybitPay,
+    },
+  ].filter(
+    (item) =>
+      isConfiguredBaseMethod(item.value) &&
+      !storeSpecificMethodNames.has(item.key.trim().toLowerCase()) &&
+      !customPaymentMethods.some(
+        (pm) => pm.name.trim().toLowerCase() === item.key.trim().toLowerCase()
+      )
+  );
+
+  const filteredGlobalCustomMethods = customPaymentMethods.filter(
+    (pm) => !storeSpecificMethodNames.has(pm.name.trim().toLowerCase())
+  );
+
+  const subscriptionCheckoutOptions: Array<{
+    value: string;
+    label: string;
+    currency: string;
+    accountHolder?: string;
+    accountDetails: string;
+    instructions?: string;
+    isCustom: boolean;
+    isStoreSpecific: boolean;
+  }> = [
+    ...activeStoreSubscriptionMethods.map((pm) => ({
+      value: pm.name,
+      label: `${pm.name} (${pm.currency}) · Asignado a tu tienda`,
+      currency: pm.currency,
+      accountHolder: pm.accountHolder,
+      accountDetails: pm.accountDetails,
+      instructions: pm.instructions,
+      isCustom: true,
+      isStoreSpecific: true,
+    })),
+    ...filteredGlobalCustomMethods.map((pm) => ({
+      value: pm.name,
+      label: `${pm.name} (${pm.currency})`,
+      currency: pm.currency,
+      accountHolder: pm.accountHolder,
+      accountDetails: pm.accountDetails,
+      instructions: pm.instructions,
+      isCustom: true,
+      isStoreSpecific: false,
+    })),
+    ...configuredBaseAccounts.map((base) => ({
+      value: base.key,
+      label: `${base.title} (${base.currency})`,
+      currency: base.currency,
+      accountDetails: base.value,
+      isCustom: false,
+      isStoreSpecific: false,
+    })),
+  ];
+
+  useEffect(() => {
+    setHasManualPayMethodSelection(false);
+  }, [activeStore?.id]);
+
+  useEffect(() => {
+    if (subscriptionCheckoutOptions.length === 0) {
+      if (payMethod !== 'Coordinado con Admin (WhatsApp)') {
+        setPayMethod('Coordinado con Admin (WhatsApp)');
+      }
+      return;
+    }
+    const exists = subscriptionCheckoutOptions.some((opt) => opt.value === payMethod);
+    if (!exists || !hasManualPayMethodSelection) {
+      setPayMethod(subscriptionCheckoutOptions[0].value as SubscriptionPaymentMethod);
+    }
+  }, [
+    activeStore?.id,
+    activeStoreSubscriptionMethods.length,
+    customPaymentMethods.length,
+    configuredBaseAccounts.length,
+    hasManualPayMethodSelection,
+    subscriptionCheckoutOptions[0]?.value,
+  ]);
+
+  const activeSelectedSubscriptionOption =
+    subscriptionCheckoutOptions.find((opt) => opt.value === payMethod) ||
+    subscriptionCheckoutOptions[0] ||
+    null;
+
+  const formatSubscriptionOptionAmount = (currency: string, usdAmount: number) => {
+    if (currency === 'Bs') {
+      return `${(usdAmount * exchangeRate).toLocaleString('es-VE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} Bs.`;
+    }
+    return `$${usdAmount.toFixed(2)} ${currency}`;
+  };
+
   const handleUploadPaymentProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -624,6 +848,80 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       } else {
         notifyError(err instanceof Error ? err.message : 'Error guardando producto.');
       }
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const resetStoreMethodForm = () => {
+    setEditingStoreMethod(null);
+    setStPmName('');
+    setStPmCurrency('USD');
+    setStPmHolder(activeStore?.registeredOwnerName || '');
+    setStPmDetails('');
+    setStPmInstructions('');
+    setStPmAppliesIgtf(false);
+    setStPmActive(true);
+  };
+
+  const handleSaveStorePaymentMethod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !activeStore) return;
+    setIsBusy(true);
+    try {
+      await saveStorePaymentMethod(
+        activeStore.id,
+        user.uid,
+        {
+          id: editingStoreMethod?.id,
+          name: stPmName,
+          currency: stPmCurrency,
+          accountHolder: stPmHolder,
+          accountDetails: stPmDetails,
+          instructions: stPmInstructions,
+          appliesIgtf: stPmAppliesIgtf,
+          isActive: stPmActive,
+        },
+        editingStoreMethod || undefined
+      );
+      notify(
+        editingStoreMethod
+          ? `Método de cobro "${stPmName}" actualizado para ${activeStore.storeName}.`
+          : `Método de cobro "${stPmName}" configurado. Ya aparece para tus clientes y en tus ventas.`
+      );
+      resetStoreMethodForm();
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Error guardando método de cobro de tu tienda.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleToggleStoreMethodActive = async (method: StorePaymentMethod) => {
+    if (!activeStore) return;
+    setIsBusy(true);
+    try {
+      await toggleStorePaymentMethodActive(activeStore.id, method, !method.isActive);
+      notify(`Método de cobro "${method.name}" ${!method.isActive ? 'activado' : 'pausado'}.`);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Error actualizando estado del método de cobro.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDeleteStorePaymentMethod = async (method: StorePaymentMethod) => {
+    if (!activeStore) return;
+    setIsBusy(true);
+    try {
+      await deleteStorePaymentMethod(activeStore.id, method.id);
+      setConfirmDeleteStoreMethodId(null);
+      if (editingStoreMethod?.id === method.id) {
+        resetStoreMethodForm();
+      }
+      notify(`Método de cobro "${method.name}" eliminado.`);
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : 'Error eliminando método de cobro.');
     } finally {
       setIsBusy(false);
     }
@@ -946,6 +1244,56 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {t.merchant.gateFooter}
           </p>
         </div>
+
+        {/* Public Preview of Subscription Payment Methods Configured by Admin */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Métodos Disponibles para Comprar tu Suscripción</span>
+              </h2>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Inicia sesión con Google, registra tu tienda y reporta tu pago con cualquiera de estas opciones habilitadas.
+              </p>
+            </div>
+            <div className="text-right font-mono tabular-nums text-xs">
+              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/mes</span>
+              <span className="text-zinc-500 mx-1.5">·</span>
+              <span className="text-zinc-400">
+                ≈ {(baseSubscriptionUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
+              </span>
+            </div>
+          </div>
+
+          {subscriptionCheckoutOptions.length === 0 ? (
+            <div className="p-4 rounded-xl bg-[#09090b] border border-amber-500/25 text-xs text-zinc-300">
+              El Administrador está configurando los métodos de cobro de suscripción. Puedes solicitar las cuentas actualizadas por WhatsApp ({billing.supportWhatsapp}).
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+              {subscriptionCheckoutOptions.map((opt) => (
+                <div
+                  key={`preview-${opt.value}`}
+                  className="p-3 rounded-xl bg-[#09090b] border border-white/[0.08] space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-zinc-100 truncate">{opt.value}</span>
+                    <span className="font-mono text-[11px] text-amber-300 shrink-0">
+                      {opt.currency}
+                    </span>
+                  </div>
+                  {opt.accountHolder && (
+                    <p className="text-[11px] text-zinc-400 truncate">Titular: {opt.accountHolder}</p>
+                  )}
+                  <p className="text-[11px] text-zinc-300 font-mono line-clamp-2 whitespace-pre-line">
+                    {opt.accountDetails}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     );
   }
@@ -1240,6 +1588,56 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {isBusy ? t.merchant.creatingStore : t.merchant.createStoreSubmit}
           </button>
         </form>
+
+        {/* Step 3 Preview: Subscription Payment Methods Configured by Admin */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Métodos Habilitados para Pagar tu Suscripción (Paso 3)</span>
+              </h2>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Al registrar tu tienda pasarás al checkout para reportar tu pago con cualquiera de estas cuentas configuradas por el Administrador.
+              </p>
+            </div>
+            <div className="text-right font-mono tabular-nums text-xs">
+              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/mes</span>
+              <span className="text-zinc-500 mx-1.5">·</span>
+              <span className="text-zinc-400">
+                ≈ {(baseSubscriptionUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
+              </span>
+            </div>
+          </div>
+
+          {subscriptionCheckoutOptions.length === 0 ? (
+            <div className="p-3.5 rounded-xl bg-[#09090b] border border-amber-500/25 text-xs text-zinc-300">
+              Aún no hay cuentas de pago publicadas por el Administrador. Al finalizar el registro podrás coordinar directamente vía WhatsApp ({billing.supportWhatsapp}).
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+              {subscriptionCheckoutOptions.map((opt) => (
+                <div
+                  key={`reg-preview-${opt.value}`}
+                  className="p-3 rounded-xl bg-[#09090b] border border-white/[0.08] space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-zinc-100 truncate">{opt.value}</span>
+                    <span className="font-mono text-[11px] text-amber-300 shrink-0">
+                      {formatSubscriptionOptionAmount(opt.currency, baseSubscriptionUSD)}
+                    </span>
+                  </div>
+                  {opt.accountHolder && (
+                    <p className="text-[11px] text-zinc-400 truncate">Titular: {opt.accountHolder}</p>
+                  )}
+                  <p className="text-[11px] text-zinc-300 font-mono line-clamp-2 whitespace-pre-line">
+                    {opt.accountDetails}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     );
   }
@@ -1356,6 +1754,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-white/[0.08] pb-3">
         {[
           { id: 'billing', label: t.merchant.tabBilling, icon: CreditCard },
+          {
+            id: 'payment_methods',
+            label: `Cobros de Mi Tienda (${storePaymentMethods.filter((m) => m.isActive).length})`,
+            icon: Wallet,
+          },
           { id: 'catalog', label: `${t.merchant.tabCatalog} (${products.length})`, icon: Package },
           { id: 'orders', label: `${t.merchant.tabOrders} (${orders.length})`, icon: ShoppingBag },
           {
@@ -1391,48 +1794,141 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         })}
       </div>
 
-      {/* TAB 1: BILLING / $25 SUBSCRIPTION */}
+      {/* TAB 1: BILLING / SUBSCRIPTION PURCHASE */}
       {activeTab === 'billing' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-6 space-y-4">
             <div className="bg-[#111114] border border-amber-500/30 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-white font-display">
-                  {t.merchant.paymentMethodsTitle} ${billing.monthlyPriceUSD}/mo
-                </h2>
-                <span className="font-mono text-xs text-amber-300">
-                  ≈ {(billing.monthlyPriceUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-bold text-white font-display">
+                    {t.merchant.paymentMethodsTitle} ${netSubscriptionUSD.toFixed(2)}/mes
+                  </h2>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    {activeStoreSubscriptionMethods.length > 0
+                      ? `Incluye ${activeStoreSubscriptionMethods.length} método${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} asignado${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} específicamente a ${activeStore?.storeName || 'tu tienda'}.`
+                      : 'Métodos configurados por el Administrador. Haz clic en uno para seleccionarlo automáticamente en el formulario.'}
+                  </p>
+                </div>
+                <span className="font-mono text-xs text-amber-300 tabular-nums shrink-0">
+                  ≈ {(netSubscriptionUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
                 </span>
               </div>
 
               <div className="space-y-3 text-xs">
-                {[
-                  { title: t.merchant.bankTransfers, value: billing.bankTransfers },
-                  { title: t.merchant.pagoMovil, value: billing.pagoMovil },
-                  { title: t.merchant.binancePay, value: billing.binancePay },
-                  { title: t.merchant.bybitPay, value: billing.bybitPay },
-                ].map((item) => (
-                  <div
-                    key={item.title}
-                    className="bg-[#09090b] border border-white/[0.08] rounded-xl p-3 space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-amber-400">{item.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(item.value);
-                          notify(`${item.title} - ${t.common.copied}`);
-                        }}
-                        className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1"
-                      >
-                        <Copy className="w-3 h-3" />
-                        <span>{t.common.copy}</span>
-                      </button>
+                {subscriptionCheckoutOptions.length === 0 ? (
+                  <div className="p-5 rounded-xl bg-[#09090b] border border-amber-500/30 space-y-2.5 text-center">
+                    <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                    <div className="text-xs font-bold text-white">
+                      El Administrador aún no ha cargado métodos de pago manuales
                     </div>
-                    <p className="text-zinc-300 whitespace-pre-line">{item.value}</p>
+                    <p className="text-[11px] text-zinc-400">
+                      Cuando el Administrador configure Pago Móvil, Zelle, Binance Pay o cuentas bancarias en el Panel Admin, aparecerán aquí automáticamente.
+                    </p>
+                    <a
+                      href={`https://wa.me/${(normalizeVenezuelanPhone(billing.supportWhatsapp) || '584220273766')}?text=${encodeURIComponent(
+                        `Hola Administrador, deseo pagar la suscripción de mi tienda "${activeStore?.storeName || ''}" ($${netSubscriptionUSD} USD). ¿A qué cuenta transfiero?`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Solicitar Datos de Pago por WhatsApp</span>
+                    </a>
                   </div>
-                ))}
+                ) : (
+                  subscriptionCheckoutOptions.map((opt) => {
+                  const isSelected = payMethod === opt.value;
+                  const exactPayAmount = formatSubscriptionOptionAmount(
+                    opt.currency,
+                    netSubscriptionUSD
+                  );
+                  const fullCopyText = [
+                    `${opt.value} (${opt.currency}) · Monto: ${exactPayAmount}`,
+                    opt.accountHolder ? `Titular: ${opt.accountHolder}` : '',
+                    opt.accountDetails,
+                    opt.instructions ? `Instrucciones: ${opt.instructions}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join('\n');
+                  return (
+                    <div
+                      key={opt.value}
+                      onClick={() => {
+                        setHasManualPayMethodSelection(true);
+                        setPayMethod(opt.value as SubscriptionPaymentMethod);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setHasManualPayMethodSelection(true);
+                          setPayMethod(opt.value as SubscriptionPaymentMethod);
+                        }
+                      }}
+                      className={`rounded-xl p-3.5 space-y-1.5 border cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-amber-500/[0.08] border-amber-400/60'
+                          : opt.isStoreSpecific
+                            ? 'bg-indigo-950/20 border-indigo-500/35 hover:border-amber-400/45'
+                            : 'bg-[#09090b] border-white/[0.08] hover:border-amber-400/35'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                          <span className={`font-bold truncate ${isSelected ? 'text-amber-300' : 'text-emerald-300'}`}>
+                            {opt.value}
+                          </span>
+                          <span className="text-zinc-500" aria-hidden="true">·</span>
+                          <span className="font-mono text-[11px] text-amber-200 tabular-nums shrink-0">
+                            {exactPayAmount}
+                          </span>
+                          {opt.isStoreSpecific && (
+                            <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 border border-indigo-400/35 text-indigo-200 text-[10px] font-semibold shrink-0">
+                              Asignado a tu tienda
+                            </span>
+                          )}
+                          {isSelected && (
+                            <>
+                              <span className="text-zinc-500" aria-hidden="true">·</span>
+                              <span className="text-[11px] font-semibold text-amber-300 shrink-0">
+                                Seleccionado
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setHasManualPayMethodSelection(true);
+                            setPayMethod(opt.value as SubscriptionPaymentMethod);
+                            navigator.clipboard?.writeText(fullCopyText);
+                            notify(`${opt.value} - ${t.common.copied}`);
+                          }}
+                          className="text-[11px] text-zinc-300 hover:text-white px-2.5 py-1 rounded-lg bg-[#111114] border border-white/[0.08] flex items-center gap-1 shrink-0"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{t.common.copy}</span>
+                        </button>
+                      </div>
+                      {opt.accountHolder && (
+                        <p className="text-zinc-400 text-[11px]">
+                          Titular: <span className="text-zinc-200">{opt.accountHolder}</span>
+                        </p>
+                      )}
+                      <p className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">
+                        {opt.accountDetails}
+                      </p>
+                      {opt.instructions && (
+                        <p className="text-zinc-400 text-[11px]">{opt.instructions}</p>
+                      )}
+                    </div>
+                  );
+                })
+                )}
               </div>
             </div>
           </div>
@@ -1483,31 +1979,90 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               )}
 
               {netSubscriptionUSD > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-zinc-400 block mb-1">{t.merchant.methodUsed}</label>
-                    <select
-                      value={payMethod}
-                      onChange={(e) => setPayMethod(e.target.value as SubscriptionPaymentMethod)}
-                      className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
-                    >
-                      <option value="Pago Móvil">Pago Móvil (Bs.)</option>
-                      <option value="Transferencia Bancaria">Transferencia Bancaria VE</option>
-                      <option value="Binance Pay">Binance Pay (USDT)</option>
-                      <option value="Bybit">Bybit Pay</option>
-                    </select>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">{t.merchant.methodUsed}</label>
+                      <select
+                        value={payMethod}
+                        onChange={(e) => {
+                          setHasManualPayMethodSelection(true);
+                          setPayMethod(e.target.value as SubscriptionPaymentMethod);
+                        }}
+                        className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                      >
+                        {subscriptionCheckoutOptions.length === 0 ? (
+                          <option value="Coordinado con Admin (WhatsApp)">
+                            Coordinado con Admin (WhatsApp)
+                          </option>
+                        ) : (
+                          subscriptionCheckoutOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-400 block mb-1">{t.merchant.refHash}</label>
+                      <input
+                        required={netSubscriptionUSD > 0}
+                        type="text"
+                        value={payRef}
+                        onChange={(e) => setPayRef(e.target.value)}
+                        placeholder="00492817 / TxID"
+                        className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs text-zinc-400 block mb-1">{t.merchant.refHash}</label>
-                    <input
-                      required={netSubscriptionUSD > 0}
-                      type="text"
-                      value={payRef}
-                      onChange={(e) => setPayRef(e.target.value)}
-                      placeholder="00492817 / TxID"
-                      className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
-                    />
-                  </div>
+
+                  {activeSelectedSubscriptionOption && (
+                    <div className="p-3 rounded-xl bg-[#09090b] border border-amber-500/25 text-xs space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-amber-300">
+                            Cuenta receptora ({activeSelectedSubscriptionOption.value}):
+                          </span>
+                          <span className="font-mono text-[11px] font-bold text-emerald-300">
+                            {formatSubscriptionOptionAmount(
+                              activeSelectedSubscriptionOption.currency,
+                              netSubscriptionUSD
+                            )}
+                          </span>
+                          {activeSelectedSubscriptionOption.isStoreSpecific && (
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/35 text-indigo-200 text-[10px] font-semibold">
+                              Asignado a tu tienda
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(activeSelectedSubscriptionOption.accountDetails);
+                            notify(`${activeSelectedSubscriptionOption.value} - ${t.common.copied}`);
+                          }}
+                          className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{t.common.copy}</span>
+                        </button>
+                      </div>
+                      {activeSelectedSubscriptionOption.accountHolder && (
+                        <div className="text-[11px] text-zinc-400">
+                          Titular: <span className="text-zinc-200">{activeSelectedSubscriptionOption.accountHolder}</span>
+                        </div>
+                      )}
+                      <div className="font-mono text-[11px] text-zinc-200 whitespace-pre-line">
+                        {activeSelectedSubscriptionOption.accountDetails}
+                      </div>
+                      {activeSelectedSubscriptionOption.instructions && (
+                        <div className="text-[11px] text-zinc-400">
+                          {activeSelectedSubscriptionOption.instructions}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2382,18 +2937,58 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       </div>
                       <div>
                         <label className="text-zinc-300 block mb-1">{t.marketplace.paymentMethodLabel}</label>
-                        <select
-                          value={salePaymentMethod}
-                          onChange={(e) => setSalePaymentMethod(e.target.value)}
-                          className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-lg text-white"
-                        >
-                          <option value="Pago Móvil">Pago Móvil (Bs.)</option>
-                          <option value="Efectivo USD">Efectivo USD</option>
-                          <option value="Transferencia Bancaria">Transferencia Bancaria</option>
-                          <option value="Binance Pay">Binance Pay (USDT)</option>
-                          <option value="Bybit">Bybit Pay</option>
-                          <option value="Zelle">Zelle</option>
-                        </select>
+                        {(() => {
+                          const opts: Array<{ label: string; value: string; details?: string }> = [];
+                          const seen = new Set<string>();
+                          storePaymentMethods
+                            .filter((m) => m.isActive)
+                            .forEach((m) => {
+                              const k = m.name.trim().toLowerCase();
+                              if (!k || seen.has(k)) return;
+                              seen.add(k);
+                              opts.push({
+                                label: `${m.name} (${m.currency} · Mi Tienda)`,
+                                value: m.name,
+                                details: m.accountDetails,
+                              });
+                            });
+                          salesPaymentMethods.forEach((m) => {
+                            const k = m.name.trim().toLowerCase();
+                            if (!k || seen.has(k)) return;
+                            seen.add(k);
+                            opts.push({
+                              label: `${m.name} (${m.currency}${m.appliesIgtf ? ' · IGTF 3%' : ''})`,
+                              value: m.name,
+                            });
+                          });
+                          [
+                            { value: 'Pago Móvil', label: 'Pago Móvil (Bs.)' },
+                            { value: 'Efectivo USD', label: 'Efectivo USD' },
+                            { value: 'Transferencia Bancaria', label: 'Transferencia Bancaria' },
+                            { value: 'Binance Pay', label: 'Binance Pay (USDT)' },
+                            { value: 'Bybit', label: 'Bybit Pay' },
+                            { value: 'Zelle', label: 'Zelle' },
+                          ].forEach((fallback) => {
+                            const k = fallback.value.toLowerCase();
+                            if (!seen.has(k)) {
+                              seen.add(k);
+                              opts.push(fallback);
+                            }
+                          });
+                          return (
+                            <select
+                              value={salePaymentMethod}
+                              onChange={(e) => setSalePaymentMethod(e.target.value)}
+                              className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-lg text-white"
+                            >
+                              {opts.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          );
+                        })()}
                       </div>
                       <div>
                         <label className="text-zinc-300 block mb-1">{t.marketplace.deliveryMethodLabel}</label>
@@ -2842,6 +3437,328 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {t.merchant.saveSettingsBtn}
           </button>
         </form>
+      )}
+
+      {/* TAB: PER-STORE OWNER MANUAL PAYMENT & COLLECTION CONFIGURATION */}
+      {activeTab === 'payment_methods' && (
+        <div className="space-y-6">
+          <div className="bg-[#111114] border border-emerald-500/30 rounded-2xl p-5 space-y-1.5">
+            <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-emerald-400" />
+              <span>Configurar Cómo Cobra Tu Tienda ({activeStore.storeName})</span>
+            </h2>
+            <p className="text-xs text-zinc-400">
+              Cada dueño de tienda configura de forma manual sus propias cuentas bancarias, Pago Móvil, Binance Pay, Zinli, Transferencia Banesco o Zelle donde recibe el dinero de sus ventas. Los métodos activos se muestran a tus compradores al finalizar el carrito y en tu sistema POS/Ventas.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <form
+              onSubmit={handleSaveStorePaymentMethod}
+              className="lg:col-span-5 bg-[#111114] border border-amber-500/25 rounded-2xl p-6 space-y-4 h-fit"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      {editingStoreMethod
+                        ? `Editar Cobro: ${editingStoreMethod.name}`
+                        : 'Agregar Cuenta o Método de Cobro'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Ingresa tus datos reales donde tus clientes te enviarán el dinero.
+                  </p>
+                </div>
+                {editingStoreMethod && (
+                  <button
+                    type="button"
+                    onClick={resetStoreMethodForm}
+                    className="text-xs text-zinc-400 hover:text-white px-2 py-1 rounded bg-[#09090b]"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+
+              {!editingStoreMethod && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-zinc-400">
+                    Plantillas rápidas (opcionales, luego colocas tu cuenta):
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(() => {
+                      const suggestions: Array<{
+                        name: string;
+                        currency: PlatformPaymentCurrency;
+                        appliesIgtf: boolean;
+                      }> = [];
+                      const seen = new Set<string>();
+                      salesPaymentMethods.forEach((sm) => {
+                        const k = sm.name.trim().toLowerCase();
+                        if (!k || seen.has(k)) return;
+                        seen.add(k);
+                        suggestions.push({
+                          name: sm.name,
+                          currency: sm.currency,
+                          appliesIgtf: sm.appliesIgtf,
+                        });
+                      });
+                      [
+                        { name: 'Pago Móvil', currency: 'Bs' as PlatformPaymentCurrency, appliesIgtf: false },
+                        { name: 'Transferencia Banesco', currency: 'Bs' as PlatformPaymentCurrency, appliesIgtf: false },
+                        { name: 'Binance Pay', currency: 'USDT' as PlatformPaymentCurrency, appliesIgtf: false },
+                        { name: 'Zinli', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
+                        { name: 'Zelle', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
+                        { name: 'Efectivo USD', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
+                      ].forEach((base) => {
+                        const k = base.name.toLowerCase();
+                        if (!seen.has(k)) {
+                          seen.add(k);
+                          suggestions.push(base);
+                        }
+                      });
+                      return suggestions.map((sug) => (
+                        <button
+                          key={sug.name}
+                          type="button"
+                          onClick={() => {
+                            setStPmName(sug.name);
+                            setStPmCurrency(sug.currency);
+                            setStPmAppliesIgtf(sug.appliesIgtf);
+                            if (!stPmHolder) setStPmHolder(activeStore.registeredOwnerName || '');
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-500/40 text-[11px] text-zinc-200 font-medium transition-colors"
+                        >
+                          + {sug.name}
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                  <input
+                    required
+                    type="text"
+                    maxLength={80}
+                    value={stPmName}
+                    onChange={(e) => setStPmName(e.target.value)}
+                    placeholder="Ej: Pago Móvil Banesco / Binance Pay / Zelle"
+                    className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                  <select
+                    value={stPmCurrency}
+                    onChange={(e) => setStPmCurrency(e.target.value as PlatformPaymentCurrency)}
+                    className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="Bs">Bs.</option>
+                    <option value="USDT">USDT</option>
+                    <option value="EUR">EUR</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">Titular / Razón Social / RIF</label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  value={stPmHolder}
+                  onChange={(e) => setStPmHolder(e.target.value)}
+                  placeholder={`Ej: ${activeStore.registeredOwnerName}${activeStore.rif ? ` · ${activeStore.rif}` : ''}`}
+                  className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">
+                  Datos de Cobro de Tu Tienda (Cuenta, Teléfono Pago Móvil, Correo o Wallet) *
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  maxLength={300}
+                  value={stPmDetails}
+                  onChange={(e) => setStPmDetails(e.target.value)}
+                  placeholder="Ej: 0134 Banesco · 0414-0000000 · V-12345678 / correo@tudominio.com / PayID: 12345678"
+                  className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">
+                  Instrucciones para Tu Cliente (Opcional)
+                </label>
+                <input
+                  type="text"
+                  maxLength={400}
+                  value={stPmInstructions}
+                  onChange={(e) => setStPmInstructions(e.target.value)}
+                  placeholder="Ej: Enviar captura por WhatsApp tras transferir para despachar pedido"
+                  className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                />
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={stPmAppliesIgtf}
+                    onChange={(e) => setStPmAppliesIgtf(e.target.checked)}
+                    className="accent-amber-500 w-4 h-4"
+                  />
+                  <span>Aplica IGTF 3% Divisas (SENIAT) cuando se registre en POS</span>
+                </label>
+
+                <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={stPmActive}
+                    onChange={(e) => setStPmActive(e.target.checked)}
+                    className="accent-emerald-500 w-4 h-4"
+                  />
+                  <span>Visible para clientes en tu Tienda Online y POS</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isBusy}
+                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 whitespace-nowrap"
+              >
+                <Save className="w-4 h-4" />
+                <span>
+                  {editingStoreMethod ? 'Actualizar Método de Cobro' : 'Guardar Método de Cobro'}
+                </span>
+              </button>
+            </form>
+
+            <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white font-display">
+                    Métodos de Cobro de Tu Tienda ({storePaymentMethods.length})
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    Solo tú administras las cuentas y wallets mostradas a tus clientes.
+                  </p>
+                </div>
+              </div>
+
+              {storePaymentMethods.length === 0 ? (
+                <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-1.5">
+                  <Wallet className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <p className="text-xs font-semibold text-zinc-300">
+                    Aún no has configurado tus cuentas de cobro manuales
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    Agrega aquí tu Pago Móvil, cuenta Banesco, Binance Pay, Zinli o Zelle para que tus compradores sepan exactamente a dónde pagarte.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {storePaymentMethods.map((method) => (
+                    <div
+                      key={method.id}
+                      className="p-4 rounded-xl bg-[#09090b] border border-white/[0.08] flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 text-xs min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-white text-sm">{method.name}</span>
+                          <span className="text-amber-300 font-mono text-[11px] font-bold">
+                            {method.currency}
+                          </span>
+                          {method.appliesIgtf && (
+                            <span className="text-sky-300 font-mono text-[11px]">· IGTF 3%</span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              method.isActive
+                                ? 'bg-emerald-500/15 text-emerald-300'
+                                : 'bg-zinc-800 text-zinc-400'
+                            }`}
+                          >
+                            {method.isActive ? 'Activo' : 'Pausado'}
+                          </span>
+                        </div>
+                        {method.accountHolder && (
+                          <div className="text-zinc-400">Titular: {method.accountHolder}</div>
+                        )}
+                        <div className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">
+                          {method.accountDetails}
+                        </div>
+                        {method.instructions && (
+                          <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleToggleStoreMethodActive(method)}
+                          className={`px-3 py-2 min-h-[38px] rounded-lg text-[11px] font-bold border whitespace-nowrap ${
+                            method.isActive
+                              ? 'bg-emerald-950/50 border-emerald-500/35 text-emerald-300'
+                              : 'bg-[#111114] border-white/[0.1] text-zinc-300'
+                          }`}
+                        >
+                          {method.isActive ? 'Pausar' : 'Activar'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingStoreMethod(method);
+                            setStPmName(method.name);
+                            setStPmCurrency(method.currency);
+                            setStPmHolder(method.accountHolder);
+                            setStPmDetails(method.accountDetails);
+                            setStPmInstructions(method.instructions || '');
+                            setStPmAppliesIgtf(Boolean(method.appliesIgtf));
+                            setStPmActive(method.isActive);
+                          }}
+                          className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
+                          title="Editar método"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        {confirmDeleteStoreMethodId === method.id ? (
+                          <button
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => handleDeleteStorePaymentMethod(method)}
+                            className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
+                          >
+                            Confirmar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteStoreMethodId(method.id)}
+                            className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
+                            title="Eliminar método"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'vector' && activeStore && user && (

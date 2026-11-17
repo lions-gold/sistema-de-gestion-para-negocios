@@ -92,6 +92,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   const [activeTab, setActiveTab] = useState<'profitability' | 'visual_reports' | 'top_products' | 'peak_hours' | 'sales_team' | 'history'>('profitability');
   const [period, setPeriod] = useState<PeriodFilter>('7days');
   const [trendMonthsRange, setTrendMonthsRange] = useState<6 | 12>(6);
+  const [dailyChartMetric, setDailyChartMetric] = useState<'usd' | 'orders'>('usd');
   const [paymentChartScope, setPaymentChartScope] = useState<'period' | 'all'>('period');
   const [historySearch, setHistorySearch] = useState('');
   const [historyMethodFilter, setHistoryMethodFilter] = useState('Todos');
@@ -435,6 +436,90 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
     };
   }, [sales, trendMonthsRange]);
 
+  // 6B. REPORTES VISUALES: TENDENCIA DE VENTAS DIARIAS ÚLTIMOS 30 DÍAS (LineChart)
+  const dailySalesTrend30Days = useMemo(() => {
+    const parseSaleDateKey = (rawDate: string): string | null => {
+      if (!rawDate) return null;
+      const trimmed = rawDate.trim();
+      const isoPrefix = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (isoPrefix) return isoPrefix[1];
+      const dmyMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+      if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+      const parsed = new Date(trimmed.replace(' ', 'T'));
+      if (!Number.isNaN(parsed.getTime())) {
+        return getCaracasDateString(parsed);
+      }
+      return null;
+    };
+
+    const buckets: Record<string, { ventasUSD: number; gananciaUSD: number; ordenes: number }> = {};
+    sales.forEach((sale) => {
+      const dateKey = parseSaleDateKey(sale.date);
+      if (!dateKey) return;
+      if (!buckets[dateKey]) {
+        buckets[dateKey] = { ventasUSD: 0, gananciaUSD: 0, ordenes: 0 };
+      }
+      const saleTotal = sale.totalWithIgtfUSD ?? sale.subtotalUSD;
+      const saleCost = sale.items.reduce(
+        (sum, item) => sum + (item.product.costUSD || 0) * item.quantity,
+        0
+      );
+      buckets[dateKey].ventasUSD += saleTotal;
+      buckets[dateKey].gananciaUSD += Math.max(0, sale.subtotalUSD - saleCost);
+      buckets[dateKey].ordenes += 1;
+    });
+
+    const todayKey = getCaracasDateString(new Date());
+    const [tY, tM, tD] = todayKey.split('-').map((n) => parseInt(n, 10));
+    const todayNoonUtc = Date.UTC(tY, tM - 1, tD, 12, 0, 0);
+
+    const points: {
+      dateKey: string;
+      label: string;
+      fullLabel: string;
+      ventasUSD: number;
+      gananciaUSD: number;
+      ordenes: number;
+    }[] = [];
+
+    for (let offset = 29; offset >= 0; offset--) {
+      const dayUtc = new Date(todayNoonUtc - offset * 86400000);
+      const y = dayUtc.getUTCFullYear();
+      const m = String(dayUtc.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(dayUtc.getUTCDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${d}`;
+      const bucket = buckets[dateKey] || { ventasUSD: 0, gananciaUSD: 0, ordenes: 0 };
+
+      points.push({
+        dateKey,
+        label: `${d}/${m}`,
+        fullLabel: `${d}/${m}/${y}`,
+        ventasUSD: Number(bucket.ventasUSD.toFixed(2)),
+        gananciaUSD: Number(bucket.gananciaUSD.toFixed(2)),
+        ordenes: bucket.ordenes,
+      });
+    }
+
+    const total30DaysUSD = points.reduce((sum, p) => sum + p.ventasUSD, 0);
+    const total30DaysProfitUSD = points.reduce((sum, p) => sum + p.gananciaUSD, 0);
+    const total30DaysOrders = points.reduce((sum, p) => sum + p.ordenes, 0);
+    const activeDaysCount = points.filter((p) => p.ordenes > 0).length;
+    const peakDay = points.reduce(
+      (best, cur) => (cur.ventasUSD > best.ventasUSD ? cur : best),
+      points[0]
+    );
+
+    return {
+      points,
+      total30DaysUSD,
+      total30DaysProfitUSD,
+      total30DaysOrders,
+      activeDaysCount,
+      dailyAvgUSD: total30DaysUSD / 30,
+      peakDay,
+    };
+  }, [sales]);
+
   // 7. REPORTES VISUALES: DESGLOSE DE MÉTODOS DE PAGO (PieChart)
   const paymentMethodsBreakdown = useMemo(() => {
     const sourceSales = paymentChartScope === 'all' ? sales : filteredSales;
@@ -602,6 +687,206 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
               : 'Esperando transacciones'}
           </span>
         </div>
+      </div>
+
+      {/* Chart 0: 30-Day Daily Sales Trend LineChart (Recharts) */}
+      <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+          <div className="flex items-start gap-2.5">
+            <TrendingUp className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-white text-base font-display">
+                Tendencia de Ventas Diarias · Últimos 30 Días
+              </h4>
+              <p className="text-xs text-zinc-400">
+                Evolución diaria continua integrando las ventas registradas ({dailySalesTrend30Days.total30DaysOrders} órdenes en {dailySalesTrend30Days.activeDaysCount} días activos)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+            <div className="text-right font-mono tabular-nums hidden sm:block pr-2 border-r border-white/[0.08]">
+              <span className="text-[11px] text-zinc-400 block">Acumulado 30 días</span>
+              <span className="text-sm font-bold text-amber-400">
+                ${dailySalesTrend30Days.total30DaysUSD.toFixed(2)} USD
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 bg-[#09090b] p-1 rounded-xl border border-white/[0.08] text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setDailyChartMetric('usd')}
+                className={`px-3 py-1.5 min-h-[34px] rounded-lg font-semibold transition-colors whitespace-nowrap ${
+                  dailyChartMetric === 'usd'
+                    ? 'bg-amber-500 text-zinc-950'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Montos (USD)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyChartMetric('orders')}
+                className={`px-3 py-1.5 min-h-[34px] rounded-lg font-semibold transition-colors whitespace-nowrap ${
+                  dailyChartMetric === 'orders'
+                    ? 'bg-amber-500 text-zinc-950'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                Órdenes
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 30-Day Micro KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="bg-[#09090b] border border-white/[0.06] rounded-xl p-3">
+            <span className="text-zinc-400 block text-[11px]">Ventas 30 Días</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-white tabular-nums">
+              ${dailySalesTrend30Days.total30DaysUSD.toFixed(2)}
+            </span>
+          </div>
+          <div className="bg-[#09090b] border border-white/[0.06] rounded-xl p-3">
+            <span className="text-zinc-400 block text-[11px]">Ganancia Bruta 30d</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-emerald-400 tabular-nums">
+              ${dailySalesTrend30Days.total30DaysProfitUSD.toFixed(2)}
+            </span>
+          </div>
+          <div className="bg-[#09090b] border border-white/[0.06] rounded-xl p-3">
+            <span className="text-zinc-400 block text-[11px]">Promedio Diario</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-amber-400 tabular-nums">
+              ${dailySalesTrend30Days.dailyAvgUSD.toFixed(2)}/día
+            </span>
+          </div>
+          <div className="bg-[#09090b] border border-white/[0.06] rounded-xl p-3">
+            <span className="text-zinc-400 block text-[11px]">Mejor Día (30d)</span>
+            <span className="text-sm sm:text-base font-bold font-mono text-white tabular-nums truncate block">
+              {dailySalesTrend30Days.peakDay && dailySalesTrend30Days.peakDay.ventasUSD > 0
+                ? `${dailySalesTrend30Days.peakDay.label} · $${dailySalesTrend30Days.peakDay.ventasUSD.toFixed(2)}`
+                : 'Sin ventas'}
+            </span>
+          </div>
+        </div>
+
+        {sales.length === 0 ? (
+          <div className="h-64 flex flex-col items-center justify-center text-center px-4 space-y-3">
+            <TrendingUp className="w-10 h-10 text-zinc-600" />
+            <div className="space-y-1 max-w-sm">
+              <p className="text-sm font-semibold text-zinc-200">
+                Sin ventas registradas en los últimos 30 días
+              </p>
+              <p className="text-xs text-zinc-400">
+                Al completar ventas en el POS o recibir pedidos web, aquí verás la curva diaria de los últimos 30 días.
+              </p>
+            </div>
+            {onGoToPOS && (
+              <button
+                type="button"
+                onClick={onGoToPOS}
+                className="px-4 py-2 min-h-[40px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold transition-colors"
+              >
+                Ir al Punto de Venta POS
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="h-72 sm:h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={dailySalesTrend30Days.points}
+                margin={{ top: 10, right: 16, left: 4, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.8} />
+                <XAxis
+                  dataKey="label"
+                  stroke="#a1a1aa"
+                  fontSize={11}
+                  tickLine={false}
+                  interval={3}
+                  axisLine={{ stroke: '#27272a' }}
+                />
+                <YAxis
+                  stroke="#a1a1aa"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={{ stroke: '#27272a' }}
+                  width={56}
+                  allowDecimals={dailyChartMetric === 'usd'}
+                  tickFormatter={(val) => (dailyChartMetric === 'usd' ? `$${val}` : `${val}`)}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload || payload.length === 0) return null;
+                    const point = payload[0]?.payload as {
+                      fullLabel: string;
+                      ventasUSD: number;
+                      gananciaUSD: number;
+                      ordenes: number;
+                    };
+                    return (
+                      <div className="bg-[#09090b] border border-white/[0.14] rounded-xl px-3.5 py-2.5 shadow-xl text-xs space-y-1.5">
+                        <div className="font-bold text-white border-b border-white/[0.08] pb-1 font-mono tabular-nums">
+                          {point.fullLabel} · {point.ordenes}{' '}
+                          {point.ordenes === 1 ? 'orden' : 'órdenes'}
+                        </div>
+                        <div className="flex items-center justify-between gap-4 font-mono tabular-nums">
+                          <span className="text-amber-400">Ventas del día:</span>
+                          <span className="font-bold text-white">
+                            ${point.ventasUSD.toFixed(2)} USD
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 font-mono tabular-nums">
+                          <span className="text-emerald-400">Ganancia bruta:</span>
+                          <span className="font-bold text-emerald-300">
+                            ${point.gananciaUSD.toFixed(2)} USD
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-zinc-400 font-mono tabular-nums pt-0.5">
+                          ≈ {(point.ventasUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+                {dailyChartMetric === 'usd' ? (
+                  <>
+                    <Line
+                      type="monotone"
+                      dataKey="ventasUSD"
+                      name="Ventas Diarias (USD)"
+                      stroke="#f59e0b"
+                      strokeWidth={2.5}
+                      dot={{ r: 2.5, fill: '#f59e0b', stroke: '#09090b', strokeWidth: 1.5 }}
+                      activeDot={{ r: 6, fill: '#fbbf24' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="gananciaUSD"
+                      name="Ganancia Bruta (USD)"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
+                      activeDot={{ r: 5, fill: '#34d399' }}
+                    />
+                  </>
+                ) : (
+                  <Line
+                    type="monotone"
+                    dataKey="ordenes"
+                    name="Órdenes por Día"
+                    stroke="#38bdf8"
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: '#38bdf8', stroke: '#09090b', strokeWidth: 1.5 }}
+                    activeDot={{ r: 6, fill: '#7dd3fc' }}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* 2-Column Charts Grid */}

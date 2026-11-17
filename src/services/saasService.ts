@@ -44,19 +44,25 @@ import {
   EmailDeliveryChannel,
   InventoryAuditLog,
   PlatformBillingSettings,
+  PlatformPaymentCurrency,
+  PlatformPaymentMethod,
   Product,
   ProductBatchTrace,
   PurchaseInvoice,
   ReferralCodeLookup,
   ReferralCoupon,
   Sale,
+  SalesPaymentMethod,
   StoreCartItem,
   StoreInboxMessage,
   StoreOrder,
   StoreOrderItem,
+  StoreOwnerClaim,
+  StorePaymentMethod,
   StoreProduct,
   StoreReferral,
   StoreStatus,
+  StoreSubscriptionPaymentMethod,
   StoreTenant,
   SubscriptionPayment,
   SubscriptionPaymentMethod,
@@ -246,11 +252,11 @@ export async function savePlatformBillingSettings(
     const ref = doc(db, 'platformSettings', 'billing');
     await setDoc(ref, {
       monthlyPriceUSD: Number(settings.monthlyPriceUSD) || 25,
-      bankTransfers: settings.bankTransfers.trim().slice(0, 1000) || DEFAULT_BILLING_SETTINGS.bankTransfers,
-      pagoMovil: settings.pagoMovil.trim().slice(0, 500) || DEFAULT_BILLING_SETTINGS.pagoMovil,
-      binancePay: settings.binancePay.trim().slice(0, 300) || DEFAULT_BILLING_SETTINGS.binancePay,
-      bybitPay: settings.bybitPay.trim().slice(0, 300) || DEFAULT_BILLING_SETTINGS.bybitPay,
-      supportWhatsapp: settings.supportWhatsapp.trim().slice(0, 40) || '+584220273766',
+      bankTransfers: (settings.bankTransfers || '').trim().slice(0, 1000),
+      pagoMovil: (settings.pagoMovil || '').trim().slice(0, 500),
+      binancePay: (settings.binancePay || '').trim().slice(0, 300),
+      bybitPay: (settings.bybitPay || '').trim().slice(0, 300),
+      supportWhatsapp: (settings.supportWhatsapp || '').trim().slice(0, 40) || '+584220273766',
       warehousePosEnabled: Boolean(settings.warehousePosEnabled),
       referralRewardUSD:
         typeof settings.referralRewardUSD === 'number' && !Number.isNaN(settings.referralRewardUSD)
@@ -272,6 +278,787 @@ export async function adminSetGlobalWarehousePos(
     ...base,
     warehousePosEnabled: enabled,
   });
+}
+
+// -----------------------------------------------------------------------------
+// Admin Manual Platform Payment Methods in 'platform_billing'
+// (Binance, Zelle, Transferencia, Pago Móvil, Zinli, Bybit, etc.)
+// -----------------------------------------------------------------------------
+
+export const PLATFORM_BILLING_COLLECTION = 'platform_billing';
+const LEGACY_PLATFORM_METHODS_COLLECTION = 'platformPaymentMethods';
+
+export interface PlatformPaymentMethodInput {
+  id?: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  isActive: boolean;
+}
+
+function mergePlatformMethodMaps(
+  primaryMap: Map<string, PlatformPaymentMethod>,
+  legacyMap: Map<string, PlatformPaymentMethod>
+): PlatformPaymentMethod[] {
+  const merged = new Map<string, PlatformPaymentMethod>(legacyMap);
+  primaryMap.forEach((value, key) => {
+    merged.set(key, value);
+  });
+  const list = Array.from(merged.values());
+  list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return list;
+}
+
+export function subscribeAllPlatformPaymentMethodsForAdmin(
+  onData: (methods: PlatformPaymentMethod[]) => void
+): Unsubscribe {
+  const primaryMap = new Map<string, PlatformPaymentMethod>();
+  const legacyMap = new Map<string, PlatformPaymentMethod>();
+
+  const emit = () => {
+    onData(mergePlatformMethodMaps(primaryMap, legacyMap));
+  };
+
+  const unsubPrimary = onSnapshot(
+    collection(db, PLATFORM_BILLING_COLLECTION),
+    (snap) => {
+      primaryMap.clear();
+      snap.docs.forEach((d) => {
+        const data = d.data() as PlatformPaymentMethod;
+        primaryMap.set(d.id, data);
+      });
+      emit();
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, PLATFORM_BILLING_COLLECTION);
+    }
+  );
+
+  const unsubLegacy = onSnapshot(
+    collection(db, LEGACY_PLATFORM_METHODS_COLLECTION),
+    (snap) => {
+      legacyMap.clear();
+      snap.docs.forEach((d) => {
+        const data = d.data() as PlatformPaymentMethod;
+        legacyMap.set(d.id, data);
+      });
+      emit();
+    },
+    (error) => {
+      console.warn(`Error leyendo colección heredada ${LEGACY_PLATFORM_METHODS_COLLECTION}:`, error);
+    }
+  );
+
+  return () => {
+    unsubPrimary();
+    unsubLegacy();
+  };
+}
+
+export function subscribeActivePlatformPaymentMethods(
+  onData: (methods: PlatformPaymentMethod[]) => void
+): Unsubscribe {
+  const primaryMap = new Map<string, PlatformPaymentMethod>();
+  const legacyMap = new Map<string, PlatformPaymentMethod>();
+
+  const emit = () => {
+    onData(mergePlatformMethodMaps(primaryMap, legacyMap));
+  };
+
+  const primaryQuery = query(
+    collection(db, PLATFORM_BILLING_COLLECTION),
+    where('isActive', '==', true)
+  );
+  const legacyQuery = query(
+    collection(db, LEGACY_PLATFORM_METHODS_COLLECTION),
+    where('isActive', '==', true)
+  );
+
+  const unsubPrimary = onSnapshot(
+    primaryQuery,
+    (snap) => {
+      primaryMap.clear();
+      snap.docs.forEach((d) => {
+        const data = d.data() as PlatformPaymentMethod;
+        primaryMap.set(d.id, data);
+      });
+      emit();
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, PLATFORM_BILLING_COLLECTION);
+    }
+  );
+
+  const unsubLegacy = onSnapshot(
+    legacyQuery,
+    (snap) => {
+      legacyMap.clear();
+      snap.docs.forEach((d) => {
+        const data = d.data() as PlatformPaymentMethod;
+        legacyMap.set(d.id, data);
+      });
+      emit();
+    },
+    (error) => {
+      console.warn(`Error leyendo métodos activos heredados:`, error);
+    }
+  );
+
+  return () => {
+    unsubPrimary();
+    unsubLegacy();
+  };
+}
+
+export async function savePlatformPaymentMethod(
+  input: PlatformPaymentMethodInput,
+  existingMethod?: PlatformPaymentMethod
+): Promise<PlatformPaymentMethod> {
+  const methodId = existingMethod?.id || input.id || makeSafeDocId('pm');
+  const path = `${PLATFORM_BILLING_COLLECTION}/${methodId}`;
+  const cleanName = input.name.trim().slice(0, 80);
+  const cleanHolder = input.accountHolder.trim().slice(0, 120);
+  const cleanDetails = input.accountDetails.trim().slice(0, 300);
+  if (cleanName.length < 2 || cleanDetails.length < 2) {
+    throw new Error('Debes indicar el nombre del método y los datos de cobro.');
+  }
+
+  try {
+    const targetRef = doc(db, PLATFORM_BILLING_COLLECTION, methodId);
+    const existingPrimarySnap = await getDoc(targetRef);
+    const preservedCreatedAt = existingPrimarySnap.exists()
+      ? (existingPrimarySnap.data() as Partial<PlatformPaymentMethod>).createdAt
+      : undefined;
+
+    const payload: Record<string, unknown> = {
+      id: methodId,
+      name: cleanName,
+      currency: input.currency || 'USD',
+      accountHolder: cleanHolder,
+      accountDetails: cleanDetails,
+      isActive: Boolean(input.isActive),
+      createdAt: preservedCreatedAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (input.instructions && input.instructions.trim()) {
+      payload.instructions = input.instructions.trim().slice(0, 400);
+    }
+
+    await setDoc(targetRef, payload);
+
+    // Clean up legacy duplicate if migrated from platformPaymentMethods
+    deleteDoc(doc(db, LEGACY_PLATFORM_METHODS_COLLECTION, methodId)).catch(() => {});
+
+    return {
+      ...payload,
+      createdAt: existingMethod?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as PlatformPaymentMethod;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function togglePlatformPaymentMethodActive(
+  method: PlatformPaymentMethod,
+  isActive: boolean
+): Promise<void> {
+  const path = `${PLATFORM_BILLING_COLLECTION}/${method.id}`;
+  try {
+    const targetRef = doc(db, PLATFORM_BILLING_COLLECTION, method.id);
+    const snap = await getDoc(targetRef);
+    if (snap.exists()) {
+      await updateDoc(targetRef, {
+        isActive,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const payload: Record<string, unknown> = {
+        id: method.id,
+        name: method.name.trim().slice(0, 80),
+        currency: method.currency || 'USD',
+        accountHolder: (method.accountHolder || '').trim().slice(0, 120),
+        accountDetails: method.accountDetails.trim().slice(0, 300),
+        isActive,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      if (method.instructions && method.instructions.trim()) {
+        payload.instructions = method.instructions.trim().slice(0, 400);
+      }
+      await setDoc(targetRef, payload);
+      deleteDoc(doc(db, LEGACY_PLATFORM_METHODS_COLLECTION, method.id)).catch(() => {});
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deletePlatformPaymentMethod(methodId: string): Promise<void> {
+  const path = `${PLATFORM_BILLING_COLLECTION}/${methodId}`;
+  try {
+    await deleteDoc(doc(db, PLATFORM_BILLING_COLLECTION, methodId));
+    await deleteDoc(doc(db, LEGACY_PLATFORM_METHODS_COLLECTION, methodId)).catch(() => {});
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Admin-Managed Per-Store Subscription Collection Payment Methods
+// (/stores/{storeId}/subscription_payment_methods/{methodId})
+// -----------------------------------------------------------------------------
+
+export const STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION = 'subscription_payment_methods';
+
+export interface StoreSubscriptionPaymentMethodInput {
+  id?: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  isActive: boolean;
+}
+
+export function subscribeStoreSubscriptionMethodsForAdmin(
+  storeId: string,
+  onData: (methods: StoreSubscriptionPaymentMethod[]) => void
+): Unsubscribe {
+  const path = `stores/${storeId}/${STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION}`;
+  return onSnapshot(
+    collection(db, 'stores', storeId, STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION),
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as StoreSubscriptionPaymentMethod);
+      list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function fetchAllStoresSubscriptionMethodsForAdmin(
+  stores: StoreTenant[]
+): Promise<Record<string, StoreSubscriptionPaymentMethod[]>> {
+  const result: Record<string, StoreSubscriptionPaymentMethod[]> = {};
+  await Promise.all(
+    stores.map(async (store) => {
+      try {
+        const snap = await getDocs(
+          collection(db, 'stores', store.id, STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION)
+        );
+        const list = snap.docs.map((d) => d.data() as StoreSubscriptionPaymentMethod);
+        list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        result[store.id] = list;
+      } catch (err) {
+        console.warn(`No se pudieron cargar métodos de suscripción de ${store.storeName}:`, err);
+        result[store.id] = [];
+      }
+    })
+  );
+  return result;
+}
+
+export function subscribeStoreSubscriptionMethodsForOwner(
+  storeId: string,
+  ownerUid: string,
+  onData: (methods: StoreSubscriptionPaymentMethod[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, 'stores', storeId, STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION),
+    where('ownerUid', '==', ownerUid)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as StoreSubscriptionPaymentMethod);
+      list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      onData(list);
+    },
+    (error) => {
+      console.warn(
+        `Error leyendo métodos de suscripción asignados a tienda ${storeId}:`,
+        error
+      );
+    }
+  );
+}
+
+export async function saveStoreSubscriptionPaymentMethod(
+  store: StoreTenant,
+  input: StoreSubscriptionPaymentMethodInput,
+  existingMethod?: StoreSubscriptionPaymentMethod
+): Promise<StoreSubscriptionPaymentMethod> {
+  const methodId = existingMethod?.id || input.id || makeSafeDocId('subpm');
+  const path = `stores/${store.id}/${STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION}/${methodId}`;
+  const cleanName = input.name.trim().slice(0, 80);
+  const cleanHolder = input.accountHolder.trim().slice(0, 120);
+  const cleanDetails = input.accountDetails.trim().slice(0, 300);
+
+  if (cleanName.length < 2 || cleanDetails.length < 2) {
+    throw new Error(
+      'Debes indicar el nombre del método y los datos de cobro para cobrar la suscripción de esta tienda.'
+    );
+  }
+
+  try {
+    const storeSnap = await getDoc(doc(db, 'stores', store.id));
+    const latestOwnerUid = storeSnap.exists()
+      ? ((storeSnap.data() as Partial<StoreTenant>).ownerUid || store.ownerUid)
+      : store.ownerUid;
+    const latestStoreName = storeSnap.exists()
+      ? ((storeSnap.data() as Partial<StoreTenant>).storeName || store.storeName)
+      : store.storeName;
+
+    const targetRef = doc(
+      db,
+      'stores',
+      store.id,
+      STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION,
+      methodId
+    );
+    const existingSnap = await getDoc(targetRef);
+    const preservedCreatedAt = existingSnap.exists()
+      ? (existingSnap.data() as Partial<StoreSubscriptionPaymentMethod>).createdAt
+      : undefined;
+
+    const cleanStoreName = latestStoreName.trim().slice(0, 100);
+    const payload: Record<string, unknown> = {
+      id: methodId,
+      storeId: store.id,
+      storeName: cleanStoreName.length >= 2 ? cleanStoreName : 'Tienda',
+      ownerUid: latestOwnerUid,
+      name: cleanName,
+      currency: input.currency || 'USD',
+      accountHolder: cleanHolder,
+      accountDetails: cleanDetails,
+      isActive: Boolean(input.isActive),
+      createdAt: preservedCreatedAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (input.instructions && input.instructions.trim()) {
+      payload.instructions = input.instructions.trim().slice(0, 400);
+    }
+
+    await setDoc(targetRef, payload);
+
+    return {
+      ...payload,
+      createdAt: existingMethod?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as StoreSubscriptionPaymentMethod;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function toggleStoreSubscriptionPaymentMethodActive(
+  store: StoreTenant,
+  method: StoreSubscriptionPaymentMethod,
+  isActive: boolean
+): Promise<void> {
+  const path = `stores/${store.id}/${STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION}/${method.id}`;
+  try {
+    const storeSnap = await getDoc(doc(db, 'stores', store.id));
+    const latestOwnerUid = storeSnap.exists()
+      ? ((storeSnap.data() as Partial<StoreTenant>).ownerUid || store.ownerUid)
+      : store.ownerUid;
+    const targetRef = doc(
+      db,
+      'stores',
+      store.id,
+      STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION,
+      method.id
+    );
+    await updateDoc(targetRef, {
+      ownerUid: latestOwnerUid,
+      isActive,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteStoreSubscriptionPaymentMethod(
+  storeId: string,
+  methodId: string
+): Promise<void> {
+  const path = `stores/${storeId}/${STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION}/${methodId}`;
+  try {
+    await deleteDoc(
+      doc(db, 'stores', storeId, STORE_SUBSCRIPTION_METHODS_SUBCOLLECTION, methodId)
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Admin Custom Sales Payment Methods Catalog (/salesPaymentMethods)
+// (Used by Store Owners when registering sales in POS & Merchant Portal)
+// -----------------------------------------------------------------------------
+
+export interface SalesPaymentMethodInput {
+  id?: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  appliesIgtf: boolean;
+  description?: string;
+  isActive: boolean;
+}
+
+export function subscribeAllSalesPaymentMethodsForAdmin(
+  onData: (methods: SalesPaymentMethod[]) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'salesPaymentMethods'),
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as SalesPaymentMethod);
+      list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'salesPaymentMethods');
+    }
+  );
+}
+
+export function subscribeActiveSalesPaymentMethods(
+  onData: (methods: SalesPaymentMethod[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, 'salesPaymentMethods'),
+    where('isActive', '==', true)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as SalesPaymentMethod);
+      list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      onData(list);
+    },
+    (error) => {
+      console.warn('Error suscribiendo salesPaymentMethods:', error);
+    }
+  );
+}
+
+export async function saveSalesPaymentMethod(
+  input: SalesPaymentMethodInput,
+  existingMethod?: SalesPaymentMethod
+): Promise<SalesPaymentMethod> {
+  const methodId = existingMethod?.id || input.id || makeSafeDocId('spm');
+  const path = `salesPaymentMethods/${methodId}`;
+  const cleanName = input.name.trim().slice(0, 80);
+  if (cleanName.length < 2) {
+    throw new Error('Debes indicar el nombre del método de pago para ventas (mínimo 2 caracteres).');
+  }
+
+  const payload: Record<string, unknown> = {
+    id: methodId,
+    name: cleanName,
+    currency: input.currency || 'USD',
+    appliesIgtf: Boolean(input.appliesIgtf),
+    isActive: Boolean(input.isActive),
+    createdAt: existingMethod?.createdAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  if (input.description && input.description.trim()) {
+    payload.description = input.description.trim().slice(0, 240);
+  }
+
+  try {
+    await setDoc(doc(db, 'salesPaymentMethods', methodId), payload);
+    return {
+      ...payload,
+      createdAt: existingMethod?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as SalesPaymentMethod;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function toggleSalesPaymentMethodActive(
+  method: SalesPaymentMethod,
+  isActive: boolean
+): Promise<void> {
+  const path = `salesPaymentMethods/${method.id}`;
+  try {
+    await updateDoc(doc(db, 'salesPaymentMethods', method.id), {
+      isActive,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteSalesPaymentMethod(methodId: string): Promise<void> {
+  const path = `salesPaymentMethods/${methodId}`;
+  try {
+    await deleteDoc(doc(db, 'salesPaymentMethods', methodId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Per-Store Owner-Configured Payment / Collection Methods
+// (/stores/{storeId}/store_payment_methods/{methodId})
+// -----------------------------------------------------------------------------
+
+export const STORE_PAYMENT_METHODS_SUBCOLLECTION = 'store_payment_methods';
+const LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION = 'paymentMethods';
+
+export interface StorePaymentMethodInput {
+  id?: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  appliesIgtf: boolean;
+  isActive: boolean;
+}
+
+function mergeStorePaymentMethodMaps(
+  primaryMap: Map<string, StorePaymentMethod>,
+  legacyMap: Map<string, StorePaymentMethod>
+): StorePaymentMethod[] {
+  const merged = new Map<string, StorePaymentMethod>(legacyMap);
+  primaryMap.forEach((value, key) => {
+    merged.set(key, value);
+  });
+  const list = Array.from(merged.values());
+  list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return list;
+}
+
+export function subscribeAllStorePaymentMethodsForOwner(
+  storeId: string,
+  ownerUid: string,
+  onData: (methods: StorePaymentMethod[]) => void
+): Unsubscribe {
+  const primaryMap = new Map<string, StorePaymentMethod>();
+  const legacyMap = new Map<string, StorePaymentMethod>();
+
+  const emit = () => {
+    onData(mergeStorePaymentMethodMaps(primaryMap, legacyMap));
+  };
+
+  const primaryQuery = query(
+    collection(db, 'stores', storeId, STORE_PAYMENT_METHODS_SUBCOLLECTION),
+    where('ownerUid', '==', ownerUid)
+  );
+  const legacyQuery = query(
+    collection(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION),
+    where('ownerUid', '==', ownerUid)
+  );
+
+  const unsubPrimary = onSnapshot(
+    primaryQuery,
+    (snap) => {
+      primaryMap.clear();
+      snap.docs.forEach((d) => {
+        primaryMap.set(d.id, d.data() as StorePaymentMethod);
+      });
+      emit();
+    },
+    (error) => {
+      handleFirestoreError(
+        error,
+        OperationType.LIST,
+        `stores/${storeId}/${STORE_PAYMENT_METHODS_SUBCOLLECTION}`
+      );
+    }
+  );
+
+  const unsubLegacy = onSnapshot(
+    legacyQuery,
+    (snap) => {
+      legacyMap.clear();
+      snap.docs.forEach((d) => {
+        legacyMap.set(d.id, d.data() as StorePaymentMethod);
+      });
+      emit();
+    },
+    (error) => {
+      console.warn(`Error suscribiendo métodos heredados para tienda ${storeId}:`, error);
+    }
+  );
+
+  return () => {
+    unsubPrimary();
+    unsubLegacy();
+  };
+}
+
+export function subscribePublicStorePaymentMethods(
+  storeId: string,
+  onData: (methods: StorePaymentMethod[]) => void
+): Unsubscribe {
+  const primaryMap = new Map<string, StorePaymentMethod>();
+  const legacyMap = new Map<string, StorePaymentMethod>();
+
+  const emit = () => {
+    onData(mergeStorePaymentMethodMaps(primaryMap, legacyMap));
+  };
+
+  const primaryQuery = query(
+    collection(db, 'stores', storeId, STORE_PAYMENT_METHODS_SUBCOLLECTION),
+    where('isActive', '==', true)
+  );
+  const legacyQuery = query(
+    collection(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION),
+    where('isActive', '==', true)
+  );
+
+  const unsubPrimary = onSnapshot(
+    primaryQuery,
+    (snap) => {
+      primaryMap.clear();
+      snap.docs.forEach((d) => {
+        primaryMap.set(d.id, d.data() as StorePaymentMethod);
+      });
+      emit();
+    },
+    (error) => {
+      console.warn(`Error leyendo store_payment_methods públicos de tienda ${storeId}:`, error);
+    }
+  );
+
+  const unsubLegacy = onSnapshot(
+    legacyQuery,
+    (snap) => {
+      legacyMap.clear();
+      snap.docs.forEach((d) => {
+        legacyMap.set(d.id, d.data() as StorePaymentMethod);
+      });
+      emit();
+    },
+    (error) => {
+      console.warn(`Error leyendo paymentMethods heredados de tienda ${storeId}:`, error);
+    }
+  );
+
+  return () => {
+    unsubPrimary();
+    unsubLegacy();
+  };
+}
+
+export async function saveStorePaymentMethod(
+  storeId: string,
+  ownerUid: string,
+  input: StorePaymentMethodInput,
+  existingMethod?: StorePaymentMethod
+): Promise<StorePaymentMethod> {
+  const methodId = existingMethod?.id || input.id || makeSafeDocId('stpm');
+  const path = `stores/${storeId}/${STORE_PAYMENT_METHODS_SUBCOLLECTION}/${methodId}`;
+  const cleanName = input.name.trim().slice(0, 80);
+  const cleanHolder = input.accountHolder.trim().slice(0, 120);
+  const cleanDetails = input.accountDetails.trim().slice(0, 300);
+
+  if (cleanName.length < 2 || cleanDetails.length < 2) {
+    throw new Error('Debes indicar el nombre del método de cobro y tus datos de cuenta / wallet.');
+  }
+
+  try {
+    const targetRef = doc(db, 'stores', storeId, STORE_PAYMENT_METHODS_SUBCOLLECTION, methodId);
+    const existingPrimarySnap = await getDoc(targetRef);
+    const preservedCreatedAt = existingPrimarySnap.exists()
+      ? (existingPrimarySnap.data() as Partial<StorePaymentMethod>).createdAt
+      : undefined;
+
+    const payload: Record<string, unknown> = {
+      id: methodId,
+      storeId,
+      ownerUid: existingMethod?.ownerUid || ownerUid,
+      name: cleanName,
+      currency: input.currency || 'USD',
+      accountHolder: cleanHolder,
+      accountDetails: cleanDetails,
+      appliesIgtf: Boolean(input.appliesIgtf),
+      isActive: Boolean(input.isActive),
+      createdAt: preservedCreatedAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    if (input.instructions && input.instructions.trim()) {
+      payload.instructions = input.instructions.trim().slice(0, 400);
+    }
+
+    await setDoc(targetRef, payload);
+    deleteDoc(
+      doc(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION, methodId)
+    ).catch(() => {});
+
+    return {
+      ...payload,
+      createdAt: existingMethod?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as StorePaymentMethod;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function toggleStorePaymentMethodActive(
+  storeId: string,
+  method: StorePaymentMethod,
+  isActive: boolean
+): Promise<void> {
+  const path = `stores/${storeId}/${STORE_PAYMENT_METHODS_SUBCOLLECTION}/${method.id}`;
+  try {
+    const targetRef = doc(db, 'stores', storeId, STORE_PAYMENT_METHODS_SUBCOLLECTION, method.id);
+    const snap = await getDoc(targetRef);
+    if (snap.exists()) {
+      await updateDoc(targetRef, {
+        isActive,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const payload: Record<string, unknown> = {
+        id: method.id,
+        storeId,
+        ownerUid: method.ownerUid,
+        name: method.name.trim().slice(0, 80),
+        currency: method.currency || 'USD',
+        accountHolder: (method.accountHolder || '').trim().slice(0, 120),
+        accountDetails: method.accountDetails.trim().slice(0, 300),
+        appliesIgtf: Boolean(method.appliesIgtf),
+        isActive,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      if (method.instructions && method.instructions.trim()) {
+        payload.instructions = method.instructions.trim().slice(0, 400);
+      }
+      await setDoc(targetRef, payload);
+      deleteDoc(
+        doc(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION, method.id)
+      ).catch(() => {});
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteStorePaymentMethod(storeId: string, methodId: string): Promise<void> {
+  const path = `stores/${storeId}/${STORE_PAYMENT_METHODS_SUBCOLLECTION}/${methodId}`;
+  try {
+    await deleteDoc(doc(db, 'stores', storeId, STORE_PAYMENT_METHODS_SUBCOLLECTION, methodId));
+    await deleteDoc(
+      doc(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION, methodId)
+    ).catch(() => {});
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -556,6 +1343,259 @@ export async function adminSetStoreWarehousePos(
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Admin Manual Store Owner & Store Registration + Email Claim Linking
+// -----------------------------------------------------------------------------
+
+export interface AdminManualStoreOwnerInput {
+  registeredOwnerName: string;
+  ownerEmail: string;
+  businessWhatsapp: string;
+  storeName: string;
+  rif?: string;
+  category?: string;
+  description?: string;
+  status: StoreStatus;
+  warehousePosEnabled: boolean;
+  nationalShippingEnabled: boolean;
+  localDeliveryEnabled: boolean;
+  pickupEnabled: boolean;
+}
+
+export function subscribeAllStoreOwnerClaimsForAdmin(
+  onData: (claims: StoreOwnerClaim[]) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'storeOwnerClaims'),
+    (snap) => {
+      onData(snap.docs.map((d) => d.data() as StoreOwnerClaim));
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'storeOwnerClaims');
+    }
+  );
+}
+
+export async function adminCreateStoreWithOwner(
+  adminUser: User,
+  input: AdminManualStoreOwnerInput
+): Promise<{ store: StoreTenant; claim: StoreOwnerClaim }> {
+  const cleanOwnerName = input.registeredOwnerName.trim().slice(0, 100);
+  const cleanOwnerEmail = input.ownerEmail.trim().toLowerCase().slice(0, 160);
+  const cleanStoreName = input.storeName.trim().slice(0, 100);
+  const cleanWhatsapp = input.businessWhatsapp.trim().slice(0, 25);
+
+  if (cleanOwnerName.length < 2) {
+    throw new Error('Ingresa el nombre completo de la persona dueña de la tienda.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanOwnerEmail)) {
+    throw new Error('Ingresa un correo electrónico válido para el dueño de la tienda.');
+  }
+  if (cleanStoreName.length < 2) {
+    throw new Error('Ingresa el nombre de la tienda.');
+  }
+  if (cleanWhatsapp.length < 7) {
+    throw new Error('Ingresa un número de WhatsApp válido (mínimo 7 dígitos).');
+  }
+
+  const storeId = makeSafeDocId('store');
+  const pendingOwnerUid = makeSafeDocId('pendingowner');
+  const slug = `${slugifyStoreName(cleanStoreName)}-${storeId.slice(-4)}`;
+  const myReferralCode = generateStoreReferralCode(cleanStoreName, storeId);
+  const path = `stores/${storeId}`;
+
+  const storePayload: Record<string, unknown> = {
+    id: storeId,
+    slug,
+    ownerUid: pendingOwnerUid,
+    storeName: cleanStoreName,
+    registeredOwnerName: cleanOwnerName,
+    businessWhatsapp: cleanWhatsapp,
+    status: input.status || 'active',
+    subscriptionPriceUSD: 25,
+    nationalShippingEnabled: Boolean(input.nationalShippingEnabled),
+    localDeliveryEnabled: Boolean(input.localDeliveryEnabled),
+    pickupEnabled: Boolean(input.pickupEnabled),
+    warehousePosEnabled: Boolean(input.warehousePosEnabled),
+    referralCode: myReferralCode,
+    ...buildCleanStoreOptionalFields({
+      rif: input.rif,
+      category: input.category,
+      description: input.description,
+    }),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const claimPayload: Record<string, unknown> = {
+    id: storeId,
+    storeId,
+    storeName: cleanStoreName,
+    ownerName: cleanOwnerName,
+    ownerEmail: cleanOwnerEmail,
+    pendingOwnerUid,
+    status: 'pending_claim',
+    createdByEmail: (adminUser.email || SUPER_ADMIN_EMAIL).toLowerCase(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'stores', storeId), storePayload);
+    batch.set(doc(db, 'stores', storeId, 'private', 'account'), {
+      storeId,
+      ownerUid: pendingOwnerUid,
+      ownerEmail: cleanOwnerEmail,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    batch.set(doc(db, 'storeOwnerClaims', storeId), claimPayload);
+    batch.set(doc(db, 'referralCodes', myReferralCode), {
+      code: myReferralCode,
+      storeId,
+      storeName: cleanStoreName,
+      ownerUid: pendingOwnerUid,
+      createdAt: serverTimestamp(),
+    });
+    await batch.commit();
+
+    return {
+      store: {
+        ...storePayload,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as StoreTenant,
+      claim: {
+        ...claimPayload,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as StoreOwnerClaim,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export async function adminUpdateStoreAndOwner(
+  store: StoreTenant,
+  updates: {
+    registeredOwnerName: string;
+    ownerEmail: string;
+    businessWhatsapp: string;
+    storeName: string;
+    rif?: string;
+    category?: string;
+  },
+  existingClaim?: StoreOwnerClaim | null
+): Promise<void> {
+  const cleanOwnerName = updates.registeredOwnerName.trim().slice(0, 100);
+  const cleanOwnerEmail = updates.ownerEmail.trim().toLowerCase().slice(0, 160);
+  const cleanStoreName = updates.storeName.trim().slice(0, 100);
+  const cleanWhatsapp = updates.businessWhatsapp.trim().slice(0, 25);
+
+  if (cleanOwnerName.length < 2 || cleanStoreName.length < 2 || cleanWhatsapp.length < 7) {
+    throw new Error('Completa nombre de tienda, titular y WhatsApp válidos.');
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanOwnerEmail)) {
+    throw new Error('Ingresa un correo electrónico válido para el dueño.');
+  }
+
+  const path = `stores/${store.id}`;
+  try {
+    const batch = writeBatch(db);
+    const storePatch: Record<string, unknown> = {
+      registeredOwnerName: cleanOwnerName,
+      storeName: cleanStoreName,
+      businessWhatsapp: cleanWhatsapp,
+      updatedAt: serverTimestamp(),
+    };
+    if (updates.rif !== undefined) {
+      storePatch.rif = updates.rif.trim().slice(0, 30);
+    }
+    if (updates.category !== undefined && updates.category.trim()) {
+      storePatch.category = updates.category.trim().slice(0, 60);
+    }
+    batch.update(doc(db, 'stores', store.id), storePatch);
+
+    const accountRef = doc(db, 'stores', store.id, 'private', 'account');
+    const accountSnap = await getDoc(accountRef);
+    if (accountSnap.exists()) {
+      batch.update(accountRef, {
+        ownerEmail: cleanOwnerEmail,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      batch.set(accountRef, {
+        storeId: store.id,
+        ownerUid: store.ownerUid,
+        ownerEmail: cleanOwnerEmail,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    if (existingClaim) {
+      batch.update(doc(db, 'storeOwnerClaims', existingClaim.id), {
+        storeName: cleanStoreName,
+        ownerName: cleanOwnerName,
+        ownerEmail: cleanOwnerEmail,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function claimPendingAdminStoresForUser(user: User): Promise<StoreTenant[]> {
+  if (!user.emailVerified || !user.email) return [];
+  const normalizedEmail = user.email.trim().toLowerCase();
+  const path = 'storeOwnerClaims';
+  try {
+    const q = query(
+      collection(db, 'storeOwnerClaims'),
+      where('ownerEmail', '==', normalizedEmail)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return [];
+
+    const claimedStores: StoreTenant[] = [];
+    for (const claimDoc of snap.docs) {
+      const claim = claimDoc.data() as StoreOwnerClaim;
+      if (claim.status !== 'pending_claim') continue;
+
+      const storeSnap = await getDoc(doc(db, 'stores', claim.storeId));
+      if (!storeSnap.exists()) continue;
+      const storeData = storeSnap.data() as StoreTenant;
+      if (storeData.ownerUid !== claim.pendingOwnerUid) continue;
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'stores', claim.storeId), {
+        ownerUid: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(doc(db, 'stores', claim.storeId, 'private', 'account'), {
+        ownerUid: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(doc(db, 'storeOwnerClaims', claim.id), {
+        status: 'claimed',
+        claimedByUid: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+      claimedStores.push({ ...storeData, ownerUid: user.uid });
+    }
+    return claimedStores;
+  } catch (error) {
+    console.warn(`No se pudo verificar asignaciones de tienda (${path}):`, error);
+    return [];
   }
 }
 

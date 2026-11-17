@@ -6,17 +6,24 @@ import {
   BellOff,
   CheckCircle2,
   Clock,
+  CreditCard,
+  Edit3,
   Eye,
   EyeOff,
   Key,
   Mail,
+  Plus,
   RefreshCw,
   Save,
+  Search,
   Send,
   Server,
   ShieldCheck,
   Trash2,
+  Wallet,
+  XCircle,
 } from 'lucide-react';
+import { auth } from '../firebase';
 import {
   BrowserNotificationPermissionState,
   BrowserNotificationPrefs,
@@ -29,11 +36,13 @@ import {
 } from '../services/browserNotificationService';
 import {
   EmailProviderType,
+  PlatformPaymentCurrency,
   Product,
   Sale,
   StockAlertEmailLog,
   StoreEmailConfig,
   StoreOrder,
+  StorePaymentMethod,
   StoreProduct,
 } from '../types';
 import {
@@ -45,6 +54,19 @@ import {
   getStoreEmailLogs,
   saveStoreEmailConfig,
 } from '../services/emailDeliveryService';
+import {
+  deleteStorePaymentMethod,
+  makeSafeDocId,
+  saveStorePaymentMethod,
+  subscribeAllStorePaymentMethodsForOwner,
+  toggleStorePaymentMethodActive,
+} from '../services/saasService';
+import {
+  isAppEffectivelyOffline,
+  isNetworkOrOfflineError,
+  loadCachedStorePaymentMethods,
+  saveCachedStorePaymentMethods,
+} from '../services/offlineSyncService';
 
 interface EmailProviderConfigPanelProps {
   storeId: string;
@@ -57,8 +79,10 @@ interface EmailProviderConfigPanelProps {
   sales?: Sale[];
   orders?: StoreOrder[];
   compact?: boolean;
+  initialSubTab?: 'config' | 'payment_methods' | 'history';
   onConfigSaved?: (config: StoreEmailConfig) => void;
   onLogsUpdated?: (logs: StockAlertEmailLog[]) => void;
+  onStorePaymentMethodsChange?: (methods: StorePaymentMethod[]) => void;
 }
 
 const SMTP_PRESETS = [
@@ -79,10 +103,12 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
   sales = [],
   orders = [],
   compact = false,
+  initialSubTab = 'config',
   onConfigSaved,
   onLogsUpdated,
+  onStorePaymentMethodsChange,
 }) => {
-  const [subTab, setSubTab] = useState<'config' | 'history'>('config');
+  const [subTab, setSubTab] = useState<'config' | 'payment_methods' | 'history'>(initialSubTab);
   const [config, setConfig] = useState<StoreEmailConfig>(() =>
     getLocalStoreEmailConfig(storeId, ownerUid, ownerEmail)
   );
@@ -104,6 +130,57 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     getBrowserNotificationPrefs()
   );
   const [isTestingPush, setIsTestingPush] = useState(false);
+
+  // Per-store customer payment methods state (subcollection: store_payment_methods)
+  const [storeMethods, setStoreMethods] = useState<StorePaymentMethod[]>(() =>
+    loadCachedStorePaymentMethods(storeId)
+  );
+  const [editingStoreMethod, setEditingStoreMethod] = useState<StorePaymentMethod | null>(null);
+  const [pmName, setPmName] = useState('');
+  const [pmCurrency, setPmCurrency] = useState<PlatformPaymentCurrency>('USD');
+  const [pmHolder, setPmHolder] = useState('');
+  const [pmDetails, setPmDetails] = useState('');
+  const [pmInstructions, setPmInstructions] = useState('');
+  const [pmAppliesIgtf, setPmAppliesIgtf] = useState(false);
+  const [pmActive, setPmActive] = useState(true);
+  const [pmSearch, setPmSearch] = useState('');
+  const [isSavingMethod, setIsSavingMethod] = useState(false);
+  const [confirmDeleteMethodId, setConfirmDeleteMethodId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSubTab(initialSubTab);
+  }, [initialSubTab]);
+
+  const effectiveCloudOwnerUid = ownerUid || auth.currentUser?.uid || '';
+  const isCloudStoreLinked = Boolean(
+    storeId &&
+      storeId !== 'default-warehouse' &&
+      effectiveCloudOwnerUid &&
+      auth.currentUser?.emailVerified
+  );
+
+  const onStorePaymentMethodsChangeRef = React.useRef(onStorePaymentMethodsChange);
+  onStorePaymentMethodsChangeRef.current = onStorePaymentMethodsChange;
+
+  useEffect(() => {
+    if (!storeId) return;
+    const cached = loadCachedStorePaymentMethods(storeId);
+    setStoreMethods(cached);
+    onStorePaymentMethodsChangeRef.current?.(cached);
+
+    if (!isCloudStoreLinked || isAppEffectivelyOffline()) return;
+
+    const unsub = subscribeAllStorePaymentMethodsForOwner(
+      storeId,
+      effectiveCloudOwnerUid,
+      (list) => {
+        setStoreMethods(list);
+        saveCachedStorePaymentMethods(storeId, list);
+        onStorePaymentMethodsChangeRef.current?.(list);
+      }
+    );
+    return () => unsub();
+  }, [storeId, effectiveCloudOwnerUid, isCloudStoreLinked]);
 
   useEffect(() => {
     const syncPush = () => {
@@ -372,37 +449,273 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     onLogsUpdated?.([]);
   };
 
+  const resetStoreMethodForm = () => {
+    setEditingStoreMethod(null);
+    setPmName('');
+    setPmCurrency('USD');
+    setPmHolder('');
+    setPmDetails('');
+    setPmInstructions('');
+    setPmAppliesIgtf(false);
+    setPmActive(true);
+  };
+
+  const syncLocalStoreMethods = (nextList: StorePaymentMethod[]) => {
+    const sorted = [...nextList].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    setStoreMethods(sorted);
+    saveCachedStorePaymentMethods(storeId, sorted);
+    onStorePaymentMethodsChangeRef.current?.(sorted);
+  };
+
+  const handleSaveStoreMethod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = pmName.trim().slice(0, 80);
+    const cleanDetails = pmDetails.trim().slice(0, 300);
+    if (cleanName.length < 2 || cleanDetails.length < 2) {
+      setFeedback({
+        type: 'error',
+        text: 'Indica el nombre del método de pago y los datos de cobro para tus clientes.',
+      });
+      return;
+    }
+
+    setIsSavingMethod(true);
+    setFeedback(null);
+    const saveLocallyFallback = (offlineNote: string) => {
+      const nowIso = new Date().toISOString();
+      const localRecord: StorePaymentMethod = {
+        id: editingStoreMethod?.id || makeSafeDocId('stpm'),
+        storeId,
+        ownerUid: effectiveCloudOwnerUid || 'local-owner',
+        name: cleanName,
+        currency: pmCurrency,
+        accountHolder: pmHolder.trim().slice(0, 120),
+        accountDetails: cleanDetails,
+        instructions: pmInstructions.trim().slice(0, 400) || undefined,
+        appliesIgtf: pmAppliesIgtf,
+        isActive: pmActive,
+        createdAt: editingStoreMethod?.createdAt || nowIso,
+        updatedAt: nowIso,
+      };
+      const nextList = editingStoreMethod
+        ? storeMethods.map((m) => (m.id === localRecord.id ? localRecord : m))
+        : [...storeMethods, localRecord];
+      syncLocalStoreMethods(nextList);
+      resetStoreMethodForm();
+      setFeedback({ type: 'success', text: offlineNote });
+    };
+
+    try {
+      if (!isCloudStoreLinked || isAppEffectivelyOffline()) {
+        saveLocallyFallback(
+          `Método "${cleanName}" guardado localmente para el POS${
+            storeId === 'default-warehouse'
+              ? ' (vincula una tienda SaaS para respaldo en Firestore).'
+              : ' (se sincronizará cuando tengas conexión).'
+          }`
+        );
+        return;
+      }
+
+      const saved = await saveStorePaymentMethod(
+        storeId,
+        effectiveCloudOwnerUid,
+        {
+          id: editingStoreMethod?.id,
+          name: cleanName,
+          currency: pmCurrency,
+          accountHolder: pmHolder,
+          accountDetails: cleanDetails,
+          instructions: pmInstructions,
+          appliesIgtf: pmAppliesIgtf,
+          isActive: pmActive,
+        },
+        editingStoreMethod || undefined
+      );
+      const nextList = editingStoreMethod
+        ? storeMethods.map((m) => (m.id === saved.id ? saved : m))
+        : [...storeMethods.filter((m) => m.id !== saved.id), saved];
+      syncLocalStoreMethods(nextList);
+      resetStoreMethodForm();
+      setFeedback({
+        type: 'success',
+        text: editingStoreMethod
+          ? `Método "${cleanName}" actualizado en store_payment_methods y listo en Caja POS.`
+          : `Método "${cleanName}" guardado en store_payment_methods para tus clientes y Caja POS.`,
+      });
+    } catch (err) {
+      if (isNetworkOrOfflineError(err)) {
+        saveLocallyFallback(
+          `Método "${cleanName}" guardado en caché local del POS sin conexión.`
+        );
+      } else {
+        setFeedback({
+          type: 'error',
+          text: err instanceof Error ? err.message : 'No se pudo guardar el método de pago.',
+        });
+      }
+    } finally {
+      setIsSavingMethod(false);
+    }
+  };
+
+  const handleToggleStoreMethod = async (method: StorePaymentMethod) => {
+    const nextActive = !method.isActive;
+    setIsSavingMethod(true);
+    setFeedback(null);
+    try {
+      if (isCloudStoreLinked && !isAppEffectivelyOffline()) {
+        await toggleStorePaymentMethodActive(storeId, method, nextActive);
+      }
+      const nextList = storeMethods.map((m) =>
+        m.id === method.id ? { ...m, isActive: nextActive, updatedAt: new Date().toISOString() } : m
+      );
+      syncLocalStoreMethods(nextList);
+      setFeedback({
+        type: 'success',
+        text: `Método "${method.name}" ${nextActive ? 'activado en el POS y tienda' : 'pausado'}.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'No se pudo cambiar el estado del método.',
+      });
+    } finally {
+      setIsSavingMethod(false);
+    }
+  };
+
+  const handleDeleteStoreMethod = async (method: StorePaymentMethod) => {
+    setIsSavingMethod(true);
+    setFeedback(null);
+    try {
+      if (isCloudStoreLinked && !isAppEffectivelyOffline()) {
+        await deleteStorePaymentMethod(storeId, method.id);
+      }
+      setConfirmDeleteMethodId(null);
+      if (editingStoreMethod?.id === method.id) {
+        resetStoreMethodForm();
+      }
+      syncLocalStoreMethods(storeMethods.filter((m) => m.id !== method.id));
+      setFeedback({
+        type: 'success',
+        text: `Método de pago "${method.name}" eliminado.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Error eliminando método de pago.',
+      });
+    } finally {
+      setIsSavingMethod(false);
+    }
+  };
+
+  const filteredStoreMethods = storeMethods.filter((m) => {
+    const q = pmSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      m.name.toLowerCase().includes(q) ||
+      m.currency.toLowerCase().includes(q) ||
+      m.accountHolder.toLowerCase().includes(q) ||
+      m.accountDetails.toLowerCase().includes(q)
+    );
+  });
+
+  const STORE_PAYMENT_PRESETS: Array<{
+    name: string;
+    currency: PlatformPaymentCurrency;
+    igtf: boolean;
+    detailsPlaceholder: string;
+    instructions: string;
+  }> = [
+    {
+      name: 'Zelle',
+      currency: 'USD',
+      igtf: true,
+      detailsPlaceholder: 'Correo Zelle: cobros@tutienda.com',
+      instructions: 'Colocar el número de factura en el concepto de la transferencia.',
+    },
+    {
+      name: 'Pago Móvil',
+      currency: 'Bs',
+      igtf: false,
+      detailsPlaceholder: 'Banco: Banesco (0134) · C.I/RIF: V-XXXXXXXX · Teléfono: 0414-XXXXXXX',
+      instructions: 'Calcular monto a la tasa BCV vigente y mostrar referencia.',
+    },
+    {
+      name: 'Transferencia Bancaria',
+      currency: 'Bs',
+      igtf: false,
+      detailsPlaceholder: 'Banesco Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X',
+      instructions: 'Transferencia directa en bolívares; verificar acreditación en caja.',
+    },
+    {
+      name: 'Binance Pay',
+      currency: 'USDT',
+      igtf: false,
+      detailsPlaceholder: 'Binance Pay ID: XXXXXXXXX · Red USDT TRC20/BEP20',
+      instructions: 'Transferencia en USDT sin comisión bancaria.',
+    },
+    {
+      name: 'Efectivo USD',
+      currency: 'USD',
+      igtf: true,
+      detailsPlaceholder: 'Pago en efectivo divisas USD en caja principal',
+      instructions: 'Verificar denominación y estado de billetes al recibir.',
+    },
+    {
+      name: 'Zinli',
+      currency: 'USD',
+      igtf: true,
+      detailsPlaceholder: 'Correo Zinli: cobros@tutienda.com',
+      instructions: 'Transferencia instantánea USD desde billetera Zinli.',
+    },
+  ];
+
   return (
     <div className={compact ? 'space-y-4' : 'space-y-6'}>
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
         <div>
           <h2 className="text-base sm:text-lg font-bold text-white font-display flex items-center gap-2">
             <Server className="w-5 h-5 text-amber-400 shrink-0" />
-            <span>Servidor de Correo (SMTP / Resend API)</span>
+            <span>Configuración de Tienda (Correo, Push y Pagos POS)</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Configura tu proveedor para recibir alertas reales de stock crítico y reportes de ventas de{' '}
+            Administra alertas de stock, reportes SMTP/Resend y los métodos de cobro propios para clientes de{' '}
             <strong className="text-zinc-200">{storeName || 'tu tienda'}</strong>.
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-[#09090b] p-1 rounded-xl border border-white/[0.08] self-start sm:self-auto">
+        <div className="flex items-center gap-1.5 bg-[#09090b] p-1 rounded-xl border border-white/[0.08] self-start lg:self-auto overflow-x-auto max-w-full no-scrollbar">
           <button
             type="button"
             onClick={() => setSubTab('config')}
-            className={`px-3.5 py-2 min-h-[38px] rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
+            className={`px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
               subTab === 'config'
                 ? 'bg-amber-400 text-zinc-950 font-bold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Credenciales y Reglas
+            Credenciales y Alertas
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('payment_methods')}
+            className={`px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+              subTab === 'payment_methods'
+                ? 'bg-amber-400 text-zinc-950 font-bold'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Métodos de Pago ({storeMethods.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setSubTab('history')}
-            className={`px-3.5 py-2 min-h-[38px] rounded-lg text-xs font-semibold transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+            className={`px-3 py-2 min-h-[38px] rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
               subTab === 'history'
                 ? 'bg-amber-400 text-zinc-950 font-bold'
                 : 'text-zinc-400 hover:text-white'
@@ -1062,6 +1375,352 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             </div>
           </div>
         </form>
+        </div>
+      ) : subTab === 'payment_methods' ? (
+        <div className="space-y-5">
+          {/* Store Payment Methods Info Header */}
+          <div className="p-4 rounded-xl bg-[#09090b] border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Métodos de Pago de la Tienda para Clientes y Caja POS</span>
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Configura y edita tus cuentas receptoras (Zelle, Pago Móvil, Transferencia, Binance Pay). Se guardan en la subcolección <span className="font-mono text-amber-300">store_payment_methods</span> de tu tienda y aparecen al instante en Caja POS.
+              </p>
+            </div>
+            <div className="text-xs font-mono tabular-nums text-zinc-300 shrink-0">
+              Activos: <strong className="text-emerald-300">{storeMethods.filter((m) => m.isActive).length}</strong>
+              <span className="text-zinc-600 mx-1.5">·</span>
+              Total: <strong className="text-white">{storeMethods.length}</strong>
+            </div>
+          </div>
+
+          {!isCloudStoreLinked && (
+            <div className="p-3 rounded-xl bg-amber-950/35 border border-amber-500/35 text-xs text-amber-200 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                {storeId === 'default-warehouse'
+                  ? 'Modo Almacén Individual: tus métodos de pago se guardan localmente para el POS. Selecciona una tienda registrada e inicia sesión con Google para sincronizarlos con store_payment_methods en Firestore.'
+                  : 'Inicia sesión con la cuenta Google dueña de la tienda para sincronizar cambios con Firestore (store_payment_methods).'}
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Form: Add / Edit Store Payment Method */}
+            <form
+              onSubmit={handleSaveStoreMethod}
+              className="lg:col-span-5 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5 h-fit"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <Plus className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      {editingStoreMethod
+                        ? `Editar: ${editingStoreMethod.name}`
+                        : 'Agregar Método de Cobro'}
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Tus clientes y cajeros verán estos datos al cobrar ventas.
+                  </p>
+                </div>
+                {editingStoreMethod && (
+                  <button
+                    type="button"
+                    onClick={resetStoreMethodForm}
+                    className="px-2.5 py-1 rounded-lg bg-[#111114] border border-white/[0.08] text-[11px] text-zinc-300 hover:text-white whitespace-nowrap shrink-0"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+
+              {!editingStoreMethod && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-zinc-400">Plantillas rápidas:</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {STORE_PAYMENT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          setPmName(preset.name);
+                          setPmCurrency(preset.currency);
+                          setPmAppliesIgtf(preset.igtf);
+                          setPmDetails((prev) => (prev.trim() ? prev : preset.detailsPlaceholder));
+                          setPmInstructions(preset.instructions);
+                          setPmActive(true);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#111114] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-400/40 text-[11px] text-zinc-200 font-medium transition-colors whitespace-nowrap"
+                      >
+                        + {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                  <input
+                    required
+                    type="text"
+                    maxLength={80}
+                    value={pmName}
+                    onChange={(e) => setPmName(e.target.value)}
+                    placeholder="Ej: Zelle / Pago Móvil / Transferencia"
+                    className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                  <select
+                    value={pmCurrency}
+                    onChange={(e) => setPmCurrency(e.target.value as PlatformPaymentCurrency)}
+                    className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="Bs">Bs.</option>
+                    <option value="USDT">USDT</option>
+                    <option value="EUR">EUR</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">Titular / Beneficiario</label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  value={pmHolder}
+                  onChange={(e) => setPmHolder(e.target.value)}
+                  placeholder={storeName || 'Titular de la cuenta'}
+                  className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">
+                  Datos de Cobro (Correo, Teléfono, Banco, Cuenta o Wallet) *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  maxLength={300}
+                  value={pmDetails}
+                  onChange={(e) => setPmDetails(e.target.value)}
+                  placeholder="Ej: 0134 Banesco · V-XXXXXXXX · 0414-XXXXXXX"
+                  className="w-full px-3 py-2 bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-zinc-300 block mb-1">
+                  Instrucciones para el Cliente (Opcional)
+                </label>
+                <input
+                  type="text"
+                  maxLength={400}
+                  value={pmInstructions}
+                  onChange={(e) => setPmInstructions(e.target.value)}
+                  placeholder="Ej: Indicar número de factura en el concepto"
+                  className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pmAppliesIgtf}
+                    onChange={(e) => setPmAppliesIgtf(e.target.checked)}
+                    className="accent-amber-400 w-4 h-4"
+                  />
+                  <span>Aplica IGTF 3% Divisas (POS SENIAT)</span>
+                </label>
+                <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pmActive}
+                    onChange={(e) => setPmActive(e.target.checked)}
+                    className="accent-amber-400 w-4 h-4"
+                  />
+                  <span>Activo para clientes y visible en Caja POS</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingMethod}
+                className="w-full py-2.5 px-4 min-h-[44px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>
+                  {isSavingMethod
+                    ? 'Guardando...'
+                    : editingStoreMethod
+                      ? 'Actualizar Método de Pago'
+                      : 'Guardar Método de Pago'}
+                </span>
+              </button>
+            </form>
+
+            {/* Right Column: Store Configured Payment Methods List */}
+            <div className="lg:col-span-7 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                <div>
+                  <h4 className="text-sm font-bold text-white">
+                    Métodos Guardados ({storeMethods.length})
+                  </h4>
+                  <p className="text-[11px] text-zinc-400">
+                    Edita tus datos bancarios o pausa cualquier método cuando lo necesites.
+                  </p>
+                </div>
+
+                {storeMethods.length > 2 && (
+                  <div className="relative sm:w-56">
+                    <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={pmSearch}
+                      onChange={(e) => setPmSearch(e.target.value)}
+                      placeholder="Buscar método o cuenta..."
+                      className="w-full pl-8 pr-3 py-1.5 min-h-[36px] bg-[#111114] border border-white/[0.08] rounded-lg text-xs text-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {filteredStoreMethods.length === 0 ? (
+                <div className="p-6 rounded-xl bg-[#111114] border border-white/[0.06] text-center space-y-2">
+                  <Wallet className="w-7 h-7 text-zinc-600 mx-auto" />
+                  <p className="text-xs font-semibold text-zinc-300">
+                    {storeMethods.length === 0
+                      ? 'Aún no has configurado métodos de cobro propios para esta tienda'
+                      : 'No hay métodos que coincidan con tu búsqueda'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                    Usa las plantillas rápidas de Zelle, Pago Móvil o Transferencia para añadir tus datos y verlos al instante en el POS.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-0.5">
+                  {filteredStoreMethods.map((method) => (
+                    <div
+                      key={method.id}
+                      className="p-3.5 rounded-xl bg-[#111114] border border-white/[0.08] flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 text-xs min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-white text-sm">{method.name}</span>
+                          <span className="text-zinc-500" aria-hidden="true">·</span>
+                          <span className="font-mono text-[11px] font-bold text-amber-300">
+                            {method.currency}
+                          </span>
+                          {method.appliesIgtf && (
+                            <>
+                              <span className="text-zinc-500" aria-hidden="true">·</span>
+                              <span className="text-[11px] text-amber-200 font-mono">IGTF 3%</span>
+                            </>
+                          )}
+                          <span className="text-zinc-500" aria-hidden="true">·</span>
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                              method.isActive ? 'text-emerald-300' : 'text-zinc-400'
+                            }`}
+                          >
+                            {method.isActive ? (
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            ) : (
+                              <XCircle className="w-3.5 h-3.5" />
+                            )}
+                            <span>{method.isActive ? 'Activo en POS' : 'Pausado'}</span>
+                          </span>
+                        </div>
+
+                        {method.accountHolder && (
+                          <div className="text-zinc-400 text-[11px]">
+                            Titular: <span className="text-zinc-200">{method.accountHolder}</span>
+                          </div>
+                        )}
+                        <div className="text-zinc-200 font-mono text-[11px] whitespace-pre-line">
+                          {method.accountDetails}
+                        </div>
+                        {method.instructions && (
+                          <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={isSavingMethod}
+                          onClick={() => handleToggleStoreMethod(method)}
+                          className={`px-2.5 py-1.5 min-h-[36px] rounded-lg text-[11px] font-bold border whitespace-nowrap ${
+                            method.isActive
+                              ? 'bg-emerald-950/50 border-emerald-500/35 text-emerald-300'
+                              : 'bg-[#09090b] border-white/[0.1] text-zinc-300'
+                          }`}
+                        >
+                          {method.isActive ? 'Pausar' : 'Activar'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingStoreMethod(method);
+                            setPmName(method.name);
+                            setPmCurrency(method.currency);
+                            setPmHolder(method.accountHolder || '');
+                            setPmDetails(method.accountDetails);
+                            setPmInstructions(method.instructions || '');
+                            setPmAppliesIgtf(Boolean(method.appliesIgtf));
+                            setPmActive(method.isActive);
+                          }}
+                          className="p-2 min-h-[36px] min-w-[36px] rounded-lg bg-[#09090b] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
+                          title="Editar método"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        {confirmDeleteMethodId === method.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={isSavingMethod}
+                              onClick={() => handleDeleteStoreMethod(method)}
+                              className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteMethodId(null)}
+                              className="px-2 py-1.5 min-h-[36px] rounded-lg bg-[#09090b] border border-white/[0.1] text-zinc-400 hover:text-white text-[11px] whitespace-nowrap"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteMethodId(method.id)}
+                            className="p-2 min-h-[36px] min-w-[36px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
+                            title="Eliminar método"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

@@ -154,9 +154,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
   // --- DUAL CASH CLOSING CALCULATIONS ---
   const paymentMethodStats = useMemo(() => {
-    const stats: {
-      [key in PaymentMethod]: { count: number; totalUSD: number; totalBs: number; igtfUSD: number };
-    } = {
+    const stats: Record<
+      string,
+      { count: number; totalUSD: number; totalBs: number; igtfUSD: number }
+    > = {
       'Efectivo USD': { count: 0, totalUSD: 0, totalBs: 0, igtfUSD: 0 },
       'Efectivo Bs': { count: 0, totalUSD: 0, totalBs: 0, igtfUSD: 0 },
       'Pago Móvil': { count: 0, totalUSD: 0, totalBs: 0, igtfUSD: 0 },
@@ -172,8 +173,13 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     let totalIGTFUSD = 0;
 
     sales.forEach((s) => {
-      const isForeign = s.paymentMethod === 'Efectivo USD' || s.paymentMethod === 'Zelle';
-      const igtf = isForeign ? s.subtotalUSD * 0.03 : 0;
+      const isForeignByName = s.paymentMethod === 'Efectivo USD' || s.paymentMethod === 'Zelle';
+      const hasExplicitIgtf = typeof s.igtfAmountUSD === 'number' || typeof s.igtfRate === 'number';
+      const igtf = hasExplicitIgtf
+        ? (s.igtfAmountUSD ?? s.subtotalUSD * (s.igtfRate || 0))
+        : isForeignByName
+          ? s.subtotalUSD * 0.03
+          : 0;
       const totalUSDWithIgtf = s.subtotalUSD + igtf;
       const totalBsWithIgtf = totalUSDWithIgtf * exchangeRate;
 
@@ -186,16 +192,18 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
       totalIVAUSD += ivaUSD;
       totalIGTFUSD += igtf;
 
-      if (stats[s.paymentMethod]) {
-        stats[s.paymentMethod].count += 1;
-        stats[s.paymentMethod].totalUSD += totalUSDWithIgtf;
-        stats[s.paymentMethod].totalBs += totalBsWithIgtf;
-        stats[s.paymentMethod].igtfUSD += igtf;
+      const methodKey = (s.paymentMethod || 'Otro').trim() || 'Otro';
+      if (!stats[methodKey]) {
+        stats[methodKey] = { count: 0, totalUSD: 0, totalBs: 0, igtfUSD: 0 };
       }
+      stats[methodKey].count += 1;
+      stats[methodKey].totalUSD += totalUSDWithIgtf;
+      stats[methodKey].totalBs += totalBsWithIgtf;
+      stats[methodKey].igtfUSD += igtf;
     });
 
-    const expectedCashUSD = stats['Efectivo USD'].totalUSD;
-    const expectedCashBs = stats['Efectivo Bs'].totalBs;
+    const expectedCashUSD = stats['Efectivo USD']?.totalUSD || 0;
+    const expectedCashBs = stats['Efectivo Bs']?.totalBs || 0;
 
     return {
       byMethod: stats,

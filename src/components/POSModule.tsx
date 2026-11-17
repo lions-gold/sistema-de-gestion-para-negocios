@@ -31,18 +31,41 @@ import {
 import { useOnlineStatus } from '../hooks/usePWAInstall';
 import { getCaracasDateTimeStamp, normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 
+export interface POSCustomPaymentOption {
+  name: string;
+  currency?: string;
+  appliesIgtf?: boolean;
+  accountHolder?: string;
+  accountDetails?: string;
+  instructions?: string;
+  source?: 'store' | 'admin';
+}
+
 interface POSModuleProps {
   products: Product[];
   exchangeRate: number;
   onCompleteSale: (sale: Sale) => void;
   onOpenScanner?: () => void;
+  customPaymentMethods?: POSCustomPaymentOption[];
+  onOpenPaymentSettings?: () => void;
 }
+
+const CORE_POS_METHODS: PaymentMethod[] = [
+  'Pago Móvil',
+  'Efectivo USD',
+  'Efectivo Bs',
+  'Punto de Venta',
+  'Zelle',
+  'Fiado (Crédito)',
+];
 
 export const POSModule: React.FC<POSModuleProps> = ({
   products,
   exchangeRate,
   onCompleteSale,
   onOpenScanner,
+  customPaymentMethods = [],
+  onOpenPaymentSettings,
 }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('Cliente Mostrador');
@@ -158,7 +181,36 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
   const clearCart = () => setCart([]);
 
-  const isForeignCurrency = paymentMethod === 'Efectivo USD' || paymentMethod === 'Zelle';
+  const selectedCustomMethod = customPaymentMethods.find(
+    (m) => m.name.trim().toLowerCase() === paymentMethod.trim().toLowerCase()
+  );
+  const mergedPaymentOptions: POSCustomPaymentOption[] = (() => {
+    const result: POSCustomPaymentOption[] = [];
+    const seen = new Set<string>();
+    CORE_POS_METHODS.forEach((core) => {
+      const lower = core.toLowerCase();
+      seen.add(lower);
+      const override = customPaymentMethods.find((m) => m.name.trim().toLowerCase() === lower);
+      result.push(
+        override || {
+          name: core,
+          appliesIgtf: core === 'Efectivo USD' || core === 'Zelle',
+        }
+      );
+    });
+    customPaymentMethods.forEach((custom) => {
+      const lower = custom.name.trim().toLowerCase();
+      if (!lower || seen.has(lower)) return;
+      seen.add(lower);
+      result.push(custom);
+    });
+    return result;
+  })();
+
+  const isForeignCurrency =
+    paymentMethod === 'Efectivo USD' ||
+    paymentMethod === 'Zelle' ||
+    Boolean(selectedCustomMethod?.appliesIgtf);
   const igtfRate = (isForeignCurrency && applyIGTF) ? 0.03 : 0;
   const subtotalUSD = cart.reduce((acc, item) => acc + (item.product.priceUSD * item.quantity), 0);
   const baseAmountUSD = subtotalUSD > 0 ? Number((subtotalUSD / 1.16).toFixed(2)) : 0;
@@ -522,10 +574,21 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
           {/* Payment Method Selector */}
           <div className="space-y-2 mb-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs text-zinc-400 font-medium">
-                Método de Pago
-              </label>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-zinc-400 font-medium">
+                  Método de Pago
+                </label>
+                {onOpenPaymentSettings && (
+                  <button
+                    type="button"
+                    onClick={onOpenPaymentSettings}
+                    className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                  >
+                    Configurar cobros
+                  </button>
+                )}
+              </div>
               {isForeignCurrency && (
                 <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                   Aplica IGTF 3% Divisas
@@ -534,30 +597,52 @@ export const POSModule: React.FC<POSModuleProps> = ({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              {(
-                [
-                  'Pago Móvil',
-                  'Efectivo USD',
-                  'Efectivo Bs',
-                  'Punto de Venta',
-                  'Zelle',
-                  'Fiado (Crédito)',
-                ] as PaymentMethod[]
-              ).map((method) => (
+              {mergedPaymentOptions.map((option) => (
                 <button
-                  key={method}
+                  key={option.name}
                   type="button"
-                  onClick={() => setPaymentMethod(method)}
-                  className={`min-h-[44px] p-2.5 rounded-lg text-center font-medium transition-colors active:scale-[0.98] ${
-                    paymentMethod === method
+                  onClick={() => setPaymentMethod(option.name)}
+                  className={`min-h-[44px] p-2 rounded-lg text-center font-medium transition-colors active:scale-[0.98] flex flex-col items-center justify-center ${
+                    paymentMethod === option.name
                       ? 'bg-amber-500 text-zinc-950 font-bold shadow-sm'
                       : 'bg-[#09090b] text-zinc-300 hover:bg-zinc-800/80 border border-white/[0.08]'
                   }`}
                 >
-                  {method}
+                  <span className="truncate max-w-full">{option.name}</span>
+                  {option.currency && (
+                    <span
+                      className={`text-[10px] font-mono ${
+                        paymentMethod === option.name ? 'text-zinc-900' : 'text-zinc-400'
+                      }`}
+                    >
+                      {option.currency}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
+
+            {selectedCustomMethod && (selectedCustomMethod.accountDetails || selectedCustomMethod.instructions) && (
+              <div className="p-2.5 rounded-lg bg-[#09090b] border border-emerald-500/25 text-[11px] space-y-0.5">
+                <div className="font-semibold text-emerald-300 flex items-center justify-between gap-2">
+                  <span>Datos configurados para cobrar ({selectedCustomMethod.name})</span>
+                  {selectedCustomMethod.currency && (
+                    <span className="font-mono text-zinc-400">{selectedCustomMethod.currency}</span>
+                  )}
+                </div>
+                {selectedCustomMethod.accountHolder && (
+                  <div className="text-zinc-400">Titular: {selectedCustomMethod.accountHolder}</div>
+                )}
+                {selectedCustomMethod.accountDetails && (
+                  <div className="text-zinc-200 font-mono whitespace-pre-line">
+                    {selectedCustomMethod.accountDetails}
+                  </div>
+                )}
+                {selectedCustomMethod.instructions && (
+                  <div className="text-zinc-400">{selectedCustomMethod.instructions}</div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* IGTF 3% Divisas Toggle & Banner */}

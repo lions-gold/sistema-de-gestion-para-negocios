@@ -37,6 +37,121 @@
         "updatedAt"
       ]
     },
+    "PlatformPaymentMethod": {
+      "title": "PlatformPaymentMethod",
+      "description": "Custom subscription collection payment method manually configured by Super Admin (e.g., Zelle, Zinli, Wally, Banesco Panama).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "currency": { "type": "string", "enum": ["USD", "Bs", "USDT", "EUR", "Otro"] },
+        "accountHolder": { "type": "string", "maxLength": 120 },
+        "accountDetails": { "type": "string", "minLength": 2, "maxLength": 300 },
+        "instructions": { "type": "string", "maxLength": 400 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "currency", "accountHolder", "accountDetails", "isActive", "createdAt", "updatedAt"]
+    },
+    "SalesPaymentMethod": {
+      "title": "SalesPaymentMethod",
+      "description": "Admin-managed customizable payment method catalog (e.g., Binance Pay, Zinli, Transferencia Banesco, Zelle) selectable by store owners when registering sales.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "currency": { "type": "string", "enum": ["USD", "Bs", "USDT", "EUR", "Otro"] },
+        "appliesIgtf": { "type": "boolean" },
+        "description": { "type": "string", "maxLength": 240 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "currency", "appliesIgtf", "isActive", "createdAt", "updatedAt"]
+    },
+    "StorePaymentMethod": {
+      "title": "StorePaymentMethod",
+      "description": "Custom payment and money collection method manually configured by each Store Owner for buyer checkout and sales registration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "currency": { "type": "string", "enum": ["USD", "Bs", "USDT", "EUR", "Otro"] },
+        "accountHolder": { "type": "string", "maxLength": 120 },
+        "accountDetails": { "type": "string", "minLength": 2, "maxLength": 300 },
+        "instructions": { "type": "string", "maxLength": 400 },
+        "appliesIgtf": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "storeId", "ownerUid", "name", "currency", "accountHolder", "accountDetails", "appliesIgtf", "isActive", "createdAt", "updatedAt"]
+    },
+    "StoreSubscriptionPaymentMethod": {
+      "title": "StoreSubscriptionPaymentMethod",
+      "description": "Custom subscription collection payment method manually configured by Super Admin for a specific registered store.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "currency": { "type": "string", "enum": ["USD", "Bs", "USDT", "EUR", "Otro"] },
+        "accountHolder": { "type": "string", "maxLength": 120 },
+        "accountDetails": { "type": "string", "minLength": 2, "maxLength": 300 },
+        "instructions": { "type": "string", "maxLength": 400 },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeName",
+        "ownerUid",
+        "name",
+        "currency",
+        "accountHolder",
+        "accountDetails",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StoreOwnerClaim": {
+      "title": "StoreOwnerClaim",
+      "description": "Pre-registered store owner assignment created manually by Super Admin so the designated email automatically claims ownership upon verified Google login.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "storeName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ownerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ownerEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "pendingOwnerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "claimedByUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "status": { "type": "string", "enum": ["pending_claim", "claimed"] },
+        "createdByEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "storeName",
+        "ownerName",
+        "ownerEmail",
+        "pendingOwnerUid",
+        "status",
+        "createdByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "StoreTenant": {
       "title": "StoreTenant",
       "description": "Multi-SaaS merchant storefront account with business profile, RIF, logo, shipping config, referral code, and activation status.",
@@ -156,7 +271,8 @@
         "amountUSD": { "type": "number" },
         "paymentMethod": {
           "type": "string",
-          "enum": ["Transferencia Bancaria", "Pago Móvil", "Binance Pay", "Bybit", "Cupón Referido"]
+          "minLength": 2,
+          "maxLength": 80
         },
         "referenceNumber": { "type": "string", "minLength": 4, "maxLength": 80 },
         "payerInfo": { "type": "string", "maxLength": 120 },
@@ -695,6 +811,22 @@
       "schema": { "$ref": "#/entities/PlatformBillingSettings" },
       "description": "Global $25/mo SaaS billing methods and referral reward configured by Super Admin."
     },
+    "/platform_billing/{methodId}": {
+      "schema": { "$ref": "#/entities/PlatformPaymentMethod" },
+      "description": "Accepted subscription payment methods configured by Super Admin in SuperAdminPanel and read by the subscription purchase flow."
+    },
+    "/platformPaymentMethods/{methodId}": {
+      "schema": { "$ref": "#/entities/PlatformPaymentMethod" },
+      "description": "Legacy custom subscription collection payment methods manually managed by Super Admin."
+    },
+    "/salesPaymentMethods/{methodId}": {
+      "schema": { "$ref": "#/entities/SalesPaymentMethod" },
+      "description": "Global customizable sales payment methods manually managed by Super Admin for store owners when recording sales."
+    },
+    "/storeOwnerClaims/{claimId}": {
+      "schema": { "$ref": "#/entities/StoreOwnerClaim" },
+      "description": "Pre-registered store owner claims enabling automatic ownership binding when the assigned owner signs in with verified Google."
+    },
     "/stores/{storeId}": {
       "schema": { "$ref": "#/entities/StoreTenant" },
       "description": "Multi-SaaS public storefront profile, shipping configuration, and referral code."
@@ -710,6 +842,18 @@
     "/stores/{storeId}/inbox/{messageId}": {
       "schema": { "$ref": "#/entities/StoreInboxMessage" },
       "description": "Store owner official inbox for Admin emails and referral reward notifications."
+    },
+    "/stores/{storeId}/store_payment_methods/{methodId}": {
+      "schema": { "$ref": "#/entities/StorePaymentMethod" },
+      "description": "Custom customer payment methods managed by each store owner (Zelle, Pago Móvil, Transferencia) and consumed in POSModule and storefront checkout."
+    },
+    "/stores/{storeId}/paymentMethods/{methodId}": {
+      "schema": { "$ref": "#/entities/StorePaymentMethod" },
+      "description": "Legacy per-store payment methods subcollection."
+    },
+    "/stores/{storeId}/subscription_payment_methods/{methodId}": {
+      "schema": { "$ref": "#/entities/StoreSubscriptionPaymentMethod" },
+      "description": "Subscription collection payment methods manually assigned by Super Admin specifically for each registered store."
     },
     "/stores/{storeId}/products/{productId}": {
       "schema": { "$ref": "#/entities/StoreProduct" },

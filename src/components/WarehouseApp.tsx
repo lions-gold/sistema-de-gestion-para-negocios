@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Product,
   Debtor,
   CashMovement,
   Sale,
+  SalesPaymentMethod,
   StoreTenant,
+  StorePaymentMethod,
   StoreProduct,
   InventoryAuditLog,
   ProductBatchTrace,
@@ -12,12 +14,22 @@ import {
   CashClosingRecord,
 } from '../types';
 import { InventoryModule } from './InventoryModule';
-import { POSModule } from './POSModule';
+import { POSModule, POSCustomPaymentOption } from './POSModule';
 import { FiadosModule } from './FiadosModule';
 import { CashierModule } from './CashierModule';
 import { AnalyticsModule } from './AnalyticsModule';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
 import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
+import {
+  subscribeActiveSalesPaymentMethods,
+  subscribePublicStorePaymentMethods,
+} from '../services/saasService';
+import {
+  loadCachedSalesPaymentMethods,
+  loadCachedStorePaymentMethods,
+  saveCachedSalesPaymentMethods,
+  saveCachedStorePaymentMethods,
+} from '../services/offlineSyncService';
 import {
   Package,
   Receipt,
@@ -118,17 +130,79 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
   const { t } = useLanguage();
   const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
+  const [emailSubTab, setEmailSubTab] = useState<'config' | 'payment_methods' | 'history'>('config');
   const [notifPerm, setNotifPerm] = useState<BrowserNotificationPermissionState>(() =>
     getBrowserNotificationPermission()
   );
   const [notifPrefs, setNotifPrefs] = useState<BrowserNotificationPrefs>(() =>
     getBrowserNotificationPrefs()
   );
+  const [salesPaymentMethods, setSalesPaymentMethods] = useState<SalesPaymentMethod[]>(() =>
+    loadCachedSalesPaymentMethods()
+  );
+  const [storePaymentMethods, setStorePaymentMethods] = useState<StorePaymentMethod[]>(() =>
+    loadCachedStorePaymentMethods(activeStore?.id || 'default-warehouse')
+  );
   const activeTab = controlledTab || internalTab;
 
   useEffect(() => {
     setShowEmailPanel(false);
   }, [controlledTab]);
+
+  useEffect(() => {
+    const unsubGlobal = subscribeActiveSalesPaymentMethods((list) => {
+      setSalesPaymentMethods(list);
+      saveCachedSalesPaymentMethods(list);
+    });
+    return () => unsubGlobal();
+  }, []);
+
+  useEffect(() => {
+    const targetStoreId = activeStore?.id || 'default-warehouse';
+    const cached = loadCachedStorePaymentMethods(targetStoreId);
+    setStorePaymentMethods(cached);
+    if (!activeStore?.id) {
+      return;
+    }
+    const unsubStore = subscribePublicStorePaymentMethods(activeStore.id, (list) => {
+      setStorePaymentMethods(list);
+      saveCachedStorePaymentMethods(activeStore.id, list);
+    });
+    return () => unsubStore();
+  }, [activeStore?.id]);
+
+  const posCustomPaymentMethods = useMemo<POSCustomPaymentOption[]>(() => {
+    const map = new Map<string, POSCustomPaymentOption>();
+    // Store's own active configured payment accounts take precedence with their account details
+    storePaymentMethods
+      .filter((m) => m.isActive)
+      .forEach((m) => {
+        const key = m.name.trim().toLowerCase();
+        if (!key) return;
+        map.set(key, {
+          name: m.name.trim(),
+          currency: m.currency,
+          appliesIgtf: Boolean(m.appliesIgtf),
+          accountHolder: m.accountHolder,
+          accountDetails: m.accountDetails,
+          instructions: m.instructions,
+          source: 'store',
+        });
+      });
+    // Merge Admin-defined custom sales payment methods not already customized by store
+    salesPaymentMethods.forEach((m) => {
+      const key = m.name.trim().toLowerCase();
+      if (!key || map.has(key)) return;
+      map.set(key, {
+        name: m.name.trim(),
+        currency: m.currency,
+        appliesIgtf: Boolean(m.appliesIgtf),
+        instructions: m.description,
+        source: 'admin',
+      });
+    });
+    return Array.from(map.values());
+  }, [storePaymentMethods, salesPaymentMethods]);
 
   useEffect(() => {
     const syncState = () => {
@@ -325,9 +399,15 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
             <span>{t.warehouse.tabSales}</span>
           </button>
 
-          <button onClick={() => setShowEmailPanel(true)} className={tabClass(showEmailPanel)}>
+          <button
+            onClick={() => {
+              setEmailSubTab('config');
+              setShowEmailPanel(true);
+            }}
+            className={tabClass(showEmailPanel)}
+          >
             <Server className="w-4 h-4" />
-            <span>SMTP / Alertas</span>
+            <span>SMTP / Cobros</span>
           </button>
 
           <button
@@ -350,6 +430,8 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               exchangeRate={exchangeRate}
               products={products}
               sales={sales}
+              initialSubTab={emailSubTab}
+              onStorePaymentMethodsChange={(list) => setStorePaymentMethods(list)}
             />
           ) : (
             <>
@@ -380,6 +462,11 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                   exchangeRate={exchangeRate}
                   onCompleteSale={onCompleteSale}
                   onOpenScanner={onOpenScanner}
+                  customPaymentMethods={posCustomPaymentMethods}
+                  onOpenPaymentSettings={() => {
+                    setEmailSubTab('payment_methods');
+                    setShowEmailPanel(true);
+                  }}
                 />
               )}
 

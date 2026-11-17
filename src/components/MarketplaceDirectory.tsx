@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   UserCheck,
   Package,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -25,6 +27,7 @@ import {
   ShippingType,
   StoreCartItem,
   StoreOrder,
+  StorePaymentMethod,
   StoreProduct,
   StoreTenant,
 } from '../types';
@@ -33,6 +36,7 @@ import {
   fetchStoreByIdOrSlug,
   signInWithGoogleAccount,
   subscribeActiveStores,
+  subscribePublicStorePaymentMethods,
   subscribePublicStoreProducts,
 } from '../services/saasService';
 import { mapGoogleAuthError } from '../services/authService';
@@ -45,9 +49,11 @@ import {
   createLocalOfflineOrderSnapshot,
   isAppEffectivelyOffline,
   isNetworkOrOfflineError,
+  loadCachedStorePaymentMethods,
   loadCachedStoreProducts,
   loadCachedStores,
   queueOfflineMutation,
+  saveCachedStorePaymentMethods,
   saveCachedStoreProducts,
   saveCachedStores,
 } from '../services/offlineSyncService';
@@ -77,6 +83,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [selectedStore, setSelectedStore] = useState<StoreTenant | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [storePaymentMethods, setStorePaymentMethods] = useState<StorePaymentMethod[]>([]);
+  const [copiedPaymentDetails, setCopiedPaymentDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -157,10 +165,11 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     }
   }, [initialStoreSlug, stores]);
 
-  // Subscribe to selected store's active products (with offline local cache)
+  // Subscribe to selected store's active products and configured payment methods (with offline cache)
   useEffect(() => {
     if (!selectedStore) {
       setProducts([]);
+      setStorePaymentMethods([]);
       return;
     }
     if (selectedStore.nationalShippingEnabled) {
@@ -175,12 +184,32 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     if (cachedProds.length > 0) {
       setProducts(cachedProds);
     }
+    const cachedPay = loadCachedStorePaymentMethods(selectedStore.id);
+    if (cachedPay.length > 0) {
+      setStorePaymentMethods(cachedPay);
+      setPaymentMethod(cachedPay[0].name);
+    } else {
+      setStorePaymentMethods([]);
+      setPaymentMethod('Pago Móvil');
+    }
 
     const unsub = subscribePublicStoreProducts(selectedStore.id, (list) => {
       setProducts(list);
       saveCachedStoreProducts(selectedStore.id, list);
     });
-    return () => unsub();
+    const unsubPay = subscribePublicStorePaymentMethods(selectedStore.id, (list) => {
+      setStorePaymentMethods(list);
+      saveCachedStorePaymentMethods(selectedStore.id, list);
+      if (list.length > 0) {
+        setPaymentMethod((prev) =>
+          list.some((m) => m.name === prev) ? prev : list[0].name
+        );
+      }
+    });
+    return () => {
+      unsub();
+      unsubPay();
+    };
   }, [selectedStore]);
 
   const filteredStores = useMemo(() => {
@@ -922,15 +951,82 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                           onChange={(e) => setPaymentMethod(e.target.value)}
                           className="w-full px-3 py-2 bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white"
                         >
-                          <option value="Pago Móvil">Pago Móvil (Bs.)</option>
-                          <option value="Transferencia Bancaria">Transferencia Bancaria</option>
-                          <option value="Binance Pay">Binance Pay (USDT)</option>
-                          <option value="Bybit">Bybit Pay</option>
-                          <option value="Zelle">Zelle</option>
-                          <option value="Efectivo USD">Efectivo USD</option>
+                          {storePaymentMethods.length > 0 ? (
+                            storePaymentMethods.map((m) => (
+                              <option key={m.id} value={m.name}>
+                                {m.name} ({m.currency})
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Pago Móvil">Pago Móvil (Bs.)</option>
+                              <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                              <option value="Binance Pay">Binance Pay (USDT)</option>
+                              <option value="Bybit">Bybit Pay</option>
+                              <option value="Zelle">Zelle</option>
+                              <option value="Efectivo USD">Efectivo USD</option>
+                            </>
+                          )}
                         </select>
                       </div>
                     </div>
+
+                    {(() => {
+                      const activeMethodInfo = storePaymentMethods.find(
+                        (m) => m.name === paymentMethod
+                      );
+                      if (!activeMethodInfo) return null;
+                      const fullCopyText = [
+                        `${activeMethodInfo.name} (${activeMethodInfo.currency})`,
+                        activeMethodInfo.accountHolder
+                          ? `Titular: ${activeMethodInfo.accountHolder}`
+                          : '',
+                        activeMethodInfo.accountDetails,
+                      ]
+                        .filter(Boolean)
+                        .join('\n');
+                      return (
+                        <div className="p-3 rounded-xl bg-[#111114] border border-emerald-500/30 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-emerald-300">
+                              Datos de Cobro · {activeMethodInfo.name} ({activeMethodInfo.currency})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(fullCopyText);
+                                setCopiedPaymentDetails(true);
+                                setTimeout(() => setCopiedPaymentDetails(false), 2000);
+                              }}
+                              className="px-2 py-1 rounded bg-[#09090b] border border-white/[0.1] text-[11px] text-zinc-200 hover:border-emerald-400 flex items-center gap-1 shrink-0"
+                            >
+                              {copiedPaymentDetails ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                              <span>{copiedPaymentDetails ? 'Copiado' : 'Copiar'}</span>
+                            </button>
+                          </div>
+                          {activeMethodInfo.accountHolder && (
+                            <div className="text-[11px] text-zinc-400">
+                              Titular:{' '}
+                              <span className="text-zinc-200">
+                                {activeMethodInfo.accountHolder}
+                              </span>
+                            </div>
+                          )}
+                          <div className="text-[11px] font-mono text-zinc-100 whitespace-pre-line">
+                            {activeMethodInfo.accountDetails}
+                          </div>
+                          {activeMethodInfo.instructions && (
+                            <div className="text-[11px] text-amber-200/90">
+                              {activeMethodInfo.instructions}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div>
                       <label className="text-[11px] text-zinc-400 block mb-1">

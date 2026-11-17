@@ -82,6 +82,119 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidPlatformPaymentMethod(data, methodId) {
+      return data.keys().hasAll([
+          'id', 'name', 'currency', 'accountHolder', 'accountDetails', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'currency', 'accountHolder', 'accountDetails', 'instructions', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == methodId &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.currency in ['USD', 'Bs', 'USDT', 'EUR', 'Otro'] &&
+        data.accountHolder is string && data.accountHolder.size() <= 120 &&
+        data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
+        (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSalesPaymentMethod(data, methodId) {
+      return data.keys().hasAll([
+          'id', 'name', 'currency', 'appliesIgtf', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'name', 'currency', 'appliesIgtf', 'description', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == methodId &&
+        isValidId(data.id) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.currency in ['USD', 'Bs', 'USDT', 'EUR', 'Otro'] &&
+        data.appliesIgtf is bool &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 240)) &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStorePaymentMethod(data, storeId, methodId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'ownerUid', 'name', 'currency',
+          'accountHolder', 'accountDetails', 'appliesIgtf', 'isActive',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'ownerUid', 'name', 'currency',
+          'accountHolder', 'accountDetails', 'instructions', 'appliesIgtf', 'isActive',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.id == methodId &&
+        data.storeId == storeId &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        isValidId(data.ownerUid) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.currency in ['USD', 'Bs', 'USDT', 'EUR', 'Otro'] &&
+        data.accountHolder is string && data.accountHolder.size() <= 120 &&
+        data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
+        (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        data.appliesIgtf is bool &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreSubscriptionPaymentMethod(data, storeId, methodId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeName', 'ownerUid', 'name', 'currency',
+          'accountHolder', 'accountDetails', 'isActive', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeName', 'ownerUid', 'name', 'currency',
+          'accountHolder', 'accountDetails', 'instructions', 'isActive',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.id == methodId &&
+        data.storeId == storeId &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        isValidId(data.ownerUid) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.currency in ['USD', 'Bs', 'USDT', 'EUR', 'Otro'] &&
+        data.accountHolder is string && data.accountHolder.size() <= 120 &&
+        data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
+        (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStoreOwnerClaim(data, claimId) {
+      return data.keys().hasAll([
+          'id', 'storeId', 'storeName', 'ownerName', 'ownerEmail',
+          'pendingOwnerUid', 'status', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'storeId', 'storeName', 'ownerName', 'ownerEmail',
+          'pendingOwnerUid', 'claimedByUid', 'status', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == claimId &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        data.storeName is string && data.storeName.size() >= 2 && data.storeName.size() <= 100 &&
+        data.ownerName is string && data.ownerName.size() >= 2 && data.ownerName.size() <= 100 &&
+        data.ownerEmail is string && data.ownerEmail.size() >= 5 && data.ownerEmail.size() <= 160 &&
+        isValidId(data.pendingOwnerUid) &&
+        (!('claimedByUid' in data) || isValidId(data.claimedByUid)) &&
+        data.status in ['pending_claim', 'claimed'] &&
+        data.createdByEmail is string && data.createdByEmail.size() >= 5 && data.createdByEmail.size() <= 160 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     function isValidStoreTenant(data, storeId) {
       return data.keys().hasAll([
           'id', 'slug', 'ownerUid', 'storeName', 'registeredOwnerName',
@@ -199,7 +312,7 @@ service cloud.firestore {
         data.ownerEmail is string && data.ownerEmail.size() >= 5 && data.ownerEmail.size() <= 160 &&
         (!('ownerWhatsapp' in data) || (data.ownerWhatsapp is string && data.ownerWhatsapp.size() <= 30)) &&
         data.amountUSD is number && data.amountUSD >= 0 && data.amountUSD <= 1000 &&
-        data.paymentMethod in ['Transferencia Bancaria', 'Pago Móvil', 'Binance Pay', 'Bybit', 'Cupón Referido'] &&
+        data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 80 &&
         data.referenceNumber is string && data.referenceNumber.size() >= 4 && data.referenceNumber.size() <= 80 &&
         (!('payerInfo' in data) || (data.payerInfo is string && data.payerInfo.size() <= 120)) &&
         (!('notes' in data) || (data.notes is string && data.notes.size() <= 400)) &&
@@ -692,6 +805,88 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /platform_billing/{methodId} {
+      allow get: if isValidId(methodId) && (isAdmin() || (resource != null && resource.data.isActive == true));
+      allow list: if resource.data.isActive == true || isSuperAdminEmail();
+      allow create: if isValidId(methodId) && isAdmin() &&
+        isValidPlatformPaymentMethod(incoming(), methodId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(methodId) && isAdmin() &&
+        isValidPlatformPaymentMethod(incoming(), methodId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(methodId) && isAdmin();
+    }
+
+    match /platformPaymentMethods/{methodId} {
+      allow get: if isValidId(methodId) && (isAdmin() || (resource != null && resource.data.isActive == true));
+      allow list: if resource.data.isActive == true || isSuperAdminEmail();
+      allow create: if isValidId(methodId) && isAdmin() &&
+        isValidPlatformPaymentMethod(incoming(), methodId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(methodId) && isAdmin() &&
+        isValidPlatformPaymentMethod(incoming(), methodId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(methodId) && isAdmin();
+    }
+
+    match /salesPaymentMethods/{methodId} {
+      allow get: if isValidId(methodId) && (existing().isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isSuperAdminEmail();
+      allow create: if isValidId(methodId) && isAdmin() &&
+        isValidSalesPaymentMethod(incoming(), methodId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(methodId) && isAdmin() &&
+        isValidSalesPaymentMethod(incoming(), methodId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(methodId) && isAdmin();
+    }
+
+    match /storeOwnerClaims/{claimId} {
+      allow get: if isValidId(claimId) && isVerifiedUser() && (
+        isAdmin() ||
+        existing().ownerEmail == request.auth.token.email ||
+        ('claimedByUid' in existing() && existing().claimedByUid == request.auth.uid)
+      );
+      allow list: if isVerifiedUser() && (
+        isSuperAdminEmail() ||
+        resource.data.ownerEmail == request.auth.token.email ||
+        ('claimedByUid' in resource.data && resource.data.claimedByUid == request.auth.uid)
+      );
+      allow create: if isValidId(claimId) && isAdmin() &&
+        isValidStoreOwnerClaim(incoming(), claimId) &&
+        incoming().status == 'pending_claim' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(claimId) && isVerifiedUser() &&
+        isValidStoreOwnerClaim(incoming(), claimId) &&
+        incoming().id == existing().id &&
+        incoming().storeId == existing().storeId &&
+        incoming().pendingOwnerUid == existing().pendingOwnerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            existing().status == 'pending_claim' &&
+            existing().ownerEmail == request.auth.token.email &&
+            incoming().status == 'claimed' &&
+            'claimedByUid' in incoming() &&
+            incoming().claimedByUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedByUid', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(claimId) && isAdmin();
+    }
+
     match /stores/{storeId} {
       allow get: if isValidId(storeId) && (
         existing().status == 'active' ||
@@ -704,29 +899,34 @@ service cloud.firestore {
 
       allow create: if isValidId(storeId) && isVerifiedUser() &&
         isValidStoreTenant(incoming(), storeId) &&
-        incoming().ownerUid == request.auth.uid &&
-        incoming().status == 'pending' &&
-        (!('warehousePosEnabled' in incoming()) || incoming().warehousePosEnabled == false) &&
-        (!('referralRewardGranted' in incoming()) || incoming().referralRewardGranted == false) &&
-        (!('referredByStoreId' in incoming()) || incoming().referredByStoreId != storeId) &&
-        (!('referredByCode' in incoming()) || (
-          exists(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)) &&
-          get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.ownerUid != request.auth.uid &&
-          'referredByStoreId' in incoming() &&
-          incoming().referredByStoreId == get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.storeId
-        )) &&
         incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time;
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            incoming().ownerUid == request.auth.uid &&
+            incoming().status == 'pending' &&
+            (!('warehousePosEnabled' in incoming()) || incoming().warehousePosEnabled == false) &&
+            (!('referralRewardGranted' in incoming()) || incoming().referralRewardGranted == false) &&
+            (!('referredByStoreId' in incoming()) || incoming().referredByStoreId != storeId) &&
+            (!('referredByCode' in incoming()) || (
+              exists(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)) &&
+              get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.ownerUid != request.auth.uid &&
+              'referredByStoreId' in incoming() &&
+              incoming().referredByStoreId == get(/databases/$(database)/documents/referralCodes/$(incoming().referredByCode)).data.storeId
+            ))
+          )
+        );
 
       allow update: if isValidId(storeId) && isVerifiedUser() &&
         isValidStoreTenant(incoming(), storeId) &&
         incoming().id == existing().id &&
-        incoming().ownerUid == existing().ownerUid &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         (
           isAdmin() ||
           (
+            incoming().ownerUid == existing().ownerUid &&
             existing().ownerUid == request.auth.uid &&
             incoming().status == existing().status &&
             incoming().subscriptionPriceUSD == existing().subscriptionPriceUSD &&
@@ -740,6 +940,16 @@ service cloud.firestore {
               'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
               'pickupEnabled', 'referralCode', 'updatedAt'
             ])
+          ) ||
+          (
+            incoming().ownerUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['ownerUid', 'updatedAt']) &&
+            exists(/databases/$(database)/documents/storeOwnerClaims/$(storeId)) &&
+            get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.status == 'pending_claim' &&
+            get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.pendingOwnerUid == existing().ownerUid &&
+            get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.ownerEmail == request.auth.token.email &&
+            getAfter(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.status == 'claimed' &&
+            getAfter(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.claimedByUid == request.auth.uid
           )
         );
 
@@ -752,20 +962,30 @@ service cloud.firestore {
         );
         allow list: if false;
         allow create: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() &&
-          incoming().ownerUid == request.auth.uid &&
           incoming().updatedAt == request.time &&
-          exists(/databases/$(database)/documents/stores/$(storeId)) &&
-          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid &&
           (
-            (docId == 'account' &&
-             isValidStorePrivateAccount(incoming(), storeId) &&
-             incoming().createdAt == request.time) ||
-            (docId == 'emailConfig' &&
-             isValidStoreEmailConfig(incoming(), storeId))
+            (
+              isAdmin() &&
+              docId == 'account' &&
+              isValidStorePrivateAccount(incoming(), storeId) &&
+              incoming().createdAt == request.time &&
+              existsAfter(/databases/$(database)/documents/stores/$(storeId))
+            ) ||
+            (
+              incoming().ownerUid == request.auth.uid &&
+              exists(/databases/$(database)/documents/stores/$(storeId)) &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid &&
+              (
+                (docId == 'account' &&
+                 isValidStorePrivateAccount(incoming(), storeId) &&
+                 incoming().createdAt == request.time) ||
+                (docId == 'emailConfig' &&
+                 isValidStoreEmailConfig(incoming(), storeId))
+              )
+            )
           );
         allow update: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() &&
           incoming().storeId == existing().storeId &&
-          incoming().ownerUid == existing().ownerUid &&
           incoming().updatedAt == request.time &&
           (
             (docId == 'account' &&
@@ -773,11 +993,21 @@ service cloud.firestore {
              incoming().createdAt == existing().createdAt &&
              (
                isAdmin() ||
-               (existing().ownerUid == request.auth.uid &&
-                incoming().diff(existing()).affectedKeys().hasOnly(['ownerEmail', 'updatedAt']))
+               (incoming().ownerUid == existing().ownerUid &&
+                existing().ownerUid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['ownerEmail', 'updatedAt'])) ||
+               (incoming().ownerUid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['ownerUid', 'updatedAt']) &&
+                exists(/databases/$(database)/documents/storeOwnerClaims/$(storeId)) &&
+                get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.status == 'pending_claim' &&
+                get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.pendingOwnerUid == existing().ownerUid &&
+                get(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.ownerEmail == request.auth.token.email &&
+                getAfter(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.status == 'claimed' &&
+                getAfter(/databases/$(database)/documents/storeOwnerClaims/$(storeId)).data.claimedByUid == request.auth.uid)
              )) ||
             (docId == 'emailConfig' &&
              isValidStoreEmailConfig(incoming(), storeId) &&
+             incoming().ownerUid == existing().ownerUid &&
              (
                isAdmin() ||
                (existing().ownerUid == request.auth.uid &&
@@ -822,6 +1052,116 @@ service cloud.firestore {
             )
           );
         allow delete: if isValidId(storeId) && isValidId(messageId) && isAdmin();
+      }
+
+      // Per-Store Owner-Configured Payment & Collection Methods (Primary: store_payment_methods)
+      match /store_payment_methods/{methodId} {
+        allow get: if isValidId(storeId) && isValidId(methodId) && (
+          isAdmin() ||
+          (isVerifiedUser() && resource != null && resource.data.ownerUid == request.auth.uid) ||
+          (resource != null && resource.data.isActive == true)
+        );
+        allow list: if resource.data.isActive == true ||
+          isSuperAdminEmail() ||
+          (isVerifiedUser() && resource.data.ownerUid == request.auth.uid);
+        allow create: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() &&
+          isValidStorePaymentMethod(incoming(), storeId, methodId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          (
+            (incoming().ownerUid == request.auth.uid &&
+             get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid) ||
+            isAdmin()
+          );
+        allow update: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() &&
+          isValidStorePaymentMethod(incoming(), storeId, methodId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().ownerUid == request.auth.uid &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+            )
+          );
+        allow delete: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() && (
+          isAdmin() ||
+          (existing().ownerUid == request.auth.uid &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
+        );
+      }
+
+      // Legacy Per-Store Payment & Collection Methods
+      match /paymentMethods/{methodId} {
+        allow get: if isValidId(storeId) && isValidId(methodId) && (
+          isAdmin() ||
+          (isVerifiedUser() && resource != null && resource.data.ownerUid == request.auth.uid) ||
+          (resource != null && resource.data.isActive == true)
+        );
+        allow list: if resource.data.isActive == true ||
+          isSuperAdminEmail() ||
+          (isVerifiedUser() && resource.data.ownerUid == request.auth.uid);
+        allow create: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() &&
+          isValidStorePaymentMethod(incoming(), storeId, methodId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          (
+            (incoming().ownerUid == request.auth.uid &&
+             get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid) ||
+            isAdmin()
+          );
+        allow update: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() &&
+          isValidStorePaymentMethod(incoming(), storeId, methodId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().ownerUid == existing().ownerUid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            isAdmin() ||
+            (
+              existing().ownerUid == request.auth.uid &&
+              get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+            )
+          );
+        allow delete: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() && (
+          isAdmin() ||
+          (existing().ownerUid == request.auth.uid &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
+        );
+      }
+
+      // Admin-Managed Per-Store Subscription Collection Payment Methods
+      match /subscription_payment_methods/{methodId} {
+        allow get: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() && (
+          isAdmin() ||
+          (resource != null && resource.data.ownerUid == request.auth.uid) ||
+          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+        );
+        allow list: if isVerifiedUser() && (
+          isSuperAdminEmail() ||
+          resource.data.ownerUid == request.auth.uid
+        );
+        allow create: if isValidId(storeId) && isValidId(methodId) && isAdmin() &&
+          isValidStoreSubscriptionPaymentMethod(incoming(), storeId, methodId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          incoming().ownerUid == get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid;
+        allow update: if isValidId(storeId) && isValidId(methodId) && isAdmin() &&
+          isValidStoreSubscriptionPaymentMethod(incoming(), storeId, methodId) &&
+          incoming().id == existing().id &&
+          incoming().storeId == existing().storeId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/stores/$(storeId)) &&
+          incoming().ownerUid == get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid;
+        allow delete: if isValidId(storeId) && isValidId(methodId) && isAdmin();
       }
 
       // Per-Store Product Catalog
@@ -1085,10 +1425,15 @@ service cloud.firestore {
       allow list: if isSuperAdminEmail();
       allow create: if isValidReferralCode(code) && isVerifiedUser() &&
         isValidReferralCodeLookup(incoming(), code) &&
-        incoming().ownerUid == request.auth.uid &&
         incoming().createdAt == request.time &&
         existsAfter(/databases/$(database)/documents/stores/$(incoming().storeId)) &&
-        getAfter(/databases/$(database)/documents/stores/$(incoming().storeId)).data.ownerUid == request.auth.uid;
+        (
+          isAdmin() ||
+          (
+            incoming().ownerUid == request.auth.uid &&
+            getAfter(/databases/$(database)/documents/stores/$(incoming().storeId)).data.ownerUid == request.auth.uid
+          )
+        );
       allow update, delete: if isValidReferralCode(code) && isAdmin();
     }
 

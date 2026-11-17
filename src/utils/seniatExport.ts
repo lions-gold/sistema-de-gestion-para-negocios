@@ -33,12 +33,18 @@ export const exportLibroVentasCSV = (sales: Sale[], exchangeRate: number, monthN
   ];
 
   const rows = sales.map((sale, index) => {
-    const isForeign = sale.paymentMethod === 'Efectivo USD' || sale.paymentMethod === 'Zelle';
     const subtotal = sale.subtotalUSD;
+    const isForeignByName = sale.paymentMethod === 'Efectivo USD' || sale.paymentMethod === 'Zelle';
+    const hasExplicitIgtf = typeof sale.igtfAmountUSD === 'number' || typeof sale.igtfRate === 'number';
+    const igtfUSD = hasExplicitIgtf
+      ? (sale.igtfAmountUSD ?? subtotal * (sale.igtfRate || 0))
+      : isForeignByName
+        ? subtotal * 0.03
+        : 0;
+    const isForeign = igtfUSD > 0 || isForeignByName;
     // Venezuelan retail standard: Base = subtotal / 1.16, IVA = subtotal - Base
     const baseUSD = subtotal / 1.16;
     const ivaUSD = subtotal - baseUSD;
-    const igtfUSD = isForeign ? subtotal * 0.03 : 0;
     const totalUSD = subtotal + igtfUSD;
 
     const baseBs = baseUSD * exchangeRate;
@@ -161,11 +167,16 @@ export const exportLibroVentasPDF = (sales: Sale[], exchangeRate: number, monthN
   let grandIGTBs = 0;
 
   const tableRows = sales.map((sale, idx) => {
-    const isForeign = sale.paymentMethod === 'Efectivo USD' || sale.paymentMethod === 'Zelle';
     const subtotal = sale.subtotalUSD;
+    const isForeignByName = sale.paymentMethod === 'Efectivo USD' || sale.paymentMethod === 'Zelle';
+    const hasExplicitIgtf = typeof sale.igtfAmountUSD === 'number' || typeof sale.igtfRate === 'number';
+    const igtfUSD = hasExplicitIgtf
+      ? (sale.igtfAmountUSD ?? subtotal * (sale.igtfRate || 0))
+      : isForeignByName
+        ? subtotal * 0.03
+        : 0;
     const baseUSD = subtotal / 1.16;
     const ivaUSD = subtotal - baseUSD;
-    const igtfUSD = isForeign ? subtotal * 0.03 : 0;
     const totalUSD = subtotal + igtfUSD;
 
     const baseBs = baseUSD * exchangeRate;

@@ -32,7 +32,14 @@ export interface CartItem {
   quantity: number;
 }
 
-export type PaymentMethod = 'Pago Móvil' | 'Efectivo USD' | 'Efectivo Bs' | 'Punto de Venta' | 'Zelle' | 'Fiado (Crédito)';
+export type PaymentMethod =
+  | 'Pago Móvil'
+  | 'Efectivo USD'
+  | 'Efectivo Bs'
+  | 'Punto de Venta'
+  | 'Zelle'
+  | 'Fiado (Crédito)'
+  | (string & {});
 
 export interface Sale {
   id: string;
@@ -104,14 +111,15 @@ export interface CashClosingRecord {
   cashierName: string;
   exchangeRate: number;
   zReportNumber: string;
-  byPaymentMethod: {
-    [key in PaymentMethod]: {
+  byPaymentMethod: Record<
+    string,
+    {
       count: number;
       totalUSD: number;
       totalBs: number;
       igtfUSD: number;
-    };
-  };
+    }
+  >;
   totalSalesUSD: number;
   totalSalesBs: number;
   totalBaseUSD: number;
@@ -272,12 +280,68 @@ export interface ProductBatchTrace {
 
 export type StoreStatus = 'pending' | 'active' | 'suspended';
 
+export type PlatformPaymentCurrency = 'USD' | 'Bs' | 'USDT' | 'EUR' | 'Otro';
+
+export interface PlatformPaymentMethod {
+  id: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  isActive: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface StoreSubscriptionPaymentMethod {
+  id: string;
+  storeId: string;
+  storeName: string;
+  ownerUid: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  isActive: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface SalesPaymentMethod {
+  id: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  appliesIgtf: boolean;
+  description?: string;
+  isActive: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface StorePaymentMethod {
+  id: string;
+  storeId: string;
+  ownerUid: string;
+  name: string;
+  currency: PlatformPaymentCurrency;
+  accountHolder: string;
+  accountDetails: string;
+  instructions?: string;
+  appliesIgtf: boolean;
+  isActive: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
 export type SubscriptionPaymentMethod =
   | 'Transferencia Bancaria'
   | 'Pago Móvil'
   | 'Binance Pay'
   | 'Bybit'
-  | 'Cupón Referido';
+  | 'Cupón Referido'
+  | (string & {});
 
 export interface PlatformBillingSettings {
   monthlyPriceUSD: number;
@@ -324,6 +388,20 @@ export interface StorePrivateAccount {
   storeId: string;
   ownerUid: string;
   ownerEmail: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface StoreOwnerClaim {
+  id: string;
+  storeId: string;
+  storeName: string;
+  ownerName: string;
+  ownerEmail: string;
+  pendingOwnerUid: string;
+  claimedByUid?: string;
+  status: 'pending_claim' | 'claimed';
+  createdByEmail: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }

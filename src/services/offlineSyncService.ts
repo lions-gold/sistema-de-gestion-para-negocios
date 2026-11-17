@@ -5,15 +5,19 @@ import {
   Debtor,
   InventoryAuditLog,
   PlatformBillingSettings,
+  PlatformPaymentMethod,
   Product,
   ProductBatchTrace,
   PurchaseInvoice,
   Sale,
+  SalesPaymentMethod,
   ShippingType,
   StoreCartItem,
   StoreEmailConfig,
   StoreOrder,
+  StorePaymentMethod,
   StoreProduct,
+  StoreSubscriptionPaymentMethod,
   StoreTenant,
   VectorChatMessage,
   VectorConsentStatus,
@@ -58,6 +62,10 @@ const KEYS = {
   ownerOrdersPrefix: 'smith_offline_owner_orders_v1_',
   storefrontWhPrefix: 'smith_offline_wh_sf_products_v1_',
   platformBilling: 'smith_offline_platform_billing_v1',
+  platformPaymentMethods: 'smith_offline_platform_payment_methods_v1',
+  salesPaymentMethods: 'smith_offline_sales_payment_methods_v1',
+  storePaymentMethodsPrefix: 'smith_offline_store_payment_methods_v1_',
+  storeSubscriptionMethodsPrefix: 'smith_offline_store_sub_methods_v1_',
   authSnapshot: 'smith_offline_auth_snapshot_v1',
   selectedStoreId: 'smith_offline_selected_store_v1',
   vectorChats: 'smith_offline_vector_chats_v1',
@@ -717,6 +725,50 @@ export function saveCachedStoreProducts(storeId: string, products: StoreProduct[
 export function loadCachedStoreProducts(storeId: string): StoreProduct[] {
   if (!storeId) return [];
   return safeReadJSON<StoreProduct[]>(`${KEYS.storeProductsPrefix}${storeId}`, []);
+}
+
+export function saveCachedPlatformPaymentMethods(methods: PlatformPaymentMethod[]): void {
+  safeWriteJSON(KEYS.platformPaymentMethods, methods);
+}
+
+export function loadCachedPlatformPaymentMethods(): PlatformPaymentMethod[] {
+  return safeReadJSON<PlatformPaymentMethod[]>(KEYS.platformPaymentMethods, []);
+}
+
+export function saveCachedSalesPaymentMethods(methods: SalesPaymentMethod[]): void {
+  safeWriteJSON(KEYS.salesPaymentMethods, methods);
+}
+
+export function loadCachedSalesPaymentMethods(): SalesPaymentMethod[] {
+  return safeReadJSON<SalesPaymentMethod[]>(KEYS.salesPaymentMethods, []);
+}
+
+export function saveCachedStorePaymentMethods(storeId: string, methods: StorePaymentMethod[]): void {
+  if (!storeId) return;
+  safeWriteJSON(`${KEYS.storePaymentMethodsPrefix}${storeId}`, methods);
+}
+
+export function loadCachedStorePaymentMethods(storeId: string): StorePaymentMethod[] {
+  if (!storeId) return [];
+  return safeReadJSON<StorePaymentMethod[]>(`${KEYS.storePaymentMethodsPrefix}${storeId}`, []);
+}
+
+export function saveCachedStoreSubscriptionMethods(
+  storeId: string,
+  methods: StoreSubscriptionPaymentMethod[]
+): void {
+  if (!storeId) return;
+  safeWriteJSON(`${KEYS.storeSubscriptionMethodsPrefix}${storeId}`, methods);
+}
+
+export function loadCachedStoreSubscriptionMethods(
+  storeId: string
+): StoreSubscriptionPaymentMethod[] {
+  if (!storeId) return [];
+  return safeReadJSON<StoreSubscriptionPaymentMethod[]>(
+    `${KEYS.storeSubscriptionMethodsPrefix}${storeId}`,
+    []
+  );
 }
 
 /**
