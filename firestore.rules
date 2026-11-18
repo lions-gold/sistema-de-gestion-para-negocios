@@ -836,7 +836,7 @@ service cloud.firestore {
     }
 
     match /salesPaymentMethods/{methodId} {
-      allow get: if isValidId(methodId) && (existing().isActive == true || isAdmin());
+      allow get: if isValidId(methodId) && ((resource != null && existing().isActive == true) || isAdmin());
       allow list: if resource.data.isActive == true || isSuperAdminEmail();
       allow create: if isValidId(methodId) && isAdmin() &&
         isValidSalesPaymentMethod(incoming(), methodId) &&
@@ -853,8 +853,10 @@ service cloud.firestore {
     match /storeOwnerClaims/{claimId} {
       allow get: if isValidId(claimId) && isVerifiedUser() && (
         isAdmin() ||
-        existing().ownerEmail == request.auth.token.email ||
-        ('claimedByUid' in existing() && existing().claimedByUid == request.auth.uid)
+        (resource != null && (
+          existing().ownerEmail == request.auth.token.email ||
+          ('claimedByUid' in existing() && existing().claimedByUid == request.auth.uid)
+        ))
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() ||
@@ -889,9 +891,11 @@ service cloud.firestore {
 
     match /stores/{storeId} {
       allow get: if isValidId(storeId) && (
-        existing().status == 'active' ||
         isAdmin() ||
-        (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+        (resource != null && (
+          existing().status == 'active' ||
+          (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+        ))
       );
       allow list: if resource.data.status == 'active' ||
         isSuperAdminEmail() ||
@@ -958,7 +962,11 @@ service cloud.firestore {
       // Split Collection PII & Private Credentials: Store owner's email and SMTP/Resend settings isolated from public storefront
       match /private/{docId} {
         allow get: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() && (
-          isAdmin() || existing().ownerUid == request.auth.uid
+          isAdmin() ||
+          (resource != null && existing().ownerUid == request.auth.uid) ||
+          (resource == null &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if false;
         allow create: if isValidId(storeId) && docId in ['account', 'emailConfig'] && isVerifiedUser() &&
@@ -1023,14 +1031,18 @@ service cloud.firestore {
           );
         allow delete: if isValidId(storeId) && (
           isAdmin() ||
-          (docId == 'emailConfig' && isVerifiedUser() && existing().ownerUid == request.auth.uid)
+          (docId == 'emailConfig' && isVerifiedUser() && resource != null && existing().ownerUid == request.auth.uid)
         );
       }
 
       // Official Store Owner Inbox (Admin broadcasts, individual messages, coupon reward alerts)
       match /inbox/{messageId} {
         allow get: if isValidId(storeId) && isValidId(messageId) && isVerifiedUser() && (
-          isAdmin() || existing().storeOwnerUid == request.auth.uid
+          isAdmin() ||
+          (resource != null && existing().storeOwnerUid == request.auth.uid) ||
+          (resource == null &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if isVerifiedUser() && (
           isSuperAdminEmail() || resource.data.storeOwnerUid == request.auth.uid
@@ -1141,7 +1153,8 @@ service cloud.firestore {
         allow get: if isValidId(storeId) && isValidId(methodId) && isVerifiedUser() && (
           isAdmin() ||
           (resource != null && resource.data.ownerUid == request.auth.uid) ||
-          get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid
+          (exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if isVerifiedUser() && (
           isSuperAdminEmail() ||
@@ -1167,9 +1180,14 @@ service cloud.firestore {
       // Per-Store Product Catalog
       match /products/{productId} {
         allow get: if isValidId(storeId) && isValidId(productId) && (
-          existing().isActive == true ||
           isAdmin() ||
-          (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+          (resource != null && (
+            existing().isActive == true ||
+            (isVerifiedUser() && existing().ownerUid == request.auth.uid)
+          )) ||
+          (resource == null && isVerifiedUser() &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if resource.data.isActive == true ||
           isSuperAdminEmail() ||
@@ -1214,8 +1232,13 @@ service cloud.firestore {
       match /orders/{orderId} {
         allow get: if isValidId(storeId) && isValidId(orderId) && isVerifiedUser() && (
           isAdmin() ||
-          existing().storeOwnerUid == request.auth.uid ||
-          existing().customerUid == request.auth.uid
+          (resource != null && (
+            existing().storeOwnerUid == request.auth.uid ||
+            existing().customerUid == request.auth.uid
+          )) ||
+          (resource == null &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if isVerifiedUser() && (
           isSuperAdminEmail() ||
@@ -1264,8 +1287,10 @@ service cloud.firestore {
         match /items/{itemId} {
           allow get: if isValidId(storeId) && isValidId(orderId) && isValidId(itemId) && isVerifiedUser() && (
             isAdmin() ||
-            existing().storeOwnerUid == request.auth.uid ||
-            existing().customerUid == request.auth.uid
+            (resource != null && (
+              existing().storeOwnerUid == request.auth.uid ||
+              existing().customerUid == request.auth.uid
+            ))
           );
           allow list: if isVerifiedUser() && (
             isSuperAdminEmail() ||
@@ -1313,7 +1338,10 @@ service cloud.firestore {
       match /warehouseProducts/{productId} {
         allow get: if isValidId(storeId) && isValidId(productId) && isVerifiedUser() && (
           isAdmin() ||
-          existing().ownerUid == request.auth.uid
+          (resource != null && existing().ownerUid == request.auth.uid) ||
+          (resource == null &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if isVerifiedUser() && (
           isSuperAdminEmail() ||
@@ -1353,7 +1381,10 @@ service cloud.firestore {
       match /warehouseLedgers/{ledgerId} {
         allow get: if isValidId(storeId) && isValidId(ledgerId) && isVerifiedUser() && (
           isAdmin() ||
-          existing().ownerUid == request.auth.uid
+          (resource != null && existing().ownerUid == request.auth.uid) ||
+          (resource == null &&
+           exists(/databases/$(database)/documents/stores/$(storeId)) &&
+           get(/databases/$(database)/documents/stores/$(storeId)).data.ownerUid == request.auth.uid)
         );
         allow list: if isVerifiedUser() && (
           isSuperAdminEmail() ||
@@ -1385,7 +1416,7 @@ service cloud.firestore {
     // Monthly $25 Subscription Payments (and Renewal Coupon Submissions)
     match /subscriptionPayments/{paymentId} {
       allow get: if isValidId(paymentId) && isVerifiedUser() && (
-        isAdmin() || existing().ownerUid == request.auth.uid
+        isAdmin() || (resource != null && existing().ownerUid == request.auth.uid)
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() || resource.data.ownerUid == request.auth.uid
@@ -1441,8 +1472,10 @@ service cloud.firestore {
     match /referrals/{referralId} {
       allow get: if isValidId(referralId) && isVerifiedUser() && (
         isAdmin() ||
-        existing().referrerOwnerUid == request.auth.uid ||
-        existing().referredOwnerUid == request.auth.uid
+        (resource != null && (
+          existing().referrerOwnerUid == request.auth.uid ||
+          existing().referredOwnerUid == request.auth.uid
+        ))
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() ||
@@ -1475,7 +1508,7 @@ service cloud.firestore {
     // Service Renewal Coupons Earned from Referrals
     match /coupons/{couponId} {
       allow get: if isValidId(couponId) && isVerifiedUser() && (
-        isAdmin() || existing().ownerUid == request.auth.uid
+        isAdmin() || (resource != null && existing().ownerUid == request.auth.uid)
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() || resource.data.ownerUid == request.auth.uid
@@ -1523,8 +1556,10 @@ service cloud.firestore {
     match /vectorTickets/{ticketId} {
       allow get: if isValidId(ticketId) && isVerifiedUser() && (
         isAdmin() ||
-        existing().storeOwnerUid == request.auth.uid ||
-        existing().requesterUid == request.auth.uid
+        (resource != null && (
+          existing().storeOwnerUid == request.auth.uid ||
+          existing().requesterUid == request.auth.uid
+        ))
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() ||
@@ -1575,8 +1610,10 @@ service cloud.firestore {
     match /vectorConsents/{consentId} {
       allow get: if isValidId(consentId) && isVerifiedUser() && (
         isAdmin() ||
-        existing().userUid == request.auth.uid ||
-        existing().storeOwnerUid == request.auth.uid
+        (resource != null && (
+          existing().userUid == request.auth.uid ||
+          existing().storeOwnerUid == request.auth.uid
+        ))
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() ||
@@ -1620,8 +1657,10 @@ service cloud.firestore {
     match /vectorConversationStats/{statId} {
       allow get: if isValidId(statId) && isVerifiedUser() && (
         isAdmin() ||
-        existing().userUid == request.auth.uid ||
-        existing().storeOwnerUid == request.auth.uid
+        (resource != null && (
+          existing().userUid == request.auth.uid ||
+          existing().storeOwnerUid == request.auth.uid
+        ))
       );
       allow list: if isVerifiedUser() && (
         isSuperAdminEmail() ||

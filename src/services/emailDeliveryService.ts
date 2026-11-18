@@ -398,12 +398,20 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
       }
     }
 
-    const data = (await resp.json()) as {
+    const rawText = await resp.text();
+    let data: {
       ok?: boolean;
       deliveryChannel?: 'smtp' | 'resend';
       message?: string;
       error?: string;
-    };
+    } = {};
+    try {
+      if (rawText) {
+        data = JSON.parse(rawText);
+      }
+    } catch {
+      data = {};
+    }
 
     if (resp.ok && data.ok) {
       const channel = data.deliveryChannel || config.provider;
@@ -433,6 +441,137 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
       ok: false,
       message: msg,
       log,
+    };
+  }
+}
+
+export interface SmtpPingResult {
+  ok: boolean;
+  latencyMs?: number;
+  authVerified?: boolean;
+  stage?: 'syntax' | 'network' | 'auth' | 'unauthorized' | 'offline';
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  message: string;
+  checkedAt?: string;
+}
+
+export async function verifySmtpConnection(
+  config: Pick<StoreEmailConfig, 'smtpHost' | 'smtpPort' | 'smtpSecure' | 'smtpUser' | 'smtpPass'>,
+  signal?: AbortSignal
+): Promise<SmtpPingResult> {
+  const checkedAt = new Date().toLocaleTimeString('es-VE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return {
+      ok: false,
+      stage: 'offline',
+      message: 'Sin conexión a internet: no es posible hacer ping SMTP en este momento.',
+      checkedAt,
+    };
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    return {
+      ok: false,
+      stage: 'unauthorized',
+      message: 'Inicia sesión con Google verificado para validar la conexión SMTP en tiempo real.',
+      checkedAt,
+    };
+  }
+
+  let idToken = '';
+  try {
+    idToken = await getFreshFirebaseIdToken(currentUser, false);
+  } catch {
+    return {
+      ok: false,
+      stage: 'unauthorized',
+      message: 'No se pudo autenticar tu sesión para probar el servidor SMTP.',
+      checkedAt,
+    };
+  }
+
+  const body = JSON.stringify({
+    smtpHost: (config.smtpHost || '').trim(),
+    smtpPort: Number(config.smtpPort || 587),
+    smtpSecure: Boolean(config.smtpSecure),
+    smtpUser: (config.smtpUser || '').trim(),
+    smtpPass: config.smtpPass || '',
+  });
+
+  try {
+    let resp = await fetch('/api/stores/verify-smtp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body,
+      signal,
+    });
+
+    if (resp.status === 401 || resp.status === 403) {
+      const refreshedToken = await getFreshFirebaseIdToken(currentUser, true).catch(() => '');
+      if (refreshedToken && refreshedToken !== idToken) {
+        resp = await fetch('/api/stores/verify-smtp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshedToken}`,
+          },
+          body,
+          signal,
+        });
+      }
+    }
+
+    const rawText = await resp.text();
+    let data: {
+      ok?: boolean;
+      latencyMs?: number;
+      authVerified?: boolean;
+      stage?: SmtpPingResult['stage'];
+      host?: string;
+      port?: number;
+      secure?: boolean;
+      message?: string;
+      error?: string;
+    } = {};
+    try {
+      if (rawText) {
+        data = JSON.parse(rawText);
+      }
+    } catch {
+      data = {};
+    }
+
+    return {
+      ok: Boolean(resp.ok && data.ok),
+      latencyMs: data.latencyMs,
+      authVerified: data.authVerified,
+      stage: data.stage,
+      host: data.host,
+      port: data.port,
+      secure: data.secure,
+      message: data.message || data.error || `Error HTTP ${resp.status}`,
+      checkedAt,
+    };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw err;
+    }
+    return {
+      ok: false,
+      stage: 'network',
+      message: err instanceof Error ? err.message : 'Error de red probando conexión SMTP.',
+      checkedAt,
     };
   }
 }

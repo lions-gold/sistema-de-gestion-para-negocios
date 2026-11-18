@@ -140,9 +140,17 @@ export function detectAuthEnvironment(): AuthEnvironmentInfo {
 }
 
 function getCurrentAuthLanguage(): 'es' | 'en' | 'zh' {
+  if (typeof document !== 'undefined') {
+    const docLang = (document.documentElement.lang || '').toLowerCase();
+    if (docLang.startsWith('zh')) return 'zh';
+    if (docLang.startsWith('en')) return 'en';
+    if (docLang.startsWith('es')) return 'es';
+  }
   if (typeof window === 'undefined') return 'es';
   try {
-    const raw = localStorage.getItem('smith_solutions_lang');
+    const raw =
+      localStorage.getItem('smith_solutions_lang_guest_v1') ||
+      localStorage.getItem('smith_solutions_lang');
     if (raw === 'en' || raw === 'zh' || raw === 'es') return raw;
   } catch {
     // ignore storage errors

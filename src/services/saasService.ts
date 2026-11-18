@@ -1786,14 +1786,22 @@ export async function dispatchSubscriptionPaymentProof(params: {
     });
 
     if (resp.ok) {
-      const json = (await resp.json()) as Partial<PaymentVoucherDispatchResult>;
-      return {
-        emailSent: Boolean(json.emailSent),
-        deliveryChannel: json.deliveryChannel || 'client_mailto',
-        message: json.message || 'Comprobante procesado.',
-        whatsappHref: json.whatsappHref || fallback.whatsappHref,
-        mailtoHref: json.mailtoHref || fallback.mailtoHref,
-      };
+      const rawText = await resp.text();
+      let json: Partial<PaymentVoucherDispatchResult> = {};
+      try {
+        if (rawText) json = JSON.parse(rawText);
+      } catch {
+        json = {};
+      }
+      if (json && typeof json === 'object') {
+        return {
+          emailSent: Boolean(json.emailSent),
+          deliveryChannel: json.deliveryChannel || 'client_mailto',
+          message: json.message || 'Comprobante procesado.',
+          whatsappHref: json.whatsappHref || fallback.whatsappHref,
+          mailtoHref: json.mailtoHref || fallback.mailtoHref,
+        };
+      }
     }
   } catch {
     // Offline or static GitHub Pages host: return client-side mailto + WhatsApp links
@@ -2692,12 +2700,22 @@ export function exportStoreSalesToCSV(store: StoreTenant, orders: StoreOrder[]):
 }
 
 export async function fetchStoreByIdOrSlug(slugOrId: string): Promise<StoreTenant | null> {
+  const clean = (slugOrId || '').trim();
+  if (!clean) return null;
+
+  if (/^[a-zA-Z0-9_-]{1,128}$/.test(clean)) {
+    try {
+      const direct = await getDoc(doc(db, 'stores', clean));
+      if (direct.exists()) return direct.data() as StoreTenant;
+    } catch {
+      // Fall through to public slug query if direct ID lookup is denied or not an ID
+    }
+  }
+
   try {
-    const direct = await getDoc(doc(db, 'stores', slugOrId));
-    if (direct.exists()) return direct.data() as StoreTenant;
     const q = query(
       collection(db, 'stores'),
-      where('slug', '==', slugOrId),
+      where('slug', '==', clean),
       where('status', '==', 'active')
     );
     const snap = await getDocs(q);
@@ -2909,10 +2927,16 @@ export async function sendAdminEmailsToOwners(params: {
       }),
     });
     if (resp.ok) {
-      const json = (await resp.json()) as {
+      const rawText = await resp.text();
+      let json: {
         deliveryChannel?: EmailDeliveryChannel;
         message?: string;
-      };
+      } = {};
+      try {
+        if (rawText) json = JSON.parse(rawText);
+      } catch {
+        json = {};
+      }
       if (json.deliveryChannel) deliveryChannel = json.deliveryChannel;
       if (json.message) serverMessage = json.message;
     }

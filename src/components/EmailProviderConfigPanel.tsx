@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   Bell,
@@ -53,6 +54,8 @@ import {
   getLocalStoreEmailConfig,
   getStoreEmailLogs,
   saveStoreEmailConfig,
+  SmtpPingResult,
+  verifySmtpConnection,
 } from '../services/emailDeliveryService';
 import {
   deleteStorePaymentMethod,
@@ -130,6 +133,28 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     getBrowserNotificationPrefs()
   );
   const [isTestingPush, setIsTestingPush] = useState(false);
+
+  // Real-time SMTP connection ping & pre-save credential validation
+  const [smtpPingState, setSmtpPingState] = useState<{
+    status: 'idle' | 'incomplete' | 'checking' | 'success' | 'error';
+    message: string;
+    latencyMs?: number;
+    checkedAt?: string;
+    signature: string;
+    stage?: SmtpPingResult['stage'];
+  }>({
+    status: 'idle',
+    message: '',
+    signature: '',
+  });
+  const [isVerifyingBeforeSave, setIsVerifyingBeforeSave] = useState(false);
+  const [allowSaveBypassAfterPingFail, setAllowSaveBypassAfterPingFail] = useState(false);
+  const smtpPingSeqRef = React.useRef(0);
+  const smtpPingAbortRef = React.useRef<AbortController | null>(null);
+  const smtpPingMetaRef = React.useRef<{ status: string; signature: string }>({
+    status: 'idle',
+    signature: '',
+  });
 
   // Per-store customer payment methods state (subcollection: store_payment_methods)
   const [storeMethods, setStoreMethods] = useState<StorePaymentMethod[]>(() =>
@@ -232,6 +257,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
   useEffect(() => {
     if (!storeId) return;
+    smtpPingMetaRef.current = { status: 'idle', signature: '' };
     setConfig(getLocalStoreEmailConfig(storeId, ownerUid, ownerEmail));
     setLogs(getStoreEmailLogs(storeId));
 
@@ -273,22 +299,253 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
   const lowStockProducts = mergedProducts.filter((p) => p.stock <= (p.minStock ?? 5));
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const buildSmtpSignature = (cfg: StoreEmailConfig) =>
+    `${(cfg.smtpHost || '').trim().toLowerCase()}|${Number(cfg.smtpPort || 587)}|${Boolean(
+      cfg.smtpSecure
+    )}|${(cfg.smtpUser || '').trim()}|${cfg.smtpPass || ''}`;
+
+  const currentSmtpSignature = buildSmtpSignature(config);
+
+  const getSmtpSyntaxIssue = (cfg: StoreEmailConfig): string | null => {
+    const host = (cfg.smtpHost || '').trim();
+    const port = Number(cfg.smtpPort || 0);
+    const user = (cfg.smtpUser || '').trim();
+    const pass = cfg.smtpPass || '';
+
+    if (!host && !user && !pass) {
+      return null;
+    }
+    if (!host || !/^[a-zA-Z0-9.-]+$/.test(host) || !host.includes('.')) {
+      return 'Ingresa un servidor SMTP válido (ej. smtp.gmail.com o smtp-relay.brevo.com).';
+    }
+    if (host.toLowerCase() === 'mail.tudominio.com') {
+      return 'Reemplaza "mail.tudominio.com" por el dominio real de tu servidor de correo.';
+    }
+    if (Number.isNaN(port) || port < 1 || port > 65535) {
+      return 'Puerto SMTP inválido. Usa 465 (SSL/TLS) o 587 (STARTTLS).';
+    }
+    if (!user) {
+      return 'Falta el Usuario SMTP para validar la autenticación.';
+    }
+    if (!pass) {
+      return 'Falta la Contraseña o App Password SMTP para autenticar el ping.';
+    }
+    return null;
+  };
+
+  const runSmtpPing = React.useCallback(
+    async (targetCfg: StoreEmailConfig, sig: string): Promise<SmtpPingResult> => {
+      smtpPingAbortRef.current?.abort();
+      const controller = new AbortController();
+      smtpPingAbortRef.current = controller;
+      const seq = ++smtpPingSeqRef.current;
+
+      smtpPingMetaRef.current = { status: 'checking', signature: sig };
+      setSmtpPingState({
+        status: 'checking',
+        message: `Haciendo ping SMTP a ${(targetCfg.smtpHost || '').trim()}:${Number(
+          targetCfg.smtpPort || 587
+        )}...`,
+        signature: sig,
+      });
+
+      try {
+        const res = await verifySmtpConnection(targetCfg, controller.signal);
+        if (seq !== smtpPingSeqRef.current) {
+          return res;
+        }
+        const nextStatus = res.ok ? 'success' : 'error';
+        smtpPingMetaRef.current = { status: nextStatus, signature: sig };
+        setSmtpPingState({
+          status: nextStatus,
+          message: res.message,
+          latencyMs: res.latencyMs,
+          checkedAt: res.checkedAt,
+          signature: sig,
+          stage: res.stage,
+        });
+        if (res.ok) {
+          setAllowSaveBypassAfterPingFail(false);
+        }
+        return res;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return {
+            ok: false,
+            stage: 'network',
+            message: 'Verificación reemplazada por cambios recientes.',
+          };
+        }
+        const fallback: SmtpPingResult = {
+          ok: false,
+          stage: 'network',
+          message: 'No se pudo completar el ping SMTP.',
+        };
+        if (seq === smtpPingSeqRef.current) {
+          smtpPingMetaRef.current = { status: 'error', signature: sig };
+          setSmtpPingState({
+            status: 'error',
+            message: fallback.message,
+            signature: sig,
+            stage: 'network',
+          });
+        }
+        return fallback;
+      }
+    },
+    []
+  );
+
+  // Live debounced real-time SMTP validator while typing credentials
+  useEffect(() => {
+    if (subTab !== 'config' || config.provider !== 'smtp') {
+      smtpPingAbortRef.current?.abort();
+      return;
+    }
+
+    setAllowSaveBypassAfterPingFail(false);
+
+    const host = (config.smtpHost || '').trim();
+    const user = (config.smtpUser || '').trim();
+    const pass = config.smtpPass || '';
+
+    if (!host && !user && !pass) {
+      smtpPingAbortRef.current?.abort();
+      smtpPingMetaRef.current = { status: 'idle', signature: currentSmtpSignature };
+      setSmtpPingState({
+        status: 'idle',
+        message:
+          'Completa host, puerto, usuario y contraseña SMTP para validar la conexión automáticamente.',
+        signature: currentSmtpSignature,
+      });
+      return;
+    }
+
+    const syntaxIssue = getSmtpSyntaxIssue(config);
+    if (syntaxIssue) {
+      smtpPingAbortRef.current?.abort();
+      smtpPingMetaRef.current = { status: 'incomplete', signature: currentSmtpSignature };
+      setSmtpPingState({
+        status: 'incomplete',
+        message: syntaxIssue,
+        signature: currentSmtpSignature,
+        stage: 'syntax',
+      });
+      return;
+    }
+
+    if (
+      smtpPingMetaRef.current.signature === currentSmtpSignature &&
+      (smtpPingMetaRef.current.status === 'success' ||
+        smtpPingMetaRef.current.status === 'checking')
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      runSmtpPing(config, currentSmtpSignature);
+    }, 850);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    subTab,
+    config.provider,
+    config.smtpHost,
+    config.smtpPort,
+    config.smtpSecure,
+    config.smtpUser,
+    config.smtpPass,
+    currentSmtpSignature,
+    runSmtpPing,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      smtpPingAbortRef.current?.abort();
+    };
+  }, []);
+
+  const persistEmailConfig = async (bypassPingCheck = false) => {
     setIsSaving(true);
     setFeedback(null);
+    setAllowSaveBypassAfterPingFail(false);
+
     try {
-      const toSave: StoreEmailConfig = {
+      let toSave: StoreEmailConfig = {
         ...config,
         storeId,
         ownerUid,
       };
+
+      if (toSave.provider === 'smtp' && !bypassPingCheck) {
+        const syntaxIssue = getSmtpSyntaxIssue(toSave);
+        const host = (toSave.smtpHost || '').trim();
+        const user = (toSave.smtpUser || '').trim();
+        const pass = toSave.smtpPass || '';
+
+        if (!host || !user || !pass || syntaxIssue) {
+          const msg =
+            syntaxIssue ||
+            'Completa Servidor SMTP (host), Puerto, Usuario y Contraseña antes de guardar.';
+          smtpPingMetaRef.current = { status: 'error', signature: currentSmtpSignature };
+          setSmtpPingState({
+            status: 'error',
+            message: msg,
+            signature: currentSmtpSignature,
+            stage: 'syntax',
+          });
+          setFeedback({ type: 'error', text: msg });
+          return;
+        }
+
+        let verifiedLatency = smtpPingState.latencyMs;
+        if (smtpPingState.status !== 'success' || smtpPingState.signature !== currentSmtpSignature) {
+          setIsVerifyingBeforeSave(true);
+          const pingRes = await runSmtpPing(toSave, currentSmtpSignature);
+          setIsVerifyingBeforeSave(false);
+
+          if (!pingRes.ok) {
+            setAllowSaveBypassAfterPingFail(
+              pingRes.stage === 'offline' || pingRes.stage === 'network'
+            );
+            setFeedback({
+              type: 'error',
+              text: `No se guardaron las credenciales porque falló la prueba de conexión (ping) SMTP: ${pingRes.message}`,
+            });
+            return;
+          }
+          verifiedLatency = pingRes.latencyMs;
+        }
+
+        toSave = {
+          ...toSave,
+          lastTestStatus: `Ping SMTP OK (${verifiedLatency ?? '--'} ms)`,
+          lastTestAt: new Date().toLocaleString('es-VE'),
+        };
+
+        await saveStoreEmailConfig(toSave);
+        setConfig(toSave);
+        onConfigSaved?.(toSave);
+        setFeedback({
+          type: 'success',
+          text: `Conexión SMTP verificada mediante ping (${
+            verifiedLatency ?? 'OK'
+          } ms) y credenciales guardadas de forma segura para ${storeName}.`,
+        });
+        return;
+      }
+
       await saveStoreEmailConfig(toSave);
       setConfig(toSave);
       onConfigSaved?.(toSave);
       setFeedback({
         type: 'success',
-        text: `Configuración de ${toSave.provider === 'resend' ? 'Resend API' : 'SMTP personalizado'} guardada de forma segura para ${storeName}.`,
+        text:
+          toSave.provider === 'smtp'
+            ? `Configuración SMTP guardada sin verificación remota para ${storeName}.`
+            : `Configuración de Resend API guardada de forma segura para ${storeName}.`,
       });
     } catch (err) {
       setFeedback({
@@ -296,8 +553,14 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         text: err instanceof Error ? err.message : 'No se pudo guardar la configuración.',
       });
     } finally {
+      setIsVerifyingBeforeSave(false);
       setIsSaving(false);
     }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await persistEmailConfig(false);
   };
 
   const buildSalesSummaryPayload = () => {
@@ -438,9 +701,16 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
   };
 
   const handleReset = () => {
+    smtpPingAbortRef.current?.abort();
     const fresh = getDefaultStoreEmailConfig(storeId, ownerUid, ownerEmail);
     setConfig(fresh);
     setFeedback(null);
+    setAllowSaveBypassAfterPingFail(false);
+    setSmtpPingState({
+      status: 'idle',
+      message: '',
+      signature: '',
+    });
   };
 
   const handleClearLogs = () => {
@@ -1151,6 +1421,84 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   />
                 </div>
               </div>
+
+              {/* Real-Time SMTP Connection Ping Validator Status Box */}
+              <div
+                aria-live="polite"
+                className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                  smtpPingState.status === 'success' && smtpPingState.signature === currentSmtpSignature
+                    ? 'bg-emerald-950/35 border-emerald-500/40 text-emerald-100'
+                    : smtpPingState.status === 'error'
+                      ? 'bg-red-950/35 border-red-500/40 text-red-100'
+                      : smtpPingState.status === 'checking'
+                        ? 'bg-amber-950/25 border-amber-400/40 text-amber-100'
+                        : smtpPingState.status === 'incomplete'
+                          ? 'bg-zinc-900/90 border-amber-400/25 text-zinc-200'
+                          : 'bg-[#111114] border-white/[0.08] text-zinc-300'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {smtpPingState.status === 'checking' ? (
+                    <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0 mt-0.5" />
+                  ) : smtpPingState.status === 'success' &&
+                    smtpPingState.signature === currentSmtpSignature ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : smtpPingState.status === 'error' ? (
+                    <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  ) : smtpPingState.status === 'incomplete' ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <Activity className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                  )}
+
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-xs font-bold flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>
+                        {smtpPingState.status === 'checking'
+                          ? 'Validando servidor SMTP en tiempo real'
+                          : smtpPingState.status === 'success' &&
+                              smtpPingState.signature === currentSmtpSignature
+                            ? 'Conexión SMTP validada'
+                            : smtpPingState.status === 'error'
+                              ? 'Error en prueba de conexión SMTP'
+                              : smtpPingState.status === 'incomplete'
+                                ? 'Validación en tiempo real'
+                                : 'Validador de conexión SMTP (Ping)'}
+                      </span>
+                      {typeof smtpPingState.latencyMs === 'number' &&
+                        smtpPingState.status === 'success' && (
+                          <span className="font-mono text-[11px] text-emerald-300 tabular-nums">
+                            · {smtpPingState.latencyMs} ms
+                          </span>
+                        )}
+                      {smtpPingState.checkedAt && smtpPingState.status !== 'checking' && (
+                        <span className="font-mono text-[11px] text-zinc-400 tabular-nums">
+                          · {smtpPingState.checkedAt}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] leading-relaxed opacity-90 break-words">
+                      {smtpPingState.message ||
+                        'Cada cambio en servidor, puerto o credenciales realiza un ping SMTP automático antes de guardar.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={
+                    smtpPingState.status === 'checking' ||
+                    isSaving ||
+                    Boolean(getSmtpSyntaxIssue(config)) ||
+                    !(config.smtpHost || '').trim()
+                  }
+                  onClick={() => runSmtpPing(config, currentSmtpSignature)}
+                  className="px-3 py-2 min-h-[38px] rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/40 text-xs font-semibold text-zinc-100 flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap disabled:opacity-45 transition-colors"
+                >
+                  <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Ping SMTP ahora</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -1356,7 +1704,17 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               </button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {allowSaveBypassAfterPingFail && config.provider === 'smtp' && (
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => persistEmailConfig(true)}
+                  className="px-3 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs text-amber-300 font-semibold disabled:opacity-50"
+                >
+                  Guardar sin verificar ping
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleReset}
@@ -1366,11 +1724,23 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || isVerifyingBeforeSave}
                 className="px-5 py-2.5 min-h-[44px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? 'Guardando...' : 'Guardar Configuración'}</span>
+                {isVerifyingBeforeSave ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                <span>
+                  {isVerifyingBeforeSave
+                    ? 'Verificando ping SMTP...'
+                    : isSaving
+                      ? 'Guardando...'
+                      : config.provider === 'smtp'
+                        ? 'Verificar y Guardar'
+                        : 'Guardar Configuración'}
+                </span>
               </button>
             </div>
           </div>

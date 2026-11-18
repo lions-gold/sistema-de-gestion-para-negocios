@@ -19,7 +19,9 @@ import {
 } from './lib/paymentNotifyServer';
 import {
   handleStoreEmailDispatch,
+  handleVerifySmtpConnection,
   StoreEmailDispatchPayload,
+  VerifySmtpPayload,
 } from './lib/storeEmailServer';
 import {
   AuthBackupSyncPayload,
@@ -345,6 +347,27 @@ app.post('/api/stores/send-email', async (req, res) => {
     return res.status(500).json({
       ok: false,
       message: 'Error interno al enviar el correo desde el servidor.',
+      error: err instanceof Error ? err.message : 'INTERNAL_ERROR',
+    });
+  }
+});
+
+// Real-Time SMTP Connection Ping / Credential Verification Endpoint
+app.post('/api/stores/verify-smtp', async (req, res) => {
+  try {
+    const result = await handleVerifySmtpConnection(
+      (req.body || {}) as VerifySmtpPayload,
+      req.headers.authorization
+    );
+    if (result.status && result.status >= 400) {
+      return res.status(result.status).json(result);
+    }
+    return res.json(result);
+  } catch (err) {
+    console.error('Server /api/stores/verify-smtp error:', err);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error interno al verificar la conexión SMTP en el servidor.',
       error: err instanceof Error ? err.message : 'INTERNAL_ERROR',
     });
   }

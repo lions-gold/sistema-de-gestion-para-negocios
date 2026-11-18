@@ -535,3 +535,230 @@ export async function handleStoreEmailDispatch(
     };
   }
 }
+
+export interface VerifySmtpPayload {
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+}
+
+export interface VerifySmtpResponse {
+  ok: boolean;
+  status?: number;
+  latencyMs?: number;
+  authVerified?: boolean;
+  stage?: 'syntax' | 'network' | 'auth' | 'unauthorized';
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  message: string;
+  error?: string;
+}
+
+function formatFriendlySmtpError(
+  err: unknown,
+  host: string,
+  port: number,
+  secure: boolean
+): { stage: 'network' | 'auth'; message: string; raw: string } {
+  const errObj = err as { code?: string; responseCode?: number; command?: string; message?: string };
+  const raw = errObj?.message || 'Error de conexión SMTP';
+  const code = String(errObj?.code || '').toUpperCase();
+  const responseCode = Number(errObj?.responseCode || 0);
+  const lower = raw.toLowerCase();
+
+  if (
+    code === 'EAUTH' ||
+    responseCode === 535 ||
+    responseCode === 534 ||
+    responseCode === 530 ||
+    lower.includes('invalid login') ||
+    lower.includes('authentication failed') ||
+    lower.includes('username and password not accepted') ||
+    lower.includes('535')
+  ) {
+    return {
+      stage: 'auth',
+      raw,
+      message: `Autenticación rechazada en ${host}:${port}. Verifica el usuario SMTP y utiliza una Contraseña de Aplicación (App Password).`,
+    };
+  }
+
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || lower.includes('getaddrinfo')) {
+    return {
+      stage: 'network',
+      raw,
+      message: `No se pudo resolver el servidor "${host}". Verifica que el host SMTP esté escrito correctamente.`,
+    };
+  }
+
+  if (code === 'ECONNREFUSED') {
+    return {
+      stage: 'network',
+      raw,
+      message: `Conexión rechazada en ${host}:${port}. Verifica que el puerto (${port}) acepte conexiones SMTP.`,
+    };
+  }
+
+  if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT' || lower.includes('timeout')) {
+    return {
+      stage: 'network',
+      raw,
+      message: `Tiempo de espera agotado al hacer ping a ${host}:${port}. Prueba cambiar entre puerto 465 (SSL) y 587 (STARTTLS).`,
+    };
+  }
+
+  if (
+    lower.includes('wrong version number') ||
+    lower.includes('ssl') ||
+    lower.includes('tls') ||
+    code === 'EPROTO' ||
+    code.startsWith('ERR_SSL')
+  ) {
+    return {
+      stage: 'network',
+      raw,
+      message: `Incompatibilidad SSL/TLS en ${host}:${port}. ${
+        secure
+          ? 'Prueba desactivar "SSL / TLS (465)" o usar el puerto 587.'
+          : 'Prueba activar "SSL / TLS (465)" o usar el puerto 465.'
+      }`,
+    };
+  }
+
+  return {
+    stage: 'network',
+    raw,
+    message: `Fallo al conectar con ${host}:${port}: ${raw}`,
+  };
+}
+
+export async function handleVerifySmtpConnection(
+  payload: VerifySmtpPayload,
+  authHeader?: string
+): Promise<VerifySmtpResponse> {
+  const verified = await verifyAuthenticatedUserBearerToken(authHeader);
+  if (!verified.ok) {
+    return {
+      ok: false,
+      status: 403,
+      stage: 'unauthorized',
+      message: 'Inicia sesión con Google verificado para ejecutar la prueba de conexión SMTP.',
+      error: 'UNAUTHORIZED',
+    };
+  }
+
+  const host = sanitizeHeaderLine(payload?.smtpHost || '', 160);
+  const port = Number(payload?.smtpPort || 587);
+  const secure = typeof payload?.smtpSecure === 'boolean' ? payload.smtpSecure : port === 465;
+  const user = sanitizeHeaderLine(payload?.smtpUser || '', 160);
+  const pass = String(payload?.smtpPass || '');
+
+  if (!host || !/^[a-zA-Z0-9.-]+$/.test(host) || !host.includes('.')) {
+    return {
+      ok: false,
+      status: 400,
+      stage: 'syntax',
+      host,
+      port,
+      secure,
+      message: 'Ingresa un servidor SMTP (host) válido, por ejemplo smtp.gmail.com.',
+      error: 'INVALID_HOST',
+    };
+  }
+
+  const lowerHost = host.toLowerCase();
+  if (
+    lowerHost === 'localhost' ||
+    lowerHost.startsWith('127.') ||
+    lowerHost.startsWith('169.254.') ||
+    lowerHost === '0.0.0.0' ||
+    lowerHost.endsWith('.internal')
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      stage: 'syntax',
+      host,
+      port,
+      secure,
+      message: 'Host SMTP no permitido para verificación remota.',
+      error: 'BLOCKED_HOST',
+    };
+  }
+
+  if (Number.isNaN(port) || port < 1 || port > 65535) {
+    return {
+      ok: false,
+      status: 400,
+      stage: 'syntax',
+      host,
+      port,
+      secure,
+      message: 'El puerto SMTP debe estar entre 1 y 65535 (comúnmente 465 o 587).',
+      error: 'INVALID_PORT',
+    };
+  }
+
+  const hasCredentials = Boolean(user && pass);
+  const startedAt = Date.now();
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      ...(hasCredentials ? { auth: { user, pass } } : {}),
+      connectionTimeout: 6500,
+      greetingTimeout: 6500,
+      socketTimeout: 8000,
+    });
+
+    await transporter.verify();
+    const latencyMs = Math.max(1, Date.now() - startedAt);
+    transporter.close?.();
+
+    if (!hasCredentials) {
+      return {
+        ok: false,
+        status: 400,
+        latencyMs,
+        authVerified: false,
+        stage: 'auth',
+        host,
+        port,
+        secure,
+        message: `Ping TCP/SMTP exitoso a ${host}:${port} (${latencyMs} ms), pero faltan Usuario y Contraseña SMTP para validar credenciales.`,
+        error: 'MISSING_CREDENTIALS',
+      };
+    }
+
+    return {
+      ok: true,
+      latencyMs,
+      authVerified: true,
+      stage: 'auth',
+      host,
+      port,
+      secure,
+      message: `Ping SMTP exitoso · ${host}:${port} (${secure ? 'SSL/TLS' : 'STARTTLS'}) autenticado en ${latencyMs} ms.`,
+    };
+  } catch (err) {
+    const latencyMs = Math.max(1, Date.now() - startedAt);
+    const friendly = formatFriendlySmtpError(err, host, port, secure);
+    return {
+      ok: false,
+      status: 502,
+      latencyMs,
+      authVerified: false,
+      stage: friendly.stage,
+      host,
+      port,
+      secure,
+      message: friendly.message,
+      error: friendly.raw,
+    };
+  }
+}
