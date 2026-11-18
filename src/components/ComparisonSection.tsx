@@ -15,9 +15,9 @@ export const ComparisonSection: React.FC = () => {
           <p className="mt-3 text-sm sm:text-base text-zinc-400">{t.comparison.subtitle}</p>
         </div>
 
-        <div className="max-w-4xl mx-auto obsidian-surface rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
+        <div className="max-w-4xl mx-auto w-full min-w-0 obsidian-surface rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[540px] text-left text-xs sm:text-sm">
               <thead className="bg-[#09090b] text-zinc-300 font-semibold border-b border-white/[0.08]">
                 <tr>
                   <th className="py-4 px-5">{t.comparison.colFeature}</th>

@@ -504,9 +504,9 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   // ---------------------------------------------------------------------------
   if (selectedStore) {
     return (
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 w-full min-w-0">
         {/* Back & Share Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 min-w-0">
           <button
             onClick={() => {
               setSelectedStore(null);
@@ -515,11 +515,11 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
             }}
             className="px-3.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-zinc-300 hover:text-white text-xs sm:text-sm font-medium flex items-center gap-2 transition-colors min-h-[44px]"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 shrink-0" />
             <span>{t.marketplace.backToDir}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
@@ -551,8 +551,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         </div>
 
         {/* Store Banner Header */}
-        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start sm:items-center gap-4">
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6 min-w-0">
+          <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-[#09090b] border border-amber-500/30 overflow-hidden shrink-0 flex items-center justify-center">
               {selectedStore.logoUrl ? (
                 <img
@@ -564,9 +564,9 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                 <Store className="w-8 h-8 text-amber-400" />
               )}
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-extrabold text-white font-display">
+                <h1 className="text-xl sm:text-2xl font-extrabold text-white font-display break-words">
                   {selectedStore.storeName}
                 </h1>
                 <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
@@ -1151,10 +1151,10 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   // Multi-SaaS Store Directory View
   // ---------------------------------------------------------------------------
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8 w-full min-w-0">
       {/* Header Banner */}
-      <div className="obsidian-surface rounded-2xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div className="space-y-2 max-w-2xl">
+      <div className="obsidian-surface rounded-2xl p-5 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 min-w-0">
+        <div className="space-y-2 max-w-2xl min-w-0">
           <div className="inline-flex items-center gap-2 text-amber-400 text-xs font-semibold">
             <ShieldCheck className="w-4 h-4" />
             <span>{t.marketplace.badge}</span>

@@ -36,7 +36,7 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Card 1 */}
-        <div className="md:col-span-7 obsidian-surface rounded-2xl p-6 sm:p-8 flex flex-col justify-between hover:border-amber-400/30 transition-colors">
+        <div className="md:col-span-7 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 flex flex-col justify-between hover:border-amber-400/30 transition-colors">
           <div>
             <div className="flex items-center justify-between mb-5">
               <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-amber-400">
@@ -62,12 +62,12 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
                 <Package className="w-10 h-10 text-amber-400/50" />
               </div>
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/45 to-transparent flex items-end p-4">
-              <div className="flex items-center justify-between gap-3 w-full text-xs">
-                <span className="text-zinc-100 font-medium">{t.bento.mod1Footer}</span>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/55 to-transparent flex items-end p-3.5 sm:p-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full text-xs min-w-0">
+                <span className="text-zinc-100 font-medium truncate">{t.bento.mod1Footer}</span>
                 <button
                   onClick={() => onOpenApp('inventory')}
-                  className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold rounded-lg flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                  className="px-4 py-2 min-h-[40px] bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors sm:whitespace-nowrap shrink-0"
                 >
                   <span>{t.bento.mod1Btn}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -80,7 +80,7 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
         {/* Card 2 */}
         <div
           id="punto-de-venta"
-          className="md:col-span-5 obsidian-surface rounded-2xl p-6 sm:p-8 flex flex-col justify-between hover:border-amber-400/30 transition-colors"
+          className="md:col-span-5 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 flex flex-col justify-between hover:border-amber-400/30 transition-colors"
         >
           <div>
             <div className="flex items-center justify-between mb-5">
@@ -107,11 +107,11 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
                 <Receipt className="w-10 h-10 text-emerald-400/50" />
               </div>
             )}
-            <div className="p-3.5 bg-[#09090b]/95 border-t border-white/[0.08] flex items-center justify-between gap-2 text-xs">
+            <div className="p-3.5 bg-[#09090b]/95 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2.5 text-xs">
               <span className="text-zinc-300">{t.bento.mod2Footer}</span>
               <button
                 onClick={() => onOpenApp('pos')}
-                className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 whitespace-nowrap shrink-0"
+                className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 whitespace-nowrap shrink-0 min-h-[36px]"
               >
                 <span>{t.bento.mod2Btn}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -123,7 +123,7 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
         {/* Card 3 */}
         <div
           id="fiados"
-          className="md:col-span-6 obsidian-surface rounded-2xl p-6 sm:p-8 hover:border-amber-400/30 transition-colors flex flex-col justify-between"
+          className="md:col-span-6 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 hover:border-amber-400/30 transition-colors flex flex-col justify-between"
         >
           <div>
             <div className="flex items-center justify-between mb-5">
@@ -152,7 +152,7 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
 
             <button
               onClick={() => onOpenApp('debtors')}
-              className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-amber-400 font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
+              className="w-full min-h-[42px] py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-amber-400 font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
             >
               <span>{t.bento.mod3Btn}</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -161,7 +161,7 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
         </div>
 
         {/* Card 4 */}
-        <div className="md:col-span-6 obsidian-surface rounded-2xl p-6 sm:p-8 hover:border-amber-400/30 transition-colors flex flex-col justify-between">
+        <div className="md:col-span-6 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 hover:border-amber-400/30 transition-colors flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-5">
               <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-amber-400">
@@ -174,20 +174,20 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
           </div>
 
           <div className="space-y-4">
-            <div className="p-3.5 rounded-xl bg-[#09090b] border border-white/[0.06] grid grid-cols-2 gap-4 text-xs">
-              <div>
+            <div className="p-3.5 rounded-xl bg-[#09090b] border border-white/[0.06] grid grid-cols-2 gap-3 sm:gap-4 text-xs">
+              <div className="min-w-0">
                 <span className="text-zinc-500 block mb-0.5">{t.bento.mod4Income}</span>
-                <span className="font-mono text-emerald-400 font-bold text-sm tabular-nums">+$211.00 USD</span>
+                <span className="font-mono text-emerald-400 font-bold text-sm tabular-nums break-words">+$211.00 USD</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-zinc-500 block mb-0.5">{t.bento.mod4Expense}</span>
-                <span className="font-mono text-rose-400 font-bold text-sm tabular-nums">-$23.50 USD</span>
+                <span className="font-mono text-rose-400 font-bold text-sm tabular-nums break-words">-$23.50 USD</span>
               </div>
             </div>
 
             <button
               onClick={() => onOpenApp('cashier')}
-              className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-amber-400 font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
+              className="w-full min-h-[42px] py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-amber-400 font-semibold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
             >
               <span>{t.bento.mod4Btn}</span>
               <ArrowRight className="w-3.5 h-3.5" />

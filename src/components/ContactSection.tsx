@@ -40,8 +40,8 @@ export const ContactSection: React.FC = () => {
   return (
     <section id="contacto" className="py-16 lg:py-24 border-t border-white/[0.08] bg-[#09090b]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
-          <div className="lg:col-span-5 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          <div className="lg:col-span-5 min-w-0 space-y-6">
             <div>
               <div className="text-xs font-semibold text-amber-400 mb-2">{t.contact.eyebrow}</div>
               <h2 className="text-2xl sm:text-3xl font-bold text-zinc-50 tracking-tight font-display text-balance">
@@ -70,12 +70,12 @@ export const ContactSection: React.FC = () => {
 
               <a
                 href="mailto:empresaalhadiqainvest@gmail.com?subject=Consulta%20Smith%20Solutions%20E-Commerce"
-                className="obsidian-surface hover:border-amber-400/40 p-4 rounded-xl flex items-center gap-3.5 group transition-colors"
+                className="obsidian-surface hover:border-amber-400/40 p-4 rounded-xl flex items-center gap-3.5 group transition-colors min-w-0"
               >
                 <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/[0.08] text-amber-400 flex items-center justify-center shrink-0">
                   <Mail className="w-5 h-5" />
                 </div>
-                <div className="overflow-hidden">
+                <div className="min-w-0 flex-1 overflow-hidden">
                   <span className="text-xs text-zinc-400 block">{t.contact.emailCardTitle}</span>
                   <span className="font-medium text-zinc-100 group-hover:text-amber-400 transition-colors truncate block">
                     empresaalhadiqainvest@gmail.com
@@ -83,19 +83,19 @@ export const ContactSection: React.FC = () => {
                 </div>
               </a>
 
-              <div className="obsidian-surface p-4 rounded-xl flex items-center gap-3.5">
+              <div className="obsidian-surface p-4 rounded-xl flex items-center gap-3.5 min-w-0">
                 <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/[0.08] text-sky-400 flex items-center justify-center shrink-0">
                   <Shield className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="text-xs text-zinc-400 block">{t.contact.devCardTitle}</span>
-                  <span className="font-semibold text-zinc-100">Smith Bussines Solutions 2026</span>
+                  <span className="font-semibold text-zinc-100 break-words">Smith Bussines Solutions 2026</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-7 obsidian-surface rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/60">
+          <div className="lg:col-span-7 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 shadow-2xl shadow-black/60">
             {isSubmitted ? (
               <div className="py-10 text-center space-y-4">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">

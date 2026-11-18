@@ -281,11 +281,11 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
     }`;
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 pb-10 md:pb-16">
+    <div className="min-h-screen w-full min-w-0 bg-[#09090b] text-zinc-100 pb-10 md:pb-16">
       {/* Top App Subheader */}
-      <div className="bg-[#111114] border-b border-white/[0.08] px-3 sm:px-6 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+      <div className="bg-[#111114] border-b border-white/[0.08] px-4 sm:px-6 lg:px-8 py-3 safe-area-x">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 min-w-0">
             <button
               onClick={onBackToLanding}
               className="px-3 py-1.5 min-h-[40px] rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium shrink-0"
@@ -294,7 +294,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               <span>{t.warehouse.backToWeb}</span>
             </button>
             <div className="h-4 w-px bg-white/[0.1] hidden sm:block" />
-            <span className="font-semibold text-zinc-100 text-sm font-display flex items-center gap-1.5">
+            <span className="font-semibold text-zinc-100 text-sm font-display flex items-center gap-1.5 min-w-0">
               <Store className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="truncate max-w-[200px] sm:max-w-none">
                 {activeStore ? activeStore.storeName : `${t.warehouse.panelTitle} (Individual)`}
@@ -305,7 +305,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               <select
                 value={activeStore?.id || ''}
                 onChange={(e) => onSelectStore(e.target.value)}
-                className="px-3 py-1.5 min-h-[40px] rounded-lg bg-[#09090b] border border-amber-500/35 text-xs text-amber-300 font-semibold"
+                className="px-3 py-1.5 min-h-[40px] max-w-full rounded-lg bg-[#09090b] border border-amber-500/35 text-xs text-amber-300 font-semibold"
                 aria-label="Cambiar almacén por tienda"
               >
                 {availableStores.map((st) => (
@@ -322,7 +322,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               <button
                 type="button"
                 onClick={handleHeaderBrowserNotifClick}
-                className={`px-2.5 py-1.5 min-h-[36px] rounded-lg border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 min-h-[40px] rounded-lg border text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                   notifPerm === 'granted' && notifPrefs.enabled
                     ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/20'
                     : notifPerm === 'denied'
@@ -361,8 +361,8 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
       </div>
 
       {/* Tabs navigation */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 border-b border-white/[0.08]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 min-w-0">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 border-b border-white/[0.08]">
           <button onClick={() => handleTabSelect('inventory')} className={tabClass(!showEmailPanel && activeTab === 'inventory')}>
             <Package className="w-4 h-4" />
             <span>{t.warehouse.tabInventory}</span>
@@ -421,7 +421,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
         </div>
 
         {/* Tab Body */}
-        <div className="pt-6">
+        <div className="pt-6 min-w-0">
           {showEmailPanel ? (
             <EmailProviderConfigPanel
               storeId={activeStore?.id || 'default-warehouse'}

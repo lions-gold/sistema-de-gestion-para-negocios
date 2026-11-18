@@ -129,9 +129,10 @@ export default function App() {
   );
   const [bcvData, setBcvData] = useState<BCVRatesState>(
     initialCachedBcv || {
-      bcv: 896.12,
-      paralelo: 1024.24,
+      bcv: INITIAL_EXCHANGE_RATE,
+      paralelo: 1072.46,
       lastUpdated: 'Conectando...',
+      source: 'BCV Oficial',
       isLive: true,
       activeRateType: 'bcv',
     }
@@ -538,17 +539,23 @@ export default function App() {
     Boolean(platformBilling.warehousePosEnabled) ||
     ownerStores.some((s) => Boolean(s.warehousePosEnabled));
 
-  // Fetch real-time BCV dollar rate from API
-  const refreshBCVRate = async () => {
+  // Fetch real-time official BCV dollar rate from API
+  const refreshBCVRate = async (forceRefresh = false) => {
     setIsRateLoading(true);
     try {
-      const data = await fetchLiveExchangeRates();
-      setBcvData(data);
-      if (data.activeRateType === 'bcv') {
-        setExchangeRate(data.bcv);
-      } else if (data.activeRateType === 'paralelo') {
-        setExchangeRate(data.paralelo);
-      }
+      const data = await fetchLiveExchangeRates(forceRefresh);
+      setBcvData((prev) => {
+        const preservedType = prev.activeRateType || 'bcv';
+        if (preservedType === 'bcv') {
+          setExchangeRate(data.bcv);
+        } else if (preservedType === 'paralelo') {
+          setExchangeRate(data.paralelo);
+        }
+        return {
+          ...data,
+          activeRateType: preservedType,
+        };
+      });
     } catch (err) {
       console.error('Error fetching live BCV rate:', err);
     } finally {
@@ -557,9 +564,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    refreshBCVRate();
+    refreshBCVRate(false);
     // Auto refresh every 10 minutes
-    const interval = setInterval(refreshBCVRate, 10 * 60 * 1000);
+    const interval = setInterval(() => refreshBCVRate(false), 10 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1360,7 +1367,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-amber-400/25 selection:text-amber-300">
+    <div className="min-h-screen w-full max-w-full overflow-x-clip bg-[#09090b] text-zinc-100 flex flex-col font-sans selection:bg-amber-400/25 selection:text-amber-300">
       {/* Top Header */}
       <Header
         currentView={currentView}
@@ -1429,9 +1436,10 @@ export default function App() {
         bcvRate={bcvData.bcv}
         paraleloRate={bcvData.paralelo}
         lastUpdated={bcvData.lastUpdated}
+        source={bcvData.source}
         isLive={bcvData.isLive}
         isLoading={isRateLoading}
-        onRefresh={refreshBCVRate}
+        onRefresh={() => refreshBCVRate(true)}
         activeRateType={bcvData.activeRateType}
         onSelectRateType={(type) => {
           setBcvData((prev) => ({ ...prev, activeRateType: type }));
@@ -1449,7 +1457,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
+      <main className="flex-1 min-w-0 w-full">
         {currentView === 'not_found' ? (
           <NotFoundPage
             attemptedPath={attemptedPath}
@@ -1528,9 +1536,9 @@ export default function App() {
                 <h1 className="text-xl sm:text-2xl font-bold text-zinc-50 font-display">
                   {t.warehouse.lockedTitle}
                 </h1>
-                <p className="text-xs sm:text-sm text-zinc-400">
+                <p className="text-xs sm:text-sm text-zinc-400 break-words">
                   {t.warehouse.lockedDesc} (
-                  <span className="font-mono text-amber-400">{SUPER_ADMIN_EMAIL}</span>)
+                  <span className="font-mono text-amber-400 break-all">{SUPER_ADMIN_EMAIL}</span>)
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3">

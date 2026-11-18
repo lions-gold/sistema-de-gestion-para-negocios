@@ -9,7 +9,7 @@ import {
   ProductBatchTrace 
 } from '../types';
 
-export const INITIAL_EXCHANGE_RATE = 896.12; // Bs. / USD (Tasa Oficial Banco Central de Venezuela)
+export const INITIAL_EXCHANGE_RATE = 916.65; // Bs. / USD (Tasa Oficial Banco Central de Venezuela)
 
 export const INITIAL_PRODUCTS: Product[] = [
   {

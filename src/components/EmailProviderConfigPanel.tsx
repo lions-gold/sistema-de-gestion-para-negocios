@@ -1411,7 +1411,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             {/* Form: Add / Edit Store Payment Method */}
             <form
               onSubmit={handleSaveStoreMethod}
-              className="lg:col-span-5 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5 h-fit"
+              className="lg:col-span-5 min-w-0 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5 h-fit"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -1571,7 +1571,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             </form>
 
             {/* Right Column: Store Configured Payment Methods List */}
-            <div className="lg:col-span-7 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5">
+            <div className="lg:col-span-7 min-w-0 bg-[#09090b] border border-white/[0.1] rounded-xl p-4 space-y-3.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h4 className="text-sm font-bold text-white">

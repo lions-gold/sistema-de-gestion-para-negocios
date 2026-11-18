@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
+import { fetchOfficialBCVData, OfficialBCVPayload } from './lib/bcvServer';
 import {
   handleVectorCampaignDraft,
   handleVectorChat,
@@ -73,83 +74,26 @@ app.use((req, res, next) => {
 });
 
 // In-memory cache for BCV rate
-let cachedRate: {
-  bcv: number;
-  paralelo: number;
-  lastUpdated: string;
-  timestamp: number;
-} | null = null;
+let cachedRate: OfficialBCVPayload | null = null;
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 
-// Real-time BCV API proxy route
-app.get('/api/bcv', async (_req, res) => {
+// Real-time official BCV API proxy route
+app.get('/api/bcv', async (req, res) => {
   const now = Date.now();
-  if (cachedRate && now - cachedRate.timestamp < CACHE_TTL_MS) {
+  const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+
+  if (!forceRefresh && cachedRate && now - cachedRate.timestamp < CACHE_TTL_MS) {
     return res.json({ ...cachedRate, cached: true });
   }
 
-  try {
-    const response = await fetch('https://ve.dolarapi.com/v1/dolares', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4500),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const oficial = Array.isArray(data) ? data.find((d: { fuente: string }) => d.fuente === 'oficial') : null;
-      const paralelo = Array.isArray(data) ? data.find((d: { fuente: string }) => d.fuente === 'paralelo') : null;
-
-      const bcvRate = oficial?.promedio || 896.12;
-      const paraleloRate = paralelo?.promedio || 1024.24;
-
-      cachedRate = {
-        bcv: Number(bcvRate.toFixed(2)),
-        paralelo: Number(paraleloRate.toFixed(2)),
-        lastUpdated: oficial?.fechaActualizacion || new Date().toISOString(),
-        timestamp: now,
-      };
-
-      return res.json({ ...cachedRate, cached: false });
-    }
-  } catch (error) {
-    console.warn('Error fetching BCV primary rate in server:', error);
+  if (forceRefresh) {
+    res.setHeader('Cache-Control', 'no-store');
   }
 
-  try {
-    const backup = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4500),
-    });
-    if (backup.ok) {
-      const data = await backup.json();
-      const price = Number(data?.monitors?.usd?.price || data?.price || 0);
-      if (price > 0) {
-        cachedRate = {
-          bcv: Number(price.toFixed(2)),
-          paralelo: Number((price * 1.14).toFixed(2)),
-          lastUpdated: new Date().toISOString(),
-          timestamp: now,
-        };
-        return res.json({ ...cachedRate, cached: false });
-      }
-    }
-  } catch (error) {
-    console.warn('Error fetching BCV backup rate in server:', error);
-  }
-
-  // Fallback if third party is down
-  if (cachedRate) {
-    return res.json({ ...cachedRate, cached: true });
-  }
-
-  res.json({
-    bcv: 896.12,
-    paralelo: 1024.24,
-    lastUpdated: new Date().toISOString(),
-    timestamp: now,
-    cached: false,
-  });
+  const latest = await fetchOfficialBCVData(cachedRate);
+  cachedRate = latest;
+  return res.json(latest);
 });
 
 interface AdminEmailRecipientInput {

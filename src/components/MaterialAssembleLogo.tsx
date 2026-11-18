@@ -36,7 +36,7 @@ export const MaterialAssembleLogo: React.FC<MaterialAssembleLogoProps> = ({
   const gifSrc = `${import.meta.env.BASE_URL}smith-logo-animated.gif`;
 
   return (
-    <div className={`inline-flex items-center gap-2.5 select-none ${className}`}>
+    <div className={`inline-flex items-center gap-2 sm:gap-2.5 select-none min-w-0 max-w-full ${className}`}>
       {/* Animated Platform Emblem GIF with crisp SVG fallback */}
       <div className={`relative ${iconDimensions} shrink-0 group rounded-xl overflow-hidden border border-white/[0.1] bg-[#09090b]`}>
         {useAnimatedGif && !gifFailed ? (
@@ -88,17 +88,21 @@ export const MaterialAssembleLogo: React.FC<MaterialAssembleLogoProps> = ({
 
       {/* Brand Typography */}
       {showText && (
-        <div className="flex flex-col">
-          <div className="flex items-center gap-1.5 leading-none">
-            <span className={`font-bold tracking-tight font-display text-zinc-50 whitespace-nowrap ${textSizeClasses.title}`}>
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-1.5 leading-none min-w-0">
+            <span className={`font-bold tracking-tight font-display text-zinc-50 whitespace-nowrap truncate ${textSizeClasses.title}`}>
               Smith Solutions
             </span>
-            <span className="text-amber-400 font-semibold text-[10px] sm:text-xs tracking-wider uppercase whitespace-nowrap">
+            <span
+              className={`text-amber-400 font-semibold text-[10px] sm:text-xs tracking-wider uppercase whitespace-nowrap shrink-0 ${
+                variant === 'compact' ? 'hidden sm:inline' : ''
+              }`}
+            >
               E-Commerce
             </span>
           </div>
           {variant !== 'compact' && (
-            <span className={`text-zinc-400 font-mono tracking-wider mt-0.5 whitespace-nowrap ${textSizeClasses.subtitle}`}>
+            <span className={`text-zinc-400 font-mono tracking-wider mt-0.5 truncate ${textSizeClasses.subtitle}`}>
               Material Assemble · Venezuela
             </span>
           )}

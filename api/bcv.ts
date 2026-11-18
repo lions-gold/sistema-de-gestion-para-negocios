@@ -1,65 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { fetchOfficialBCVData } from '../lib/bcvServer';
 
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
-  try {
-    const response = await fetch('https://ve.dolarapi.com/v1/dolares', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4500),
-    });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+  const latest = await fetchOfficialBCVData();
 
-    if (response.ok) {
-      const data = await response.json();
-      const oficial = Array.isArray(data)
-        ? data.find((d: { fuente: string }) => d.fuente === 'oficial')
-        : null;
-      const paralelo = Array.isArray(data)
-        ? data.find((d: { fuente: string }) => d.fuente === 'paralelo')
-        : null;
-
-      const bcvRate = oficial?.promedio || 896.12;
-      const paraleloRate = paralelo?.promedio || 1024.24;
-
-      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
-      return res.status(200).json({
-        bcv: Number(bcvRate.toFixed(2)),
-        paralelo: Number(paraleloRate.toFixed(2)),
-        lastUpdated: oficial?.fechaActualizacion || new Date().toISOString(),
-        timestamp: Date.now(),
-        cached: false,
-      });
-    }
-  } catch (error) {
-    console.warn('Vercel BCV API primary error:', error);
+  if (forceRefresh) {
+    res.setHeader('Cache-Control', 'no-store');
+  } else {
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
   }
 
-  try {
-    const backup = await fetch('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4500),
-    });
-    if (backup.ok) {
-      const data = await backup.json();
-      const price = Number(data?.monitors?.usd?.price || data?.price || 0);
-      if (price > 0) {
-        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
-        return res.status(200).json({
-          bcv: Number(price.toFixed(2)),
-          paralelo: Number((price * 1.14).toFixed(2)),
-          lastUpdated: new Date().toISOString(),
-          timestamp: Date.now(),
-          cached: false,
-        });
-      }
-    }
-  } catch (error) {
-    console.warn('Vercel BCV API backup error:', error);
-  }
-
-  return res.status(200).json({
-    bcv: 896.12,
-    paralelo: 1024.24,
-    lastUpdated: new Date().toISOString(),
-    timestamp: Date.now(),
-    cached: false,
-  });
+  return res.status(200).json(latest);
 }

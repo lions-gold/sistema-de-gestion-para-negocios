@@ -840,7 +840,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             {/* Supported Venezuelan Brands Grid */}
-            <div className="lg:col-span-2 bg-[#111114] border border-white/[0.08] p-5 rounded-xl space-y-4">
+            <div className="lg:col-span-2 min-w-0 bg-[#111114] border border-white/[0.08] p-4 sm:p-5 rounded-xl space-y-4">
               <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                 <Printer className="w-5 h-5 text-amber-400" />
                 Marcas de Impresoras Fiscales Homologadas en Venezuela
@@ -939,7 +939,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           {/* Configuration Form & Live Command Console */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Config inputs (5 cols) */}
-            <form onSubmit={handleSavePrinterSettings} className="lg:col-span-5 bg-[#111114] border border-white/[0.08] p-5 rounded-xl space-y-4 text-xs">
+            <form onSubmit={handleSavePrinterSettings} className="lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] p-4 sm:p-5 rounded-xl space-y-4 text-xs">
               <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-amber-400" />
                 Parámetros de Conexión Fiscal
@@ -1031,7 +1031,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </form>
 
             {/* Live Command Console / Tramas (7 cols) */}
-            <div className="lg:col-span-7 bg-[#09090b] border border-white/[0.08] rounded-xl p-4 flex flex-col justify-between font-mono text-xs space-y-3">
+            <div className="lg:col-span-7 min-w-0 bg-[#09090b] border border-white/[0.08] rounded-xl p-4 flex flex-col justify-between font-mono text-xs space-y-3 overflow-x-auto">
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
                 <span className="text-emerald-400 font-bold flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

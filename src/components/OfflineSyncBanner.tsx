@@ -229,8 +229,8 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
             : 'bg-emerald-950/45 border-emerald-500/30 text-emerald-100'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-2.5 min-w-0">
+        <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
           {!isOnline ? (
             <CloudOff className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
           ) : (
@@ -260,7 +260,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
           {isOnline && queue.length > 0 && (
             <button
               type="button"

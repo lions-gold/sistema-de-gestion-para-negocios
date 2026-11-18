@@ -1646,10 +1646,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   // Registered Store Dashboard
   // ---------------------------------------------------------------------------
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 w-full min-w-0">
       {/* Top Merchant Header & Store Selector */}
-      <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+      <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
+        <div className="flex items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
           <div className="w-14 h-14 rounded-xl bg-[#09090b] border border-amber-500/30 overflow-hidden shrink-0 flex items-center justify-center">
             {activeStore.logoUrl ? (
               <img
@@ -1661,9 +1661,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               <Store className="w-7 h-7 text-amber-400" />
             )}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg sm:text-xl font-extrabold text-white font-display">
+              <h1 className="text-lg sm:text-xl font-extrabold text-white font-display break-words">
                 {activeStore.storeName}
               </h1>
               {activeStore.status === 'active' ? (
@@ -1690,12 +1690,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto lg:justify-end">
           {stores.length > 1 && (
             <select
               value={activeStore.id}
               onChange={(e) => setSelectedStoreId(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-[#09090b] border border-white/[0.1] text-xs text-white"
+              className="px-3 py-2 min-h-[40px] rounded-lg bg-[#09090b] border border-white/[0.1] text-xs text-white"
             >
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -1707,33 +1707,33 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           {activeStore.status === 'active' && (
             <button
               onClick={() => onOpenStorefront(activeStore.slug)}
-              className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 min-h-[38px]"
+              className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
               <span>{t.merchant.viewPublicStore}</span>
             </button>
           )}
           {(activeStore.warehousePosEnabled || billing.warehousePosEnabled) && onOpenWarehouseApp && (
             <button
               onClick={() => onOpenWarehouseApp(activeStore.id)}
-              className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 min-h-[38px]"
+              className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
             >
-              <Package className="w-3.5 h-3.5" />
+              <Package className="w-3.5 h-3.5 shrink-0" />
               <span>{t.merchant.openWarehousePos}</span>
             </button>
           )}
           <button
             onClick={() => setIsCreatingNewStore(true)}
-            className="px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs text-white flex items-center gap-1 min-h-[38px]"
+            className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-xs font-medium text-white flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 shrink-0" />
             <span>{t.merchant.newStore}</span>
           </button>
           <button
             onClick={() => signOutAccount()}
-            className="px-3 py-2 rounded-lg bg-[#09090b] border border-white/[0.1] text-xs text-zinc-300 flex items-center gap-1 min-h-[38px]"
+            className="px-3.5 py-2 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-xs font-medium text-zinc-300 flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
             <span>{t.common.signOut}</span>
           </button>
         </div>
@@ -1797,7 +1797,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       {/* TAB 1: BILLING / SUBSCRIPTION PURCHASE */}
       {activeTab === 'billing' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 space-y-4">
+          <div className="lg:col-span-6 min-w-0 space-y-4">
             <div className="bg-[#111114] border border-amber-500/30 rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -1933,7 +1933,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             </div>
           </div>
 
-          <div className="lg:col-span-6 space-y-4">
+          <div className="lg:col-span-6 min-w-0 space-y-4">
             <form
               onSubmit={handleSubmitPayment}
               className="bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-4"
@@ -2385,7 +2385,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {/* Add / Edit Single Product Form */}
             <form
               onSubmit={handleSaveProduct}
-              className="lg:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3 h-fit"
+              className="lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 space-y-3 h-fit"
             >
               <h3 className="text-sm font-bold text-white">
                 {editingProduct ? t.merchant.editProduct : t.merchant.addProduct}
@@ -2514,7 +2514,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             </form>
 
             {/* Product List */}
-            <div className="lg:col-span-7 space-y-3">
+            <div className="lg:col-span-7 min-w-0 space-y-3">
               {products.length === 0 ? (
                 <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-8 text-center text-xs text-zinc-400">
                   {t.merchant.noProductsYet}
@@ -3455,7 +3455,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <form
               onSubmit={handleSaveStorePaymentMethod}
-              className="lg:col-span-5 bg-[#111114] border border-amber-500/25 rounded-2xl p-6 space-y-4 h-fit"
+              className="lg:col-span-5 min-w-0 bg-[#111114] border border-amber-500/25 rounded-2xl p-5 sm:p-6 space-y-4 h-fit"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -3643,7 +3643,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               </button>
             </form>
 
-            <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+            <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-white font-display">

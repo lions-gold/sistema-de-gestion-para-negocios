@@ -892,7 +892,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
       {/* 2-Column Charts Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-stretch">
         {/* Chart 1: LineChart — Tendencia de Ventas Mensuales */}
-        <div className="xl:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col justify-between space-y-4">
+        <div className="xl:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
             <div className="flex items-start gap-2.5">
               <LineChartIcon className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
@@ -1028,7 +1028,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
         </div>
 
         {/* Chart 2: PieChart — Desglose de Métodos de Pago */}
-        <div className="xl:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col justify-between space-y-4">
+        <div className="xl:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-4">
             <div className="flex items-start gap-2.5">
               <PieChartIcon className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />

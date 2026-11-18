@@ -300,9 +300,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const totalCartItems = cart.reduce((a, b) => a + b.quantity, 0);
 
   return (
-    <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6 relative">
+    <div className="space-y-4 lg:space-y-0 lg:grid lg:grid-cols-12 lg:gap-6 relative min-w-0">
       {/* Mobile-Only Sticky Segmented Switcher: Catálogo vs Caja POS */}
-      <div className="lg:hidden sticky top-[62px] z-20 -mx-1 px-1 py-1.5 bg-[#09090b]/90 backdrop-blur-md">
+      <div className="lg:hidden sticky top-[62px] z-20 py-1.5 bg-[#09090b]/90 backdrop-blur-md">
         <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#111114] border border-white/[0.1]">
           <button
             type="button"
@@ -335,7 +335,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
       </div>
 
       {/* Left: Product Selector (7 cols) */}
-      <div className={`${mobilePane === 'catalog' ? 'block' : 'hidden'} lg:block lg:col-span-7 space-y-4`}>
+      <div className={`${mobilePane === 'catalog' ? 'block' : 'hidden'} lg:block lg:col-span-7 min-w-0 space-y-4`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex items-center gap-2">
@@ -454,7 +454,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
       {/* Right: Checkout & Cart (5 cols) */}
       <div
         id="checkout-cart"
-        className={`${mobilePane === 'cart' ? 'flex' : 'hidden'} lg:flex lg:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex-col justify-between`}
+        className={`${mobilePane === 'cart' ? 'flex' : 'hidden'} lg:flex lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-5 flex-col justify-between`}
       >
         <div>
           <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
@@ -523,9 +523,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
               cart.map((item) => (
                 <div
                   key={item.product.id}
-                  className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex items-center justify-between text-xs"
+                  className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex items-center justify-between gap-2 text-xs min-w-0"
                 >
-                  <div className="flex-1 pr-2">
+                  <div className="flex-1 min-w-0 pr-1">
                     <span className="text-white font-medium block truncate">
                       {item.product.name}
                     </span>

@@ -30,12 +30,12 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
   return (
     <section className="relative overflow-hidden pt-6 pb-10 sm:pt-10 sm:pb-16 lg:pt-16 lg:pb-24 border-b border-white/[0.08] bg-obsidian-grid">
       {/* Subtle architectural radial glow */}
-      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[760px] h-[340px] bg-amber-500/[0.08] blur-[140px] rounded-full pointer-events-none" />
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[min(760px,100vw)] h-[340px] bg-amber-500/[0.08] blur-[140px] rounded-full pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-stretch">
-          <div className="lg:col-span-7 flex flex-col justify-between space-y-8 py-2">
-            <div className="space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 min-w-0">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 items-stretch">
+          <div className="lg:col-span-7 min-w-0 flex flex-col justify-between space-y-8 py-2">
+            <div className="space-y-6 min-w-0">
               {/* Unboxed clean metadata eyebrow */}
               <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-zinc-400">
                 <span className="text-amber-400 font-semibold">Material Assemble</span>
@@ -46,8 +46,8 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
               </div>
 
               <h1
-                className="font-bold text-zinc-50 tracking-tight leading-[1.08] font-display text-balance max-w-2xl"
-                style={{ fontSize: 'clamp(2.25rem, 4.2vw, 3.75rem)' }}
+                className="font-bold text-zinc-50 tracking-tight leading-[1.08] font-display text-balance max-w-2xl break-words"
+                style={{ fontSize: 'clamp(1.85rem, 4.2vw, 3.75rem)' }}
               >
                 {t.hero.headlinePrefix}{' '}
                 <span className="text-amber-400">Smith Solutions E-Commerce</span>
@@ -57,13 +57,13 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 {t.hero.subheadline}
               </p>
 
-              <div className="pt-2 flex flex-wrap items-center gap-3">
+              <div className="pt-2 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
                 {onOpenMerchant && (
                   <button
                     onClick={onOpenMerchant}
-                    className="px-5 py-3 text-sm sm:text-base font-semibold text-zinc-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-[0_6px_28px_-6px_rgba(245,158,11,0.45)] transition-all duration-150 flex items-center gap-2 whitespace-nowrap min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                    className="px-5 py-3 text-sm sm:text-base font-semibold text-zinc-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-[0_6px_28px_-6px_rgba(245,158,11,0.45)] transition-all duration-150 flex items-center justify-center gap-2 sm:whitespace-nowrap text-center min-h-[46px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
                   >
-                    <Store className="w-4 h-4 stroke-[2.2]" />
+                    <Store className="w-4 h-4 stroke-[2.2] shrink-0" />
                     <span>{t.hero.ctaCreateStore}</span>
                   </button>
                 )}
@@ -71,9 +71,9 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 {onOpenMarketplace && (
                   <button
                     onClick={onOpenMarketplace}
-                    className="px-5 py-3 text-sm sm:text-base font-semibold text-zinc-100 bg-[#111114] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/40 rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50"
+                    className="px-5 py-3 text-sm sm:text-base font-semibold text-zinc-100 bg-[#111114] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/40 rounded-lg transition-colors flex items-center justify-center gap-2 sm:whitespace-nowrap text-center min-h-[46px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50"
                   >
-                    <ShoppingBag className="w-4 h-4 text-amber-400" />
+                    <ShoppingBag className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>{t.hero.ctaViewStores}</span>
                   </button>
                 )}
@@ -81,10 +81,10 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 {showWarehousePos && (
                   <button
                     onClick={onOpenApp}
-                    className="px-5 py-3 text-sm sm:text-base font-medium text-zinc-300 hover:text-zinc-50 bg-transparent hover:bg-white/[0.04] border border-white/[0.08] rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap min-h-[44px]"
+                    className="px-5 py-3 text-sm sm:text-base font-medium text-zinc-300 hover:text-zinc-50 bg-transparent hover:bg-white/[0.04] border border-white/[0.08] rounded-lg transition-colors flex items-center justify-center gap-2 sm:whitespace-nowrap text-center min-h-[46px]"
                   >
                     <span>{t.hero.ctaOpenWarehouse}</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-4 h-4 shrink-0" />
                   </button>
                 )}
               </div>
@@ -93,7 +93,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
                 {/* Buyer Card */}
                 <div
-                  className={`rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
+                  className={`min-w-0 rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
                     userRole === 'buyer'
                       ? 'border-zinc-500/50'
                       : 'border-white/[0.08] hover:border-white/[0.16]'
@@ -115,17 +115,17 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                     <button
                       type="button"
                       onClick={onOpenMarketplace}
-                      className="w-full py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-zinc-100 flex items-center justify-between gap-2 transition-colors min-h-[40px]"
+                      className="w-full py-2.5 px-3.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-zinc-100 flex items-center justify-between gap-2 transition-colors min-h-[42px] mt-auto"
                     >
-                      <span>{t.hero.buyerCardCta}</span>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
+                      <span className="truncate">{t.hero.buyerCardCta}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                     </button>
                   )}
                 </div>
 
                 {/* Seller Card */}
                 <div
-                  className={`rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
+                  className={`min-w-0 rounded-xl p-4 bg-[#111114] border transition-colors flex flex-col justify-between gap-3 ${
                     userRole === 'seller'
                       ? 'border-amber-400/50'
                       : 'border-amber-400/20 hover:border-amber-400/40'
@@ -143,25 +143,25 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                       {t.hero.sellerCardDesc}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 mt-auto">
                     {onOpenMerchant && (
                       <button
                         type="button"
                         onClick={onOpenMerchant}
-                        className="flex-1 py-2 px-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-bold text-zinc-950 flex items-center justify-center gap-1.5 transition-colors min-h-[40px] whitespace-nowrap"
+                        className="flex-1 py-2.5 px-3.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-xs font-bold text-zinc-950 flex items-center justify-center gap-1.5 transition-colors min-h-[42px] text-center"
                       >
                         <span>{t.hero.sellerCardCta}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     )}
                     {onAskVectorSellerGuide && (
                       <button
                         type="button"
                         onClick={onAskVectorSellerGuide}
-                        className="py-2 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5 transition-colors min-h-[40px] whitespace-nowrap shrink-0"
+                        className="py-2.5 px-3.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs font-semibold text-amber-300 flex items-center justify-center gap-1.5 transition-colors min-h-[42px] shrink-0"
                         title={t.hero.sellerGuideCta}
                       >
-                        <Compass className="w-3.5 h-3.5 text-amber-400" />
+                        <Compass className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span>{t.hero.sellerGuideCta}</span>
                       </button>
                     )}
@@ -171,21 +171,21 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             </div>
 
             {/* Clean hairline tabular KPI strip */}
-            <div className="pt-6 border-t border-white/[0.08] grid grid-cols-3 gap-3 sm:gap-6 text-[11px] sm:text-sm text-zinc-400">
-              <div className="flex flex-col gap-1">
-                <span className="font-mono font-bold text-lg sm:text-2xl text-zinc-50 tabular-nums">
+            <div className="pt-6 border-t border-white/[0.08] grid grid-cols-3 gap-2.5 sm:gap-6 text-[11px] sm:text-sm text-zinc-400">
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="font-mono font-bold text-base sm:text-2xl text-zinc-50 tabular-nums">
                   {t.hero.stat1Val}
                 </span>
                 <span className="text-zinc-400 leading-snug">{t.hero.stat1Desc}</span>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="font-mono font-bold text-lg sm:text-2xl text-amber-400 tabular-nums">
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="font-mono font-bold text-base sm:text-2xl text-amber-400 tabular-nums">
                   {t.hero.stat2Val}
                 </span>
                 <span className="text-zinc-400 leading-snug">{t.hero.stat2Desc}</span>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="font-mono font-bold text-lg sm:text-2xl text-zinc-50 tabular-nums">
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="font-mono font-bold text-base sm:text-2xl text-zinc-50 tabular-nums">
                   {t.hero.stat3Val}
                 </span>
                 <span className="text-zinc-400 leading-snug">{t.hero.stat3Desc}</span>
@@ -194,7 +194,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           </div>
 
           {/* Animated Platform Logo GIF Showcase */}
-          <div className="lg:col-span-5 relative flex">
+          <div className="lg:col-span-5 min-w-0 relative flex">
             <div className="relative w-full min-h-[300px] sm:min-h-[380px] lg:h-full rounded-2xl overflow-hidden border border-white/[0.1] bg-[#0b0b0e] shadow-2xl shadow-black/90 flex flex-col justify-between p-4 sm:p-6">
               <div className="flex-1 flex items-center justify-center py-2">
                 {!gifError ? (
@@ -203,25 +203,25 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                     alt="Smith Solutions E-Commerce Animated Platform Logo"
                     referrerPolicy="no-referrer"
                     onError={() => setGifError(true)}
-                    className="w-44 h-44 sm:w-60 sm:h-60 lg:w-72 lg:h-72 object-contain rounded-3xl select-none"
+                    className="w-40 h-40 sm:w-56 sm:h-56 lg:w-72 lg:h-72 object-contain rounded-3xl select-none max-w-full"
                   />
                 ) : (
                   <MaterialAssembleLogo size="xl" showText={false} useAnimatedGif={false} />
                 )}
               </div>
 
-              <div className="p-4 rounded-xl bg-[#111114]/95 border border-white/[0.08] text-xs space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
+              <div className="p-3.5 sm:p-4 rounded-xl bg-[#111114]/95 border border-white/[0.08] text-xs space-y-2.5 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-semibold text-zinc-100">{t.hero.overlayTitle}</span>
                   <span className="text-amber-400 font-mono tabular-nums">{t.hero.overlayItems}</span>
                 </div>
-                <div className="flex items-center justify-between text-zinc-400 pt-2 border-t border-white/[0.08]">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-400 pt-2 border-t border-white/[0.08]">
                   <span>{t.hero.overlayRate}</span>
                   <span className="font-mono text-zinc-100 font-medium tabular-nums">
                     {exchangeRate.toFixed(2)} Bs / USD
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-zinc-400">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-400">
                   <span>{t.hero.overlayValue}</span>
                   <span className="font-mono text-amber-400 font-bold tabular-nums">$7,420.00 USD</span>
                 </div>

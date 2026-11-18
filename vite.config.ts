@@ -69,6 +69,8 @@ export default defineConfig(({ mode }) => {
           orientation: 'any',
           scope: manifestStartUrl,
           start_url: manifestStartUrl,
+          prefer_related_applications: false,
+          categories: ['business', 'shopping', 'productivity'],
           icons: [
             {
               src: 'pwa-192x192.png',

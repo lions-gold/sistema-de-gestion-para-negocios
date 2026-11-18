@@ -5,6 +5,8 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+export type InstallPlatform = 'ios' | 'mac' | 'android' | 'desktop';
+
 export function usePWAInstall() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -14,10 +16,30 @@ export function usePWAInstall() {
     (window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as { standalone?: boolean }).standalone === true);
 
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const platformStr = typeof navigator !== 'undefined' ? navigator.platform || '' : '';
+  const maxTouchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints || 0 : 0;
+
+  // Detect iPhone, iPad (including iPadOS 13+ reporting MacIntel with touch points), or iPod
   const isIOS =
-    typeof navigator !== 'undefined' &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+    typeof window !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(ua) || (platformStr === 'MacIntel' && maxTouchPoints > 1)) &&
     !(window as { MSStream?: unknown }).MSStream;
+
+  const isAndroid = /Android/i.test(ua);
+  const isMac = !isIOS && (/Macintosh|Mac OS X/i.test(ua) || /Mac/i.test(platformStr));
+  const isSafari =
+    /Safari/i.test(ua) &&
+    !/Chrome|Chromium|CriOS|Edg|EdgiOS|EdgA|OPR|Firefox|FxiOS|SamsungBrowser/i.test(ua);
+  const isInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|BytedanceWebview|TikTok/i.test(ua);
+
+  const platform: InstallPlatform = isIOS
+    ? 'ios'
+    : isMac
+      ? 'mac'
+      : isAndroid
+        ? 'android'
+        : 'desktop';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -59,6 +81,11 @@ export function usePWAInstall() {
     canInstall: Boolean(installPrompt) && !isInstalled && !isStandalone,
     isInstalled: isInstalled || isStandalone,
     isIOS: isIOS && !isStandalone,
+    isMac: isMac && !isStandalone,
+    isAndroid: isAndroid && !isStandalone,
+    isSafari,
+    isInAppBrowser,
+    platform,
     promptInstall,
   };
 }

@@ -13,22 +13,29 @@ export interface DolarRateResponse {
 
 export interface BCVRatesState {
   bcv: number;
+  bcvExact?: number;
   paralelo: number;
   lastUpdated: string;
+  source?: string;
   isLive: boolean;
   activeRateType: 'bcv' | 'paralelo' | 'custom';
 }
 
 const BCV_CACHE_KEY = 'smith_offline_bcv_v1';
-const FALLBACK_BCV = 896.12;
-const FALLBACK_PARALELO = 1024.24;
+const FALLBACK_BCV = 916.65;
+const FALLBACK_PARALELO = 1072.46;
 
-async function fetchWithTimeout(url: string, timeoutMs = 4500): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs = 4500,
+  noStore = false
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       headers: { Accept: 'application/json' },
+      cache: noStore ? 'no-store' : 'default',
       signal: controller.signal,
     });
   } finally {
@@ -59,9 +66,10 @@ function saveCachedBcv(rates: BCVRatesState): void {
 }
 
 /**
- * Fetches real-time BCV and parallel dollar rates, caching locally for offline resilience.
+ * Fetches real-time official BCV (bcv.org.ve / DolarApi oficial) and parallel dollar rates,
+ * caching locally for offline resilience.
  */
-export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
+export async function fetchLiveExchangeRates(forceRefresh = false): Promise<BCVRatesState> {
   // If offline or manual offline mode active, return last locally saved live rate immediately
   if (readManualOfflineFlag() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     const cached = readCachedBcv();
@@ -75,21 +83,25 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
       bcv: FALLBACK_BCV,
       paralelo: FALLBACK_PARALELO,
       lastUpdated: formatDate(new Date().toISOString()),
+      source: 'Respaldo Offline BCV',
       isLive: false,
       activeRateType: 'bcv',
     };
   }
 
-  // Strategy 0: Same-origin server proxy (/api/bcv)
+  // Strategy 0: Same-origin server proxy (/api/bcv -> queries official bcv.org.ve + DolarApi)
   try {
-    const res = await fetchWithTimeout('/api/bcv', 4000);
+    const endpoint = forceRefresh ? `/api/bcv?refresh=1&_t=${Date.now()}` : '/api/bcv';
+    const res = await fetchWithTimeout(endpoint, 5000, forceRefresh);
     if (res.ok) {
       const data = (await res.json()) as Partial<BCVRatesState>;
       if (typeof data.bcv === 'number' && data.bcv > 0) {
         const result: BCVRatesState = {
           bcv: Number(data.bcv.toFixed(2)),
-          paralelo: Number((data.paralelo || data.bcv * 1.14).toFixed(2)),
+          bcvExact: typeof data.bcvExact === 'number' ? data.bcvExact : undefined,
+          paralelo: Number((data.paralelo || data.bcv * 1.17).toFixed(2)),
           lastUpdated: data.lastUpdated ? formatDate(data.lastUpdated) : formatDate(new Date().toISOString()),
+          source: data.source || 'BCV Oficial',
           isLive: true,
           activeRateType: 'bcv',
         };
@@ -103,7 +115,7 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 1: Direct DolarApi Venezuela
   try {
-    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares', 4500);
+    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares', 4500, forceRefresh);
 
     if (res.ok) {
       const data: DolarRateResponse[] = await res.json();
@@ -123,8 +135,10 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
       const result: BCVRatesState = {
         bcv: Number(bcvRate.toFixed(2)),
+        bcvExact: Number(bcvRate.toFixed(4)),
         paralelo: Number(paraleloRate.toFixed(2)),
         lastUpdated: formatDate(dateStr),
+        source: 'DolarApi Oficial (BCV)',
         isLive: true,
         activeRateType: 'bcv',
       };
@@ -137,13 +151,15 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
 
   // Strategy 2: Single oficial endpoint
   try {
-    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares/oficial', 4500);
+    const res = await fetchWithTimeout('https://ve.dolarapi.com/v1/dolares/oficial', 4500, forceRefresh);
     if (res.ok) {
       const data: DolarRateResponse = await res.json();
       const result: BCVRatesState = {
         bcv: Number(data.promedio.toFixed(2)),
-        paralelo: Number((data.promedio * 1.14).toFixed(2)),
+        bcvExact: Number(data.promedio.toFixed(4)),
+        paralelo: Number((data.promedio * 1.17).toFixed(2)),
         lastUpdated: formatDate(data.fechaActualizacion),
+        source: 'DolarApi Oficial (BCV)',
         isLive: true,
         activeRateType: 'bcv',
       };
@@ -152,28 +168,6 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
     }
   } catch (err) {
     console.warn('DolarApi oficial single endpoint failed', err);
-  }
-
-  // Strategy 3: PyDolarVenezuela API fallback
-  try {
-    const res = await fetchWithTimeout('https://pydolarvenezuela-api.vercel.app/api/v1/dollar?page=bcv', 4500);
-    if (res.ok) {
-      const data = await res.json();
-      const price = data?.monitors?.usd?.price || data?.price;
-      if (price) {
-        const result: BCVRatesState = {
-          bcv: Number(Number(price).toFixed(2)),
-          paralelo: Number((Number(price) * 1.14).toFixed(2)),
-          lastUpdated: formatDate(new Date().toISOString()),
-          isLive: true,
-          activeRateType: 'bcv',
-        };
-        saveCachedBcv(result);
-        return result;
-      }
-    }
-  } catch (err) {
-    console.warn('PyDolar fallback failed', err);
   }
 
   const cached = readCachedBcv();
@@ -188,6 +182,7 @@ export async function fetchLiveExchangeRates(): Promise<BCVRatesState> {
     bcv: FALLBACK_BCV,
     paralelo: FALLBACK_PARALELO,
     lastUpdated: formatDate(new Date().toISOString()),
+    source: 'Respaldo BCV',
     isLive: false,
     activeRateType: 'bcv',
   };

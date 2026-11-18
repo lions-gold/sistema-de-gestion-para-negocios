@@ -800,53 +800,53 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   });
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 w-full min-w-0">
       {/* Top Admin Header */}
-      <div className="bg-[#111114]/95 border border-amber-500/35 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
+      <div className="bg-[#111114]/95 border border-amber-500/35 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
+        <div className="flex items-center gap-3.5 min-w-0">
           <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-6 h-6 text-amber-400" />
           </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-white font-display">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-extrabold text-white font-display">
               {t.admin.panelTitle}
             </h1>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400 break-words">
               {t.admin.verifiedSession}{' '}
-              <span className="font-mono text-emerald-300">{user.email}</span>
+              <span className="font-mono text-emerald-300 break-all">{user.email}</span>
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto md:justify-end">
           <button
             disabled={isBusy}
             onClick={handleToggleGlobalWarehousePos}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition-colors min-h-[40px] ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-colors min-h-[40px] whitespace-nowrap ${
               billing.warehousePosEnabled
                 ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30'
                 : 'bg-[#09090b] border-white/[0.1] text-zinc-300 hover:border-amber-500/40'
             }`}
           >
-            <Package className="w-4 h-4" />
+            <Package className="w-4 h-4 shrink-0" />
             <span>{billing.warehousePosEnabled ? t.admin.whGlobalOn : t.admin.whGlobalOff}</span>
           </button>
 
           {onOpenWarehouseApp && (
             <button
               onClick={() => onOpenWarehouseApp(stores[0]?.id)}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1.5 min-h-[40px]"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
             >
-              <Package className="w-4 h-4" />
+              <Package className="w-4 h-4 shrink-0" />
               <span>{t.admin.openWhAdmin}</span>
             </button>
           )}
 
           <button
             onClick={() => signOutAccount()}
-            className="px-4 py-2 rounded-xl bg-[#09090b] border border-white/[0.1] hover:border-red-500/40 text-xs text-zinc-300 flex items-center gap-2 min-h-[40px]"
+            className="px-4 py-2 rounded-xl bg-[#09090b] border border-white/[0.1] hover:border-red-500/40 text-xs text-zinc-300 flex items-center justify-center gap-2 min-h-[40px] whitespace-nowrap"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
             <span>{t.admin.signOutAdmin}</span>
           </button>
         </div>
@@ -1592,7 +1592,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <form
             onSubmit={handleSendAdminEmails}
-            className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-5"
+            className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-5"
           >
             <div className="space-y-1">
               <h2 className="text-base font-bold text-white font-display flex items-center gap-2">
@@ -1773,7 +1773,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           </form>
 
           {/* Sent Email History */}
-          <div className="lg:col-span-5 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+          <div className="lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
             <h3 className="text-sm font-bold text-white font-display">
               {t.admin.emailHistoryTitle} ({adminEmails.length})
             </h3>
@@ -2104,7 +2104,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     <form
                       onSubmit={(e) => handleSaveStoreSubMethod(e, selectedSubStore)}
-                      className="lg:col-span-5 bg-[#111114] border border-amber-500/25 rounded-2xl p-6 space-y-4 h-fit"
+                      className="lg:col-span-5 min-w-0 bg-[#111114] border border-amber-500/25 rounded-2xl p-5 sm:p-6 space-y-4 h-fit"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -2260,7 +2260,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       </button>
                     </form>
 
-                    <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+                    <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
                       <div className="border-b border-white/[0.08] pb-3.5">
                         <h3 className="text-sm sm:text-base font-bold text-white font-display">
                           Métodos Asignados a "{selectedSubStore.storeName}" (
@@ -2437,7 +2437,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               {/* Left Form: Add / Edit Subscription Payment Method */}
               <form
                 onSubmit={handleSaveManualPaymentMethod}
-                className="lg:col-span-5 bg-[#111114] border border-amber-500/25 rounded-2xl p-6 space-y-4 h-fit"
+                className="lg:col-span-5 min-w-0 bg-[#111114] border border-amber-500/25 rounded-2xl p-5 sm:p-6 space-y-4 h-fit"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -2573,7 +2573,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <button
                   type="submit"
                   disabled={isBusy}
-                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 whitespace-nowrap"
+                  className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 text-center"
                 >
                   <Save className="w-4 h-4" />
                   <span>
@@ -2585,7 +2585,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               </form>
 
               {/* Right Column: Search, Filter & Methods List */}
-              <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+              <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-3.5">
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-white font-display">
@@ -2943,7 +2943,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <form
               onSubmit={handleSaveSalesPaymentMethod}
-              className="lg:col-span-5 bg-[#111114] border border-amber-500/25 rounded-2xl p-6 space-y-4 h-fit"
+              className="lg:col-span-5 min-w-0 bg-[#111114] border border-amber-500/25 rounded-2xl p-5 sm:p-6 space-y-4 h-fit"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -3068,7 +3068,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <button
                 type="submit"
                 disabled={isBusy}
-                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 whitespace-nowrap"
+                className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 text-center"
               >
                 <Save className="w-4 h-4" />
                 <span>
@@ -3079,7 +3079,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               </button>
             </form>
 
-            <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+            <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-white font-display">
@@ -3287,7 +3287,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 <form
                   onSubmit={(e) => handleSaveStoreSubMethod(e, modalStore)}
-                  className="lg:col-span-5 bg-[#09090b] border border-white/[0.08] rounded-xl p-4 space-y-3.5 h-fit"
+                  className="lg:col-span-5 min-w-0 bg-[#09090b] border border-white/[0.08] rounded-xl p-4 space-y-3.5 h-fit"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
@@ -3435,7 +3435,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   </button>
                 </form>
 
-                <div className="lg:col-span-7 space-y-3">
+                <div className="lg:col-span-7 min-w-0 space-y-3">
                   <div className="text-xs font-bold text-zinc-200 flex items-center justify-between">
                     <span>
                       Métodos configurados para esta tienda ({modalMethods.length})

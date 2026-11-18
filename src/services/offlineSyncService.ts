@@ -97,7 +97,7 @@ export interface LocalWarehouseState {
   updatedAt: string;
 }
 
-export function createEmptyWarehouseState(exchangeRate = 896.12): LocalWarehouseState {
+export function createEmptyWarehouseState(exchangeRate = 916.65): LocalWarehouseState {
   return {
     products: [],
     debtors: [],
@@ -674,7 +674,7 @@ export function saveLocalWarehouseState(
   safeWriteJSON(KEYS.warehouseState, payload);
 }
 
-export function getStoreWarehouseState(storeId: string, fallbackRate = 896.12): LocalWarehouseState {
+export function getStoreWarehouseState(storeId: string, fallbackRate = 916.65): LocalWarehouseState {
   const existing = loadLocalWarehouseState(storeId);
   if (existing) {
     return {

@@ -1770,7 +1770,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Traceability Grid: Batch Selector (Left) + Visual Timeline (Right) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left: Batch Selector */}
-            <div className="lg:col-span-5 space-y-3">
+            <div className="lg:col-span-5 min-w-0 space-y-3">
               <div className="relative">
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -1796,8 +1796,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-mono text-xs font-bold text-blue-400">
                               {trace.batchNumber}
                             </span>
@@ -1813,7 +1813,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           </span>
                         </div>
 
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                           trace.status === 'En Almacén'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                             : trace.status === 'En Barra'
@@ -1837,7 +1837,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
 
             {/* Right: Detailed End-to-End Timeline */}
-            <div className="lg:col-span-7 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 space-y-6">
+            <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 space-y-6">
               {currentTrace ? (
                 <>
                   {/* Batch Summary Header */}

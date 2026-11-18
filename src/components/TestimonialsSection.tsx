@@ -17,7 +17,7 @@ export const TestimonialsSection: React.FC = () => {
         {t.testimonials.items.map((item, idx) => (
           <div
             key={idx}
-            className="obsidian-surface rounded-2xl p-6 flex flex-col justify-between hover:border-amber-400/30 transition-colors space-y-5"
+            className="min-w-0 obsidian-surface rounded-2xl p-5 sm:p-6 flex flex-col justify-between hover:border-amber-400/30 transition-colors space-y-5"
           >
             <div>
               <div className="text-amber-400 font-mono text-xs font-semibold mb-3 tabular-nums">

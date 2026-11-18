@@ -5,6 +5,8 @@ import { AppMainView } from '../utils/seoAndAnalytics';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 
+import { PWAInstallButton } from './PWAInstallButton';
+
 interface FooterProps {
   onOpenApp: (tab?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => void;
   onNavigateView?: (view: AppMainView) => void;
@@ -26,10 +28,10 @@ export const Footer: React.FC<FooterProps> = ({
   };
 
   return (
-    <footer className="bg-[#070709] border-t border-white/[0.08] text-zinc-400 text-xs py-14">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+    <footer className="w-full bg-[#070709] border-t border-white/[0.08] text-zinc-400 text-xs pt-12 pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-14 safe-area-x">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 min-w-0">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-          <div className="md:col-span-5 space-y-4">
+          <div className="md:col-span-5 min-w-0 space-y-4">
             <MaterialAssembleLogo size="md" />
             <p className="text-zinc-400 text-xs leading-relaxed max-w-sm">
               {t.footer.mission}
@@ -49,15 +51,16 @@ export const Footer: React.FC<FooterProps> = ({
               </button>
             </div>
 
-            <div className="pt-1 flex items-center gap-2.5">
+            <div className="pt-1 flex flex-wrap items-center gap-2.5">
               <span className="text-[11px] text-zinc-400 font-medium">
                 {t.footer.languageTitle}
               </span>
-              <LanguageSwitcher />
+              <LanguageSwitcher placement="up" />
+              <PWAInstallButton variant="footer" />
             </div>
           </div>
 
-          <div className="md:col-span-3 space-y-2.5">
+          <div className="md:col-span-3 min-w-0 space-y-2.5">
             <span className="text-zinc-100 font-semibold block text-xs tracking-wide font-display">
               {t.footer.ecosystemTitle}
             </span>
@@ -126,7 +129,7 @@ export const Footer: React.FC<FooterProps> = ({
                   </li>
                 </>
               )}
-              <li className="pt-2 flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+              <li className="pt-2 flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-500">
                 <a
                   href={`${import.meta.env.BASE_URL}sitemap.xml`}
                   target="_blank"
@@ -159,20 +162,20 @@ export const Footer: React.FC<FooterProps> = ({
             </ul>
           </div>
 
-          <div className="md:col-span-4 space-y-3 bg-[#111114] p-5 rounded-xl border border-white/[0.08]">
+          <div className="md:col-span-4 min-w-0 space-y-3 bg-[#111114] p-5 rounded-xl border border-white/[0.08]">
             <div className="text-zinc-100 font-semibold text-xs flex items-center gap-1.5 font-display">
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
               <span>{t.footer.devCardTitle}</span>
             </div>
 
             <div className="text-amber-400 font-semibold text-sm">Smith Bussines Solutions 2026</div>
 
-            <div className="space-y-2 text-xs text-zinc-300">
-              <div className="flex items-center gap-2">
+            <div className="space-y-2 text-xs text-zinc-300 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
                 <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <a
                   href="mailto:empresaalhadiqainvest@gmail.com"
-                  className="hover:text-white transition-colors truncate"
+                  className="hover:text-white transition-colors truncate min-w-0"
                 >
                   empresaalhadiqainvest@gmail.com
                 </a>
