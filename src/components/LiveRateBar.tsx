@@ -28,7 +28,7 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
   onUpdateRate,
   bcvRate = 916.65,
   paraleloRate = 1072.46,
-  lastUpdated = 'Hoy',
+  lastUpdated,
   source,
   isLive = true,
   isLoading = false,
@@ -36,7 +36,8 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
   activeRateType = 'bcv',
   onSelectRateType,
 }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
+  const displayLastUpdated = lastUpdated || tr('Hoy', 'Today', '今天');
   const [isEditing, setIsEditing] = useState(false);
   const [tempRate, setTempRate] = useState(rate.toString());
   const [calcUSD, setCalcUSD] = useState<number>(20);
@@ -71,7 +72,10 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
           {/* Unboxed clean connection label */}
           <div
             className="flex items-center gap-1.5 text-[11px] font-medium shrink-0 h-8 sm:h-9 px-0.5"
-            title={source || 'Banco Central de Venezuela'}
+            title={
+              source ||
+              tr('Banco Central de Venezuela', 'Central Bank of Venezuela (BCV)', '委内瑞拉中央银行 (BCV)')
+            }
           >
             {isLive ? (
               <>
@@ -168,7 +172,7 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
 
           <span className="text-zinc-500 text-[11px] hidden xl:inline tabular-nums whitespace-nowrap">
             {source ? `${source} · ` : ''}
-            {t.liveRate.updated}: {lastUpdated}
+            {t.liveRate.updated}: {displayLastUpdated}
           </span>
         </div>
 

@@ -16,6 +16,7 @@ import {
   Search,
 } from 'lucide-react';
 import { VENEZUELA_LOCALE, VENEZUELA_TIMEZONE } from '../utils/venezuelaTime';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -106,6 +107,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onUpdateStock,
   onSelectProduct,
 }) => {
+  const { tr } = useLanguage();
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
@@ -247,13 +249,21 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
         if (typeof window !== 'undefined' && !window.isSecureContext) {
           setCameraError(
-            'La cámara en móvil/iPhone requiere conexión HTTPS segura. Usa el campo manual o lector USB abajo.'
+            tr(
+              'La cámara en móvil/iPhone requiere conexión HTTPS segura. Usa el campo manual o lector USB abajo.',
+              'Mobile/iPhone camera requires a secure HTTPS connection. Use manual input or USB scanner below.',
+              '手机端调用摄像头需要安全的 HTTPS 连接，请使用下方手动输入或 USB 扫码枪。'
+            )
           );
           return;
         }
         if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
           setCameraError(
-            'Este navegador no expone cámara en vivo. Puedes escribir el código de barras o usar lector USB abajo.'
+            tr(
+              'Este navegador no expone cámara en vivo. Puedes escribir el código de barras o usar lector USB abajo.',
+              'This browser does not expose a live camera. Type the barcode or use a USB scanner below.',
+              '当前浏览器不支持实时调用摄像头，可在下方手动输入条码或使用 USB 扫码枪。'
+            )
           );
           return;
         }
@@ -330,7 +340,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         }
 
         if (!started) {
-          throw lastErr || new Error('No se pudo inicializar ninguna cámara');
+          throw lastErr || new Error('Camera init failed');
         }
 
         setScannerActive(true);
@@ -340,11 +350,19 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         const errMsg = err instanceof Error ? err.message : String(err);
         if (errMsg.includes('NotAllowedError') || errMsg.includes('Permission')) {
           setCameraError(
-            'Permiso de cámara denegado. Usa el lector USB / entrada manual o los códigos de muestra abajo.'
+            tr(
+              'Permiso de cámara denegado. Usa el lector USB / entrada manual o los códigos de muestra abajo.',
+              'Camera permission denied. Use USB scanner / manual input or sample codes below.',
+              '摄像头权限被拒绝，请使用 USB 扫码枪 / 手动输入或点击下方测试条码。'
+            )
           );
         } else {
           setCameraError(
-            'No se detectó cámara activa. En PC o móvil puedes usar el campo manual / lector USB abajo.'
+            tr(
+              'No se detectó cámara activa. En PC o móvil puedes usar el campo manual / lector USB abajo.',
+              'No active camera detected. Use manual input or a USB barcode scanner below.',
+              '未检测到可用摄像头，请使用下方手动输入框或 USB 扫码枪。'
+            )
           );
         }
       }
@@ -425,10 +443,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-white text-sm sm:text-base font-display truncate">
-                Lector de Códigos de Barra
+                {tr('Lector de Códigos de Barra', 'Barcode Scanner', '条形码与二维码扫描')}
               </h3>
               <p className="text-[11px] text-zinc-400 truncate">
-                Apunta la cámara del móvil a la botella o caja
+                {tr(
+                  'Apunta la cámara del móvil a la botella o caja',
+                  'Point your camera at the product barcode or box',
+                  '请将摄像头对准商品包装上的条形码'
+                )}
               </p>
             </div>
           </div>
@@ -439,7 +461,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 type="button"
                 onClick={handleCycleCamera}
                 className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-amber-400 rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
-                title="Cambiar lente / cámara"
+                title={tr('Cambiar lente / cámara', 'Switch camera lens', '切换摄像头')}
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
@@ -448,7 +470,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               type="button"
               onClick={() => setSoundEnabled(!soundEnabled)}
               className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
-              title={soundEnabled ? 'Silenciar pitido' : 'Activar sonido'}
+              title={
+                soundEnabled
+                  ? tr('Silenciar pitido', 'Mute beep', '静音提示音')
+                  : tr('Activar sonido', 'Enable beep', '开启提示音')
+              }
             >
               {soundEnabled ? (
                 <Volume2 className="w-4 h-4 text-amber-400" />
@@ -460,7 +486,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               type="button"
               onClick={onClose}
               className="min-w-[44px] min-h-[44px] p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors flex items-center justify-center"
-              aria-label="Cerrar escáner"
+              aria-label={tr('Cerrar escáner', 'Close scanner', '关闭扫描器')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -486,7 +512,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
 
             <span className="text-[11px] text-amber-300 font-medium bg-black/70 px-3 py-1 rounded-full mt-4 backdrop-blur-sm border border-amber-500/20">
-              Enfoca el código de barras aquí
+              {tr('Enfoca el código de barras aquí', 'Align barcode inside frame', '将条形码对准框内')}
             </span>
           </div>
 
@@ -495,7 +521,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               <AlertCircle className="w-10 h-10 text-amber-400" />
               <p className="text-xs text-zinc-300 max-w-xs leading-relaxed">{cameraError}</p>
               <span className="text-[11px] text-amber-300 font-semibold">
-                ¡Puedes tocar los códigos de muestra abajo para probar!
+                {tr(
+                  '¡Puedes tocar los códigos de muestra abajo para probar!',
+                  'Tap any sample barcode below to test!',
+                  '您可以点击下方快速条码立即测试！'
+                )}
               </span>
             </div>
           )}
@@ -521,7 +551,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 inputMode="text"
                 value={manualCodeInput}
                 onChange={(e) => setManualCodeInput(e.target.value)}
-                placeholder="Escribir código de barras / SKU o usar pistola USB..."
+                placeholder={tr(
+                  'Escribir código de barras / SKU o usar pistola USB...',
+                  'Type barcode / SKU or scan with USB gun...',
+                  '输入条形码 / SKU 或使用 USB 扫码枪...'
+                )}
                 className="w-full min-h-[42px] pl-9 pr-3 py-2 bg-[#09090b] border border-white/[0.08] rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-500"
               />
             </div>
@@ -530,7 +564,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               className="min-h-[42px] px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition-colors"
             >
               <Search className="w-3.5 h-3.5" />
-              <span>Buscar</span>
+              <span>{tr('Buscar', 'Search', '查找')}</span>
             </button>
           </form>
 
@@ -541,13 +575,14 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    <span>Producto identificado</span>
+                    <span>{tr('Producto identificado', 'Product matched', '已识别商品')}</span>
                   </div>
                   <h4 className="text-white font-bold text-sm mt-0.5 font-display truncate">
                     {liveMatchedProduct.name}
                   </h4>
                   <span className="text-zinc-400 text-[11px] font-mono block truncate">
-                    Código: {liveMatchedProduct.barcode} · SKU: {liveMatchedProduct.sku}
+                    {tr('Código:', 'Barcode:', '条码：')} {liveMatchedProduct.barcode} · SKU:{' '}
+                    {liveMatchedProduct.sku}
                   </span>
                 </div>
                 <div className="text-right shrink-0">
@@ -562,7 +597,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
               <div className="flex items-center justify-between text-xs text-zinc-300 pt-2 border-t border-white/[0.08]">
                 <span className="text-zinc-400 font-mono tabular-nums">
-                  Stock actual:{' '}
+                  {tr('Stock actual:', 'Current stock:', '当前库存：')}{' '}
                   <strong
                     className={
                       liveMatchedProduct.stock <= liveMatchedProduct.minStock
@@ -585,7 +620,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       className="px-3 py-1.5 min-h-[36px] bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-sm"
                     >
                       <ShoppingCart className="w-3.5 h-3.5" />
-                      <span>Agregar a Caja</span>
+                      <span>{tr('Agregar a Caja', 'Add to POS', '加入收银台')}</span>
                     </button>
                   )}
 
@@ -594,9 +629,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                       type="button"
                       onClick={() => onUpdateStock(liveMatchedProduct.id, 1)}
                       className="px-2.5 py-1.5 min-h-[36px] bg-[#111114] border border-white/[0.08] text-emerald-400 hover:bg-zinc-800/80 rounded-lg font-bold text-xs"
-                      title="Sumar 1 unidad recibida"
+                      title={tr('Sumar 1 unidad recibida', 'Add 1 unit in', '入库 +1 件')}
                     >
-                      +1 Entrada
+                      {tr('+1 Entrada', '+1 Stock In', '+1 入库')}
                     </button>
                   )}
                 </div>
@@ -605,10 +640,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           ) : lastScannedCode ? (
             <div className="p-3 bg-[#09090b] rounded-xl border border-amber-500/30 text-xs flex items-center justify-between">
               <div>
-                <span className="text-zinc-400 block">Código escaneado:</span>
+                <span className="text-zinc-400 block">
+                  {tr('Código escaneado:', 'Scanned code:', '已扫描条码：')}
+                </span>
                 <span className="font-mono text-white font-bold">{lastScannedCode}</span>
                 <span className="text-amber-400 block text-[11px]">
-                  No coincide con ningún producto en almacén
+                  {tr(
+                    'No coincide con ningún producto en almacén',
+                    'Does not match any product in warehouse',
+                    '仓库中未找到匹配商品'
+                  )}
                 </span>
               </div>
             </div>
@@ -619,7 +660,10 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
                 <History className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Últimos escaneos ({recentScans.length}/{MAX_RECENT_SCANS})</span>
+                <span>
+                  {tr('Últimos escaneos', 'Recent scans', '最近扫描')} ({recentScans.length}/
+                  {MAX_RECENT_SCANS})
+                </span>
               </div>
 
               {recentScans.length > 0 && (
@@ -629,14 +673,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   className="text-[11px] text-zinc-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/[0.04] transition-colors"
                 >
                   <Trash2 className="w-3 h-3" />
-                  <span>Limpiar</span>
+                  <span>{tr('Limpiar', 'Clear', '清空')}</span>
                 </button>
               )}
             </div>
 
             {recentScans.length === 0 ? (
               <p className="text-[11px] text-zinc-500 py-1">
-                Los últimos 5 productos que escanees en esta sesión aparecerán aquí para consulta rápida.
+                {tr(
+                  'Los últimos 5 productos que escanees en esta sesión aparecerán aquí para consulta rápida.',
+                  'The last 5 products you scan this session will appear here for quick access.',
+                  '本次会话最近扫描的 5 件商品将显示在此处以便快速查看。'
+                )}
               </p>
             ) : (
               <div className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-[#09090b] overflow-hidden">
@@ -689,8 +737,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                               onClose();
                             }}
                             className="p-2 min-w-[36px] min-h-[36px] rounded-lg bg-[#111114] hover:bg-amber-500 hover:text-zinc-950 border border-white/[0.08] text-amber-400 transition-colors flex items-center justify-center"
-                            title={`Agregar ${liveItem.name} a Caja`}
-                            aria-label={`Agregar ${liveItem.name} a Caja`}
+                            title={tr(
+                              `Agregar ${liveItem.name} a Caja`,
+                              `Add ${liveItem.name} to POS`,
+                              `将 ${liveItem.name} 加入收银台`
+                            )}
+                            aria-label={tr(
+                              `Agregar ${liveItem.name} a Caja`,
+                              `Add ${liveItem.name} to POS`,
+                              `将 ${liveItem.name} 加入收银台`
+                            )}
                           >
                             <ShoppingCart className="w-3.5 h-3.5" />
                           </button>
@@ -707,7 +763,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           {products.length > 0 && (
             <div className="space-y-1.5 border-t border-white/[0.08] pt-3">
               <span className="text-[11px] text-zinc-400 font-medium block">
-                Lectura rápida de inventario (1 toque):
+                {tr(
+                  'Lectura rápida de inventario (1 toque):',
+                  'Quick inventory scan (1 tap):',
+                  '库存快速扫码测试（一键）：'
+                )}
               </span>
               <div className="grid grid-cols-2 gap-1.5">
                 {products.slice(0, 4).map((p) => (

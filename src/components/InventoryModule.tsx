@@ -82,6 +82,7 @@ import {
   parseInventoryImportFile,
 } from '../utils/inventoryCatalogIO';
 import { compressImageFileToDataURL } from '../services/saasService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface InventoryModuleProps {
   products: Product[];
@@ -124,6 +125,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   onSyncAllToStore,
   isSyncingToStore = false,
 }) => {
+  const { tr } = useLanguage();
   // Main Sub-Tab: 'catalog' | 'audit' | 'traceability'
   const [activeSubTab, setActiveSubTab] = useState<'catalog' | 'audit' | 'traceability'>('catalog');
 
@@ -199,7 +201,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [auditQty, setAuditQty] = useState('1');
   const [auditLocation, setAuditLocation] = useState('Depósito Principal');
   const [auditAuditor, setAuditAuditor] = useState(
-    activeStore?.registeredOwnerName || 'Responsable de Almacén'
+    activeStore?.registeredOwnerName || tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')
   );
   const [auditNotes, setAuditNotes] = useState('');
   const [auditDiscountStock, setAuditDiscountStock] = useState(true);
@@ -221,7 +223,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [newStepDescription, setNewStepDescription] = useState('');
   const [newStepRef, setNewStepRef] = useState('');
   const [newStepAuditor, setNewStepAuditor] = useState(
-    activeStore?.registeredOwnerName || 'Responsable de Almacén'
+    activeStore?.registeredOwnerName || tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')
   );
 
   const isProductSyncedToStore = (prod: Product) => {
@@ -323,18 +325,26 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             dispatchStoreEmail({
               action: 'stock_alert',
               storeId: currentStoreId,
-              storeName: activeStore?.storeName || 'Almacén & POS',
+              storeName: activeStore?.storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与 POS'),
               exchangeRate,
               config: storeCfg,
-              triggerEvent: 'Ajuste manual de stock en Almacén',
+              triggerEvent: tr('Ajuste manual de stock en Almacén', 'Manual stock adjustment in Warehouse', '仓库手动库存调整'),
               products: [simulatedProd],
             })
               .then((res) => {
                 setEmailLogs(getStoreEmailLogs(currentStoreId));
                 setEmailToast({
                   message: res.ok
-                    ? `Alerta enviada (${storeCfg.provider.toUpperCase()}) a ${storeCfg.recipientEmail}: "${prod.name}" (${simulatedProd.stock}/${prod.minStock}).`
-                    : `Error enviando alerta a ${storeCfg.recipientEmail}: ${res.message}`,
+                    ? tr(
+                        `Alerta enviada (${storeCfg.provider.toUpperCase()}) a ${storeCfg.recipientEmail}: "${prod.name}" (${simulatedProd.stock}/${prod.minStock}).`,
+                        `Alert sent (${storeCfg.provider.toUpperCase()}) to ${storeCfg.recipientEmail}: "${prod.name}" (${simulatedProd.stock}/${prod.minStock}).`,
+                        `预警已发送（${storeCfg.provider.toUpperCase()}）至 ${storeCfg.recipientEmail}："${prod.name}"（${simulatedProd.stock}/${prod.minStock}）。`
+                      )
+                    : tr(
+                        `Error enviando alerta a ${storeCfg.recipientEmail}: ${res.message}`,
+                        `Error sending alert to ${storeCfg.recipientEmail}: ${res.message}`,
+                        `发送预警至 ${storeCfg.recipientEmail} 失败：${res.message}`
+                      ),
                   logId: res.log.id,
                 });
                 setTimeout(() => setEmailToast(null), 6500);
@@ -343,12 +353,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           } else if (emailConfig.isEnabled && emailConfig.notifyOnManualAdjustment) {
             const log = recordSimulatedEmailDispatch(
               [simulatedProd],
-              `Ajuste manual de stock en Almacén (-1 unidad)`,
+              tr('Ajuste manual de stock en Almacén (-1 unidad)', 'Manual stock adjustment in Warehouse (-1 unit)', '仓库手动库存调整（-1 单位）'),
               emailConfig
             );
             setEmailLogs(getStoredEmailLogs());
             setEmailToast({
-              message: `Alerta registrada para ${emailConfig.recipientEmail}: "${prod.name}" alcanzó nivel crítico (${simulatedProd.stock} / ${prod.minStock} mín.)`,
+              message: tr(
+                `Alerta registrada para ${emailConfig.recipientEmail}: "${prod.name}" alcanzó nivel crítico (${simulatedProd.stock} / ${prod.minStock} mín.)`,
+                `Alert logged for ${emailConfig.recipientEmail}: "${prod.name}" reached critical level (${simulatedProd.stock} / ${prod.minStock} min)`,
+                `已为 ${emailConfig.recipientEmail} 记录预警："${prod.name}" 达到临界库存（${simulatedProd.stock} / 最低 ${prod.minStock}）`
+              ),
               logId: log.id,
             });
             setTimeout(() => setEmailToast(null), 6000);
@@ -407,7 +421,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     } catch {
       setImportFeedback({
         type: 'error',
-        text: 'No se pudo procesar la imagen seleccionada. Prueba con otra foto o pega una URL.',
+        text: tr(
+          'No se pudo procesar la imagen seleccionada. Prueba con otra foto o pega una URL.',
+          'Could not process the selected image. Try another photo or paste a URL.',
+          '无法处理所选图片。请尝试其他照片或粘贴链接。'
+        ),
       });
     } finally {
       setIsUploadingImage(false);
@@ -427,7 +445,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         setImportFileName('');
         setImportFeedback({
           type: 'error',
-          text: 'El archivo no contiene productos válidos. Verifica las columnas (nombre, precioUSD, stock, calificacion, foto).',
+          text: tr(
+            'El archivo no contiene productos válidos. Verifica las columnas (nombre, precioUSD, stock, calificacion, foto).',
+            'The file contains no valid products. Check columns (name, precioUSD, stock, rating, photo).',
+            '文件不包含有效商品。请检查列（nombre, precioUSD, stock, calificacion, foto）。'
+          ),
         });
       } else {
         setImportPreview(parsed);
@@ -438,7 +460,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       setImportFileName('');
       setImportFeedback({
         type: 'error',
-        text: 'Error al leer el archivo. Asegúrate de subir un CSV o JSON con formato válido.',
+        text: tr(
+          'Error al leer el archivo. Asegúrate de subir un CSV o JSON con formato válido.',
+          'Error reading file. Make sure to upload a valid CSV or JSON file.',
+          '读取文件失败。请确保上传格式正确的 CSV 或 JSON 文件。'
+        ),
       });
     } finally {
       e.target.value = '';
@@ -455,7 +481,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     }
     setImportFeedback({
       type: 'success',
-      text: `Catálogo actualizado: se importaron ${importPreview.length} producto(s) desde ${importFileName}${shouldPublish ? ' y se sincronizaron con tu Tienda Online' : ''}.`,
+      text: tr(
+        `Catálogo actualizado: se importaron ${importPreview.length} producto(s) desde ${importFileName}${shouldPublish ? ' y se sincronizaron con tu Tienda Online' : ''}.`,
+        `Catalog updated: imported ${importPreview.length} product(s) from ${importFileName}${shouldPublish ? ' and synced to your Online Store' : ''}.`,
+        `目录已更新：从 ${importFileName} 导入了 ${importPreview.length} 件商品${shouldPublish ? '并已同步到您的在线商店' : ''}。`
+      ),
     });
     setImportPreview([]);
     setImportFileName('');
@@ -469,12 +499,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       await onPublishProductToStore(prod);
       setSyncMessage({
         type: 'success',
-        text: `"${prod.name}" sincronizado con la Tienda Online (${activeStore?.storeName || 'Tienda'}).`,
+        text: tr(
+          `"${prod.name}" sincronizado con la Tienda Online (${activeStore?.storeName || 'Tienda'}).`,
+          `"${prod.name}" synced with Online Store (${activeStore?.storeName || 'Store'}).`,
+          `"${prod.name}" 已同步至在线商店（${activeStore?.storeName || '商店'}）。`
+        ),
       });
     } catch (err) {
       setSyncMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'No se pudo publicar en la tienda.',
+        text: err instanceof Error ? err.message : tr('No se pudo publicar en la tienda.', 'Could not publish to store.', '无法发布到商店。'),
       });
     } finally {
       setPublishingId(null);
@@ -488,12 +522,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       await onSyncAllToStore();
       setSyncMessage({
         type: 'success',
-        text: `Todo el inventario (${products.length} producto(s)) fue sincronizado con "${activeStore?.storeName || 'tu Tienda Online'}".`,
+        text: tr(
+          `Todo el inventario (${products.length} producto(s)) fue sincronizado con "${activeStore?.storeName || 'tu Tienda Online'}".`,
+          `Full inventory (${products.length} product(s)) synced with "${activeStore?.storeName || 'your Online Store'}".`,
+          `全部库存（${products.length} 件商品）已同步至 "${activeStore?.storeName || '您的在线商店'}"。`
+        ),
       });
     } catch (err) {
       setSyncMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Error sincronizando productos con la tienda.',
+        text: err instanceof Error ? err.message : tr('Error sincronizando productos con la tienda.', 'Error syncing products with the store.', '与商店同步商品失败。'),
       });
     }
   };
@@ -520,9 +558,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       unitCostUSD: targetProd.costUSD,
       totalLossUSD: lossUSD,
       totalLossBs: lossBs,
-      auditorName: auditAuditor.trim() || 'Auditoría de Almacén',
+      auditorName: auditAuditor.trim() || tr('Auditoría de Almacén', 'Warehouse Audit', '仓库审计'),
       location: auditLocation,
-      notes: auditNotes.trim() || `Registro de ${auditType} en ${auditLocation}`,
+      notes: auditNotes.trim() || tr(`Registro de ${auditType} en ${auditLocation}`, `${auditType} record in ${auditLocation}`, `${auditLocation} 的 ${auditType} 记录`),
     };
 
     const updated = [newAudit, ...audits];
@@ -545,8 +583,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               {
                 stage: 'Auditoría / Merma' as const,
                 timestamp: now,
-                description: `${auditType}: ${qty} unid. (${auditNotes || 'Sin notas'})`,
-                referenceDoc: `Boleta #${newAudit.id}`,
+                description: `${auditType}: ${qty} ${tr('unid.', 'units', '件')} (${auditNotes || tr('Sin notas', 'No notes', '无备注')})`,
+                referenceDoc: `${tr('Boleta', 'Slip', '单据')} #${newAudit.id}`,
                 performedBy: auditAuditor,
               },
             ],
@@ -572,7 +610,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       timestamp: now,
       description: newStepDescription.trim(),
       referenceDoc: newStepRef.trim() || undefined,
-      performedBy: newStepAuditor.trim() || 'Responsable de Almacén',
+      performedBy: newStepAuditor.trim() || tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人'),
     };
 
     const updated = traces.map((t) => {
@@ -602,7 +640,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       lowStock.length > 0 ? lowStock : products.length > 0 ? [products[0]] : [];
     if (targetProducts.length === 0) {
       setEmailToast({
-        message: 'Añade al menos un producto a tu almacén para probar las alertas de stock crítico.',
+        message: tr(
+          'Añade al menos un producto a tu almacén para probar las alertas de stock crítico.',
+          'Add at least one product to your warehouse to test critical stock alerts.',
+          '请至少向仓库添加一件商品以测试临界库存预警。'
+        ),
         logId: 'empty',
       });
       setTimeout(() => setEmailToast(null), 5000);
@@ -610,13 +652,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     }
     const log = recordSimulatedEmailDispatch(
       targetProducts,
-      'Prueba manual desde Configuración de Alertas',
+      tr('Prueba manual desde Configuración de Alertas', 'Manual test from Alert Settings', '从预警设置手动测试'),
       emailConfig,
       customEmail
     );
     setEmailLogs(getStoredEmailLogs());
     setEmailToast({
-      message: `Alerta de prueba enviada con éxito a ${customEmail || emailConfig.recipientEmail} (${targetProducts.length} producto(s) en stock crítico).`,
+      message: tr(
+        `Alerta de prueba enviada con éxito a ${customEmail || emailConfig.recipientEmail} (${targetProducts.length} producto(s) en stock crítico).`,
+        `Test alert sent successfully to ${customEmail || emailConfig.recipientEmail} (${targetProducts.length} product(s) in critical stock).`,
+        `测试预警已成功发送至 ${customEmail || emailConfig.recipientEmail}（${targetProducts.length} 件商品库存不足）。`
+      ),
       logId: log.id,
     });
     setTimeout(() => setEmailToast(null), 6000);
@@ -646,7 +692,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Catálogo & Alertas</span>
+            <span>{tr('Catálogo & Alertas', 'Catalog & Alerts', '目录与预警')}</span>
             {lowStockCount > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-extrabold ${
                 activeSubTab === 'catalog' ? 'bg-[#09090b] text-amber-400' : 'bg-red-500 text-white'
@@ -665,7 +711,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
-            <span>Auditoría & Mermas</span>
+            <span>{tr('Auditoría & Mermas', 'Audits & Shrinkage', '审计与损耗')}</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-extrabold ${
               activeSubTab === 'audit' ? 'bg-[#09090b] text-amber-400' : 'bg-zinc-900 text-zinc-300'
             }`}>
@@ -682,7 +728,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             }`}
           >
             <Truck className="w-4 h-4" />
-            <span>Trazabilidad de Mercancía</span>
+            <span>{tr('Trazabilidad de Mercancía', 'Goods Traceability', '货物追溯')}</span>
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-extrabold ${
               activeSubTab === 'traceability' ? 'bg-[#09090b] text-amber-400' : 'bg-zinc-900 text-zinc-300'
             }`}>
@@ -696,10 +742,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             <button
               onClick={() => setShowPurchaseOrderModal(true)}
               className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-              title="Generar sugerencia de pedido para reposición"
+              title={tr('Generar sugerencia de pedido para reposición', 'Generate restock order suggestion', '生成补货采购建议')}
             >
               <ShoppingCart className="w-3.5 h-3.5" />
-              <span>Sugerencia de Pedido ({reorderList.length})</span>
+              <span>{tr('Sugerencia de Pedido', 'Order Suggestion', '补货建议')} ({reorderList.length})</span>
             </button>
           )}
 
@@ -709,7 +755,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               className="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 to-rose-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-rose-600/20 hover:from-rose-500 hover:to-rose-400 transition-all"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span>Registrar Merma / Desvío</span>
+              <span>{tr('Registrar Merma / Desvío', 'Log Shrinkage / Loss', '登记损耗 / 异常')}</span>
             </button>
           )}
         </div>
@@ -723,7 +769,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Top Inventory KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Valoración en Almacén</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Valoración en Almacén', 'Warehouse Valuation', '仓库估值')}</span>
               <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
                 ${totalValueUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD
               </div>
@@ -733,12 +779,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Unidades en Cava & Barra</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Unidades en Cava & Barra', 'Units in Stock & Floor', '库存与陈列单位')}</span>
               <div className="text-xl font-bold font-mono text-white tabular-nums">
-                {totalStockItems} <span className="text-xs font-normal text-zinc-400">unidades</span>
+                {totalStockItems} <span className="text-xs font-normal text-zinc-400">{tr('unidades', 'units', '件')}</span>
               </div>
               <span className="text-xs text-zinc-500 font-mono">
-                {products.length} productos registrados
+                {products.length} {tr('productos registrados', 'registered products', '件已登记商品')}
               </span>
             </div>
 
@@ -749,25 +795,25 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   ? 'bg-amber-950/40 border-amber-500 shadow-md shadow-amber-950/40' 
                   : 'bg-[#111114] border-white/[0.08] hover:border-amber-500/30'
               }`}
-              title="Filtrar productos de alta rotación en riesgo de agotarse"
+              title={tr('Filtrar productos de alta rotación en riesgo de agotarse', 'Filter high-turnover products at risk of stockout', '筛选即将断货的高周转商品')}
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-amber-300 font-semibold flex items-center gap-1">
                   <Flame className="w-3.5 h-3.5 text-amber-400" />
-                  Alta Rotación en Riesgo
+                  {tr('Alta Rotación en Riesgo', 'High Turnover at Risk', '高周转缺货风险')}
                 </span>
                 <span className="text-[10px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.5 rounded">
-                  Prioridad
+                  {tr('Prioridad', 'Priority', '优先')}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xl font-bold font-mono tabular-nums ${highRotationRiskCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                   {highRotationRiskCount}
                 </span>
-                <span className="text-xs text-zinc-400">ítems calientes críticos</span>
+                <span className="text-xs text-zinc-400">{tr('ítems calientes críticos', 'critical hot items', '项热门紧缺品')}</span>
               </div>
               <span className="text-xs text-zinc-500">
-                {highRotationRiskCount > 0 ? 'Cervezas y rones líderes por agotarse' : 'Rotación rápida abastecida'}
+                {highRotationRiskCount > 0 ? tr('Productos líderes por agotarse', 'Top-selling items running low', '主打商品即将售罄') : tr('Rotación rápida abastecida', 'Fast turnover stocked', '高周转库存充足')}
               </span>
             </div>
 
@@ -778,13 +824,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   ? 'bg-red-950/40 border-red-500 shadow-md shadow-red-950/40' 
                   : 'bg-[#111114] border-white/[0.08] hover:border-white/[0.1]'
               }`}
-              title="Haz clic para filtrar solo productos con stock bajo o crítico"
+              title={tr('Haz clic para filtrar solo productos con stock bajo o crítico', 'Click to filter only low or critical stock products', '点击仅筛选低库存或紧缺商品')}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-zinc-400 block">Alertas de Reposición</span>
+                <span className="text-xs text-zinc-400 block">{tr('Alertas de Reposición', 'Restock Alerts', '补货预警')}</span>
                 {filterMode === 'alerts_only' && (
                   <span className="text-[10px] bg-red-600 text-white font-bold px-1.5 py-0.5 rounded">
-                    Filtrado
+                    {tr('Filtrado', 'Filtered', '已筛选')}
                   </span>
                 )}
               </div>
@@ -792,10 +838,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <span className={`text-xl font-bold font-mono tabular-nums ${lowStockCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                   {lowStockCount}
                 </span>
-                <span className="text-xs text-zinc-400">ítems bajo mínimo</span>
+                <span className="text-xs text-zinc-400">{tr('ítems bajo mínimo', 'items below min', '项低于安全库存')}</span>
               </div>
               <span className="text-xs text-zinc-500">
-                {lowStockCount > 0 ? 'Requieren orden de compra inmediata' : 'Stock en niveles óptimos'}
+                {lowStockCount > 0 ? tr('Requieren orden de compra inmediata', 'Require immediate purchase order', '需要立即采购补货') : tr('Stock en niveles óptimos', 'Stock at optimal levels', '库存处于最佳水平')}
               </span>
             </div>
           </div>
@@ -810,16 +856,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-sm font-bold text-white font-display">
-                      Almacén Individual · {activeStore.storeName}
+                      {tr('Almacén Individual', 'Store Warehouse', '独立仓库')} · {activeStore.storeName}
                     </h3>
                     <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
-                      {syncedProductsCount} / {products.length} publicados en Tienda
+                      {syncedProductsCount} / {products.length} {tr('publicados en Tienda', 'published to Store', '已发布至商店')}
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     {products.length === 0
-                      ? 'Tu almacén inicia vacío. Registra aquí tus productos manualmente o importa un CSV/JSON para abastecer tu Tienda Online.'
-                      : 'Añade productos desde tu almacén y sincronízalos directo al catálogo de tu tienda con stock vinculado.'}
+                      ? tr(
+                          'Tu almacén inicia vacío. Registra aquí tus productos manualmente o importa un CSV/JSON para abastecer tu Tienda Online.',
+                          'Your warehouse starts empty. Register products manually here or import a CSV/JSON to stock your Online Store.',
+                          '您的仓库初始为空。请在此手动登记商品或导入 CSV/JSON 以供应您的在线商店。'
+                        )
+                      : tr(
+                          'Añade productos desde tu almacén y sincronízalos directo al catálogo de tu tienda con stock vinculado.',
+                          'Add products from your warehouse and sync them directly to your store catalog with linked stock.',
+                          '从仓库添加商品并直接同步至您的商店目录，实时关联库存。'
+                        )}
                   </p>
                 </div>
               </div>
@@ -833,7 +887,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isSyncingToStore ? 'animate-spin' : ''}`} />
-                    <span>{isSyncingToStore ? 'Sincronizando...' : 'Sincronizar Todo a Tienda'}</span>
+                    <span>{isSyncingToStore ? tr('Sincronizando...', 'Syncing...', '正在同步...') : tr('Sincronizar Todo a Tienda', 'Sync All to Store', '全部同步至商店')}</span>
                   </button>
                 )}
                 <button
@@ -842,7 +896,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Agregar Producto</span>
+                  <span>{tr('Agregar Producto', 'Add Product', '添加商品')}</span>
                 </button>
               </div>
             </div>
@@ -873,18 +927,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 <Mail className="w-4 h-4" />
               </div>
-              <span className="text-zinc-400">Notificaciones de Stock Crítico:</span>
+              <span className="text-zinc-400">{tr('Notificaciones de Stock Crítico:', 'Critical Stock Notifications:', '临界库存通知：')}</span>
               <span className="font-mono font-bold text-white truncate max-w-[200px] sm:max-w-none">
                 {emailConfig.recipientEmail}
               </span>
               {emailConfig.isEnabled ? (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Activo
+                  {tr('Activo', 'Active', '已启用')}
                 </span>
               ) : (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-white/[0.1]">
-                  Pausado
+                  {tr('Pausado', 'Paused', '已暂停')}
                 </span>
               )}
             </div>
@@ -893,7 +947,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               onClick={() => setShowEmailConfig(true)}
               className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center gap-1.5 bg-[#09090b]/80 hover:bg-zinc-800/80 border border-white/[0.08] hover:border-amber-500/30 px-3 py-1.5 rounded-lg transition-colors min-h-[38px]"
             >
-              <span>Configurar / Probar Envío</span>
+              <span>{tr('Configurar / Probar Envío', 'Configure / Test Email', '配置 / 测试发送')}</span>
               <span>→</span>
             </button>
           </div>
@@ -905,7 +959,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Buscar por licor, marca, lote, SKU o código de barras..."
+                  placeholder={tr('Buscar por producto, marca, lote, SKU o código de barras...', 'Search by product, brand, batch, SKU or barcode...', '按商品、品牌、批次、SKU 或条形码搜索...')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-[#111114] border border-white/[0.08] rounded-lg pl-9 pr-8 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 min-h-[44px]"
@@ -924,10 +978,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <button
                   onClick={onOpenScanner}
                   className="px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800 active:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg flex items-center justify-center gap-1.5 min-h-[44px] transition-colors shrink-0"
-                  title="Abrir lector de código de barras con la cámara"
+                  title={tr('Abrir lector de código de barras con la cámara', 'Open camera barcode scanner', '打开摄像头条码扫描器')}
                 >
                   <Camera className="w-4 h-4" />
-                  <span className="text-xs font-bold hidden sm:inline">Escanear</span>
+                  <span className="text-xs font-bold hidden sm:inline">{tr('Escanear', 'Scan', '扫码')}</span>
                 </button>
               )}
             </div>
@@ -938,7 +992,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 className="px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 border border-white/[0.1] rounded-lg flex items-center justify-center gap-2 text-xs sm:text-sm font-semibold transition-all min-h-[44px]"
               >
                 <Mail className="w-4 h-4 text-amber-400" />
-                <span className="hidden sm:inline">Alertas Email</span>
+                <span className="hidden sm:inline">{tr('Alertas Email', 'Email Alerts', '邮件预警')}</span>
               </button>
 
               <button
@@ -946,7 +1000,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm rounded-lg flex items-center justify-center gap-2 shadow-sm transition-colors whitespace-nowrap min-h-[44px]"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Nuevo Producto</span>
+                <span>{tr('Nuevo Producto', 'New Product', '新建商品')}</span>
               </button>
             </div>
           </div>

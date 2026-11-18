@@ -10,7 +10,8 @@ import {
   Tooltip,
   Cell,
 } from 'recharts';
-import { TrendingUp, Calendar, DollarSign, Award, ShoppingBag, Eye } from 'lucide-react';
+import { TrendingUp, Calendar, DollarSign, Award, ShoppingBag } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface SalesPerformanceChartProps {
   sales: Sale[];
@@ -18,9 +19,9 @@ interface SalesPerformanceChartProps {
 }
 
 interface DayData {
-  rawDate: string;        // 'YYYY-MM-DD'
-  label: string;          // e.g. 'Sáb 01', 'Dom 02', ...
-  fullDate: string;       // formatted display
+  rawDate: string;
+  label: string;
+  fullDate: string;
   totalUSD: number;
   totalBs: number;
   ordersCount: number;
@@ -31,14 +32,12 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
   sales,
   exchangeRate,
 }) => {
+  const { lang, tr } = useLanguage();
   const [viewCurrency, setViewCurrency] = useState<'USD' | 'Bs'>('USD');
 
-  // Compute the last 7 calendar days data
   const chartData: DayData[] = useMemo(() => {
-    // Determine anchor date: use latest sale date or today
     let anchor = new Date();
     if (sales.length > 0) {
-      // Find latest sale date
       const latestTimestamp = Math.max(
         ...sales.map((s) => {
           const d = new Date(s.date);
@@ -51,13 +50,19 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
     }
 
     const days: DayData[] = [];
-    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    const monthNames = [
-      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
-    ];
+    const dayNames =
+      lang === 'zh'
+        ? ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+        : lang === 'en'
+          ? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+          : ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const monthNames =
+      lang === 'zh'
+        ? ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+        : lang === 'en'
+          ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          : ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
-    // Generate 7 consecutive days up to anchor date
     for (let i = 6; i >= 0; i--) {
       const d = new Date(anchor);
       d.setDate(d.getDate() - i);
@@ -67,7 +72,6 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
       const dd = String(d.getDate()).padStart(2, '0');
       const dateKey = `${yyyy}-${mm}-${dd}`;
 
-      // Filter sales matching this YYYY-MM-DD
       const matchingSales = sales.filter((s) => s.date.startsWith(dateKey));
       const dayTotalUSD = matchingSales.reduce((sum, s) => sum + s.subtotalUSD, 0);
       const dayTotalBs = dayTotalUSD * exchangeRate;
@@ -79,7 +83,10 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
       days.push({
         rawDate: dateKey,
         label: `${dayName} ${dd}`,
-        fullDate: `${dayName}, ${dd} ${monthName} ${yyyy}`,
+        fullDate:
+          lang === 'zh'
+            ? `${yyyy}年${monthName}${dd}日 ${dayName}`
+            : `${dayName}, ${dd} ${monthName} ${yyyy}`,
         totalUSD: Math.round(dayTotalUSD * 100) / 100,
         totalBs: Math.round(dayTotalBs * 100) / 100,
         ordersCount: matchingSales.length,
@@ -88,16 +95,14 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
     }
 
     return days;
-  }, [sales, exchangeRate]);
+  }, [sales, exchangeRate, lang]);
 
-  // Aggregate stats for the 7-day period
   const stats = useMemo(() => {
     const totalUSD = chartData.reduce((acc, d) => acc + d.totalUSD, 0);
     const totalBs = chartData.reduce((acc, d) => acc + d.totalBs, 0);
     const totalOrders = chartData.reduce((acc, d) => acc + d.ordersCount, 0);
     const dailyAverageUSD = totalUSD / (chartData.length || 1);
-    
-    // Find best day
+
     let bestDay = chartData[0];
     for (const d of chartData) {
       if (d.totalUSD > (bestDay?.totalUSD || 0)) {
@@ -114,8 +119,7 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
     };
   }, [chartData]);
 
-  // Custom Recharts Tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: DayData }> }) => {
     if (active && payload && payload.length) {
       const data: DayData = payload[0].payload;
       return (
@@ -127,28 +131,33 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
             </span>
             {data.isToday && (
               <span className="text-[10px] bg-amber-500 text-zinc-950 px-1.5 py-0.5 rounded font-bold">
-                Hoy
+                {tr('Hoy', 'Today', '今天')}
               </span>
             )}
           </div>
-          
+
           <div className="pt-1 space-y-1">
             <div className="flex justify-between items-baseline gap-2">
-              <span className="text-zinc-400">Total USD:</span>
+              <span className="text-zinc-400">{tr('Total USD:', 'Total USD:', '美元合计：')}</span>
               <span className="font-mono font-bold text-amber-400 text-sm tabular-nums">
                 ${data.totalUSD.toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between items-baseline gap-2">
-              <span className="text-zinc-400">Total Bs.:</span>
+              <span className="text-zinc-400">{tr('Total Bs.:', 'Total Bs.:', '玻利瓦尔合计：')}</span>
               <span className="font-mono text-zinc-300 tabular-nums">
                 {data.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
               </span>
             </div>
             <div className="flex justify-between items-baseline gap-2 pt-1 border-t border-white/[0.08]">
-              <span className="text-zinc-400">Órdenes:</span>
+              <span className="text-zinc-400">{tr('Órdenes:', 'Orders:', '订单数：')}</span>
               <span className="font-mono font-semibold text-emerald-400">
-                {data.ordersCount} {data.ordersCount === 1 ? 'ticket' : 'tickets'}
+                {data.ordersCount}{' '}
+                {tr(
+                  data.ordersCount === 1 ? 'ticket' : 'tickets',
+                  data.ordersCount === 1 ? 'ticket' : 'tickets',
+                  '笔订单'
+                )}
               </span>
             </div>
           </div>
@@ -158,7 +167,10 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
     return null;
   };
 
-  const maxValue = Math.max(...chartData.map(d => viewCurrency === 'USD' ? d.totalUSD : d.totalBs), 10);
+  const maxValue = Math.max(
+    ...chartData.map((d) => (viewCurrency === 'USD' ? d.totalUSD : d.totalBs)),
+    10
+  );
 
   return (
     <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-lg space-y-5">
@@ -171,10 +183,18 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-white text-base sm:text-lg font-display flex items-center gap-2">
-                Rendimiento Comercial (Últimos 7 Días)
+                {tr(
+                  'Rendimiento Comercial (Últimos 7 Días)',
+                  'Commercial Performance (Last 7 Days)',
+                  '经营销售表现（近 7 天）'
+                )}
               </h3>
               <p className="text-xs text-zinc-400">
-                Gráfica interactiva de facturación diaria en Smith Solutions E-Commerce
+                {tr(
+                  'Gráfica interactiva de facturación diaria en Smith Solutions E-Commerce',
+                  'Interactive daily revenue chart on Smith Solutions E-Commerce',
+                  'Smith Solutions E-Commerce 每日营业额交互图表'
+                )}
               </p>
             </div>
           </div>
@@ -182,7 +202,9 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
 
         {/* Currency Toggle */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <span className="text-xs text-zinc-400 hidden sm:inline">Visualizar en:</span>
+          <span className="text-xs text-zinc-400 hidden sm:inline">
+            {tr('Visualizar en:', 'Display in:', '显示币种：')}
+          </span>
           <div className="inline-flex rounded-xl bg-[#09090b] p-1 border border-white/[0.08]">
             <button
               type="button"
@@ -214,7 +236,7 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-[#09090b]/70 border border-white/[0.08] rounded-xl p-3 sm:p-4">
           <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-            <span>Total 7 Días</span>
+            <span>{tr('Total 7 Días', '7-Day Total', '7 天总计')}</span>
             <DollarSign className="w-4 h-4 text-amber-400" />
           </div>
           <div className="font-mono font-bold text-base sm:text-lg text-white tabular-nums">
@@ -227,40 +249,41 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
 
         <div className="bg-[#09090b]/70 border border-white/[0.08] rounded-xl p-3 sm:p-4">
           <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-            <span>Promedio Diario</span>
+            <span>{tr('Promedio Diario', 'Daily Average', '日均销售额')}</span>
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="font-mono font-bold text-base sm:text-lg text-emerald-400 tabular-nums">
             ${stats.dailyAverageUSD.toFixed(2)}
           </div>
           <div className="text-[11px] text-zinc-500 font-mono truncate">
-            Por jornada comercial
+            {tr('Por jornada comercial', 'Per business day', '每个营业日')}
           </div>
         </div>
 
         <div className="bg-[#09090b]/70 border border-white/[0.08] rounded-xl p-3 sm:p-4">
           <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-            <span>Día Récord</span>
+            <span>{tr('Día Récord', 'Record Day', '峰值日期')}</span>
             <Award className="w-4 h-4 text-amber-400" />
           </div>
           <div className="font-mono font-bold text-base sm:text-lg text-amber-400 tabular-nums">
             ${stats.bestDay ? stats.bestDay.totalUSD.toFixed(2) : '0.00'}
           </div>
           <div className="text-[11px] text-zinc-400 truncate">
-            {stats.bestDay?.label || 'N/A'} ({stats.bestDay?.ordersCount || 0} ventas)
+            {stats.bestDay?.label || 'N/A'} ({stats.bestDay?.ordersCount || 0}{' '}
+            {tr('ventas', 'sales', '笔销售')})
           </div>
         </div>
 
         <div className="bg-[#09090b]/70 border border-white/[0.08] rounded-xl p-3 sm:p-4">
           <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-            <span>Órdenes 7 Días</span>
+            <span>{tr('Órdenes 7 Días', '7-Day Orders', '7 天订单数')}</span>
             <ShoppingBag className="w-4 h-4 text-blue-400" />
           </div>
           <div className="font-mono font-bold text-base sm:text-lg text-blue-400 tabular-nums">
             {stats.totalOrders}
           </div>
           <div className="text-[11px] text-zinc-500 truncate">
-            Comprobantes emitidos
+            {tr('Comprobantes emitidos', 'Receipts issued', '已开具小票')}
           </div>
         </div>
       </div>
@@ -268,10 +291,7 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
       {/* Main Bar Chart */}
       <div className="h-[280px] sm:h-[320px] w-full pt-2">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={chartData}
-            margin={{ top: 15, right: 10, left: -15, bottom: 0 }}
-          >
+          <BarChart data={chartData} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke="#334155"
@@ -291,34 +311,22 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
               tickLine={false}
               axisLine={{ stroke: '#334155' }}
               tickFormatter={(val) =>
-                viewCurrency === 'USD'
-                  ? `$${val}`
-                  : `${(val / 1000).toFixed(0)}k`
+                viewCurrency === 'USD' ? `$${val}` : `${(val / 1000).toFixed(0)}k`
               }
               domain={[0, Math.ceil(maxValue * 1.15)]}
             />
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={{ fill: 'rgba(245, 158, 11, 0.08)' }}
-            />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(245, 158, 11, 0.08)' }} />
             <Bar
               dataKey={viewCurrency === 'USD' ? 'totalUSD' : 'totalBs'}
               radius={[6, 6, 0, 0]}
               maxBarSize={48}
             >
               {chartData.map((entry, index) => {
-                // Highlight highest day or today with glowing gold
                 const isBest = entry.rawDate === stats.bestDay?.rawDate && entry.totalUSD > 0;
                 return (
                   <Cell
                     key={`cell-${index}`}
-                    fill={
-                      entry.isToday
-                        ? '#fbbf24' // Bright amber for today
-                        : isBest
-                        ? '#f59e0b' // Solid gold for best day
-                        : '#b45309' // Warm amber for other days
-                    }
+                    fill={entry.isToday ? '#fbbf24' : isBest ? '#f59e0b' : '#b45309'}
                     fillOpacity={entry.totalUSD === 0 ? 0.3 : entry.isToday ? 1 : 0.85}
                   />
                 );
@@ -333,20 +341,21 @@ export const SalesPerformanceChart: React.FC<SalesPerformanceChartProps> = ({
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block"></span>
-            Hoy / Activo
+            {tr('Hoy / Activo', 'Today / Active', '今日 / 活跃')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block"></span>
-            Día Pico
+            {tr('Día Pico', 'Peak Day', '峰值日')}
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-700 inline-block"></span>
-            Días Anteriores
+            {tr('Días Anteriores', 'Previous Days', '前几日')}
           </span>
         </div>
 
         <span className="text-zinc-500 font-mono text-[10px]">
-          Tasa referencial BCV: {exchangeRate.toFixed(2)} Bs/USD • Smith Bussines Solutions 2026
+          {tr('Tasa referencial BCV:', 'BCV reference rate:', 'BCV 参考汇率：')}{' '}
+          {exchangeRate.toFixed(2)} Bs/USD • Smith Bussines Solutions 2026
         </span>
       </div>
     </div>

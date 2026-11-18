@@ -28,6 +28,7 @@ import {
   upsertVectorConsent,
   VECTOR_LEVER_METADATA,
 } from '../services/vectorService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface MerchantVectorTabProps {
   user: User;
@@ -36,12 +37,86 @@ interface MerchantVectorTabProps {
   onError: (msg: string) => void;
 }
 
+const LEVER_I18N: Record<
+  VectorInfluenceLever,
+  {
+    label: { es: string; en: string; zh: string };
+    rule: { es: string; en: string; zh: string };
+  }
+> = {
+  autoridad: {
+    label: { es: 'Autoridad verificada', en: 'Verified authority', zh: '权威背书' },
+    rule: {
+      es: 'Solo hechos reales de la marca (años, certificaciones, volumen real).',
+      en: 'Only verified brand facts (years, certifications, real volume).',
+      zh: '仅使用真实品牌数据（年限、认证、真实销量）。',
+    },
+  },
+  prueba_social: {
+    label: { es: 'Prueba social real', en: 'Real social proof', zh: '真实口碑' },
+    rule: {
+      es: 'Usa calificaciones reales del producto o tienda sin inventar cifras.',
+      en: 'Use real store or product ratings without fabricating metrics.',
+      zh: '仅使用真实的门店或商品评分，严禁虚构数据。',
+    },
+  },
+  reciprocidad: {
+    label: { es: 'Reciprocidad útil', en: 'Helpful reciprocity', zh: '互惠价值' },
+    rule: {
+      es: 'Aporta guía práctica o comparación honesta antes de sugerir compra.',
+      en: 'Provide a practical guide or honest comparison before suggesting purchase.',
+      zh: '推荐购买前先提供实用指南或客观对比。',
+    },
+  },
+  escasez_real: {
+    label: { es: 'Escasez verificable', en: 'Verifiable scarcity', zh: '真实稀缺' },
+    rule: {
+      es: 'Solo menciona stock bajo cuando inventario actual sea <= mínimo.',
+      en: 'Only mention low stock when live inventory is <= minimum threshold.',
+      zh: '仅当实际库存低于预警线时才提示库存紧张。',
+    },
+  },
+  urgencia_real: {
+    label: { es: 'Urgencia real de corte', en: 'Real cutoff urgency', zh: '真实截止时间' },
+    rule: {
+      es: 'Solo cita horarios de despacho o vencimientos reales configurados.',
+      en: 'Only cite configured dispatch cutoff times or real expiration dates.',
+      zh: '仅引用已配置的真实发货截单时间或活动有效期。',
+    },
+  },
+  aversion_perdida: {
+    label: { es: 'Aversión a la pérdida', en: 'Loss aversion', zh: '损失规避' },
+    rule: {
+      es: 'Recordatorio respetuoso de carrito activo (máximo 2 avisos).',
+      en: 'Respectful active cart reminder (maximum 2 notices).',
+      zh: '礼貌提醒购物车待结商品（最多2次）。',
+    },
+  },
+  coherencia: {
+    label: { es: 'Coherencia y continuidad', en: 'Coherence & continuity', zh: '一致性原则' },
+    rule: {
+      es: 'Mantiene criterio consistente con el historial del hilo actual.',
+      en: 'Keep recommendations consistent with the active conversation history.',
+      zh: '保持与当前对话上下文一致的建议。',
+    },
+  },
+  anclaje_honesto: {
+    label: { es: 'Anclaje honesto de precio', en: 'Honest price anchoring', zh: '诚实价格锚点' },
+    rule: {
+      es: 'Presenta referencia BCV y ahorro real sin inflar precios previos.',
+      en: 'Show BCV reference and real savings without inflating prior prices.',
+      zh: '展示央行参考汇率与真实优惠，绝不虚标原价。',
+    },
+  },
+};
+
 export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
   user,
   store,
   onNotify,
   onError,
 }) => {
+  const { lang, tr } = useLanguage();
   const [config, setConfig] = useState<VectorBrandConfig>(
     defaultVectorBrandConfig(store.id, store.storeName)
   );
@@ -83,9 +158,23 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
     setIsSaving(true);
     try {
       await saveVectorBrandConfig(config);
-      onNotify(`Configuración de Vector guardada para "${store.storeName}".`);
+      onNotify(
+        tr(
+          `Configuración de Vector guardada para "${store.storeName}".`,
+          `Vector configuration saved for "${store.storeName}".`,
+          `已保存 "${store.storeName}" 的 Vector 配置。`
+        )
+      );
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error guardando configuración de Vector.');
+      onError(
+        err instanceof Error
+          ? err.message
+          : tr(
+              'Error guardando configuración de Vector.',
+              'Error saving Vector configuration.',
+              '保存 Vector 配置失败。'
+            )
+      );
     } finally {
       setIsSaving(false);
     }
@@ -104,11 +193,27 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
       });
       onNotify(
         status === 'no'
-          ? 'Opt-out aplicado: esta tienda no recibirá campañas comerciales de Vector.'
-          : 'Preferencia de campañas comerciales actualizada.'
+          ? tr(
+              'Opt-out aplicado: esta tienda no recibirá campañas comerciales de Vector.',
+              'Opt-out applied: this store will not receive commercial Vector campaigns.',
+              '已退订：此店铺将不再接收 Vector 商业推广活动。'
+            )
+          : tr(
+              'Preferencia de campañas comerciales actualizada.',
+              'Commercial campaign preference updated.',
+              '商业推广偏好设置已更新。'
+            )
       );
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error actualizando consentimiento.');
+      onError(
+        err instanceof Error
+          ? err.message
+          : tr(
+              'Error actualizando consentimiento.',
+              'Error updating consent preference.',
+              '更新授权偏好失败。'
+            )
+      );
     }
   };
 
@@ -119,10 +224,14 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
             <ShieldCheck className="w-4 h-4" />
-            <span>Consentimiento de Campañas Comerciales (Vector §4)</span>
+            <span>{tr('Consentimiento de Campañas Comerciales (Vector §4)', 'Commercial Campaign Consent (Vector §4)', '商业推广授权设置 (Vector §4)')}</span>
           </div>
           <p className="text-xs text-zinc-400">
-            Controla si deseas recibir recomendaciones operativas y campañas aprobadas por el Super Admin para tu tienda.
+            {tr(
+              'Controla si deseas recibir recomendaciones operativas y campañas aprobadas por el Super Admin para tu tienda.',
+              'Control whether you want to receive operational recommendations and Super Admin-approved campaigns for your store.',
+              '控制您是否希望接收超级管理员审批的店铺运营建议与商业推广活动。'
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -141,7 +250,11 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
                     : 'bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-zinc-200'
                 }`}
               >
-                {status === 'si' ? 'Sí, recibir' : status === 'solo_importante' ? 'Solo importantes' : 'No recibir (Opt-out)'}
+                {status === 'si'
+                  ? tr('Sí, recibir', 'Yes, receive', '同意接收')
+                  : status === 'solo_importante'
+                    ? tr('Solo importantes', 'Important only', '仅接收重要通知')
+                    : tr('No recibir (Opt-out)', 'Do not receive (Opt-out)', '拒收（退订）')}
               </button>
             );
           })}
@@ -160,10 +273,14 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-zinc-50 font-display">
-                Configuración Vector por Marca (Sección 13)
+                {tr('Configuración Vector por Marca (Sección 13)', 'Per-Brand Vector Configuration (Section 13)', '按品牌配置 Vector（第13节）')}
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Aislamiento estricto para {store.storeName}: idioma, tono, SLA real y palancas verificables.
+                {tr(
+                  `Aislamiento estricto para ${store.storeName}: idioma, tono, SLA real y palancas verificables.`,
+                  `Strict brand isolation for ${store.storeName}: language, tone, real SLA, and verifiable levers.`,
+                  `${store.storeName} 的严格品牌隔离：语言、语气、真实 SLA 与可验证策略杠杆。`
+                )}
               </p>
             </div>
           </div>
@@ -173,13 +290,17 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-zinc-950 font-bold text-xs flex items-center gap-1.5"
           >
             <Save className="w-3.5 h-3.5" />
-            <span>{isSaving ? 'Guardando...' : 'Guardar Configuración Vector'}</span>
+            <span>
+              {isSaving
+                ? tr('Guardando...', 'Saving...', '保存中...')
+                : tr('Guardar Configuración Vector', 'Save Vector Configuration', '保存 Vector 配置')}
+            </span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
           <div>
-            <label className="block text-zinc-400 mb-1">Idioma Principal</label>
+            <label className="block text-zinc-400 mb-1">{tr('Idioma Principal', 'Primary Language', '主要语言')}</label>
             <select
               value={config.idiomaPrincipal}
               onChange={(e) =>
@@ -193,7 +314,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             </select>
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Tratamiento en Español</label>
+            <label className="block text-zinc-400 mb-1">{tr('Tratamiento en Español', 'Spanish Form of Address', '西班牙语称呼方式')}</label>
             <select
               value={config.tratamientoEs}
               onChange={(e) =>
@@ -201,12 +322,12 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
               }
               className="w-full bg-zinc-950 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100"
             >
-              <option value="usted">Usted (Recomendado alta gama)</option>
-              <option value="tu">Tú</option>
+              <option value="usted">{tr('Usted (Recomendado alta gama)', 'Formal "Usted" (Recommended)', '尊称 Usted（推荐高端品牌）')}</option>
+              <option value="tu">{tr('Tú', 'Informal "Tú"', '亲切称呼 Tú')}</option>
             </select>
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Emojis Máximos</label>
+            <label className="block text-zinc-400 mb-1">{tr('Emojis Máximos', 'Max Emojis', '最多表情符号数')}</label>
             <select
               value={config.emojiMax}
               onChange={(e) =>
@@ -214,12 +335,12 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
               }
               className="w-full bg-zinc-950 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100"
             >
-              <option value={0}>0 emojis (Por defecto)</option>
-              <option value={1}>1 emoji máximo</option>
+              <option value={0}>{tr('0 emojis (Por defecto)', '0 emojis (Default)', '0 个表情（默认）')}</option>
+              <option value={1}>{tr('1 emoji máximo', '1 emoji max', '最多 1 个表情')}</option>
             </select>
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Horario y Zona Horaria</label>
+            <label className="block text-zinc-400 mb-1">{tr('Horario y Zona Horaria', 'Hours & Timezone', '营业时间与时区')}</label>
             <input
               type="text"
               value={`${config.horarioAtencion} (${config.zonaHoraria})`}
@@ -231,7 +352,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
-            <label className="block text-zinc-400 mb-1">Política Real de Envíos</label>
+            <label className="block text-zinc-400 mb-1">{tr('Política Real de Envíos', 'Real Shipping Policy', '真实配送政策')}</label>
             <textarea
               rows={2}
               value={config.politicaEnvios}
@@ -240,7 +361,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             />
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Política Real de Devoluciones</label>
+            <label className="block text-zinc-400 mb-1">{tr('Política Real de Devoluciones', 'Real Return Policy', '真实退换货政策')}</label>
             <textarea
               rows={2}
               value={config.politicaDevoluciones}
@@ -252,7 +373,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
-            <label className="block text-zinc-400 mb-1">SLA Crítica (min)</label>
+            <label className="block text-zinc-400 mb-1">{tr('SLA Crítica (min)', 'Critical SLA (min)', '紧急 SLA（分钟）')}</label>
             <input
               type="number"
               min={1}
@@ -265,7 +386,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             />
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">SLA Alta (min)</label>
+            <label className="block text-zinc-400 mb-1">{tr('SLA Alta (min)', 'High SLA (min)', '高优先级 SLA（分钟）')}</label>
             <input
               type="number"
               min={1}
@@ -278,7 +399,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             />
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Intentos Máx. Bot</label>
+            <label className="block text-zinc-400 mb-1">{tr('Intentos Máx. Bot', 'Max Bot Attempts', '机器人最多尝试次数')}</label>
             <input
               type="number"
               min={1}
@@ -291,7 +412,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
             />
           </div>
           <div>
-            <label className="block text-zinc-400 mb-1">Cola N1 (Marca)</label>
+            <label className="block text-zinc-400 mb-1">{tr('Cola N1 (Marca)', 'N1 Queue (Brand)', 'N1 队列（品牌）')}</label>
             <input
               type="text"
               value={config.nivel1Cola}
@@ -305,12 +426,13 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
             <Sliders className="w-3.5 h-3.5 text-amber-400" />
-            <span>Palancas de Influencia Verificables Habilitadas</span>
+            <span>{tr('Palancas de Influencia Verificables Habilitadas', 'Enabled Verifiable Influence Levers', '已启用的可验证影响策略杠杆')}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {(Object.keys(VECTOR_LEVER_METADATA) as VectorInfluenceLever[]).map((key) => {
               const checked = config.palancasActivas.includes(key);
               const meta = VECTOR_LEVER_METADATA[key];
+              const localized = LEVER_I18N[key];
               return (
                 <button
                   key={key}
@@ -323,10 +445,12 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
                   }`}
                 >
                   <div className="text-[11px] font-bold flex items-center justify-between">
-                    <span>{meta.labelEs}</span>
+                    <span>{localized ? localized.label[lang] : meta.labelEs}</span>
                     {checked && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />}
                   </div>
-                  <p className="text-[10px] text-zinc-400 mt-0.5 line-clamp-2">{meta.rule}</p>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 line-clamp-2">
+                    {localized ? localized.rule[lang] : meta.rule}
+                  </p>
                 </button>
               );
             })}
@@ -339,17 +463,29 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-zinc-50">
-              Cola de Tickets Escalados por Vector ({tickets.length})
+              {tr(
+                `Cola de Tickets Escalados por Vector (${tickets.length})`,
+                `Vector Escalated Tickets Queue (${tickets.length})`,
+                `Vector 升级工单队列（${tickets.length}）`
+              )}
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Casos N1–N3 transferidos con paquete [ESCALAMIENTO] completo para no repetir preguntas al cliente.
+              {tr(
+                'Casos N1–N3 transferidos con paquete [ESCALAMIENTO] completo para no repetir preguntas al cliente.',
+                'N1–N3 cases transferred with complete [ESCALATION] context packet so customers never repeat details.',
+                'N1–N3 工单均附带完整上下文交接包，避免客户重复描述问题。'
+              )}
             </p>
           </div>
         </div>
 
         {tickets.length === 0 ? (
           <div className="p-6 rounded-lg bg-zinc-950 border border-white/[0.06] text-center text-xs text-zinc-400">
-            No hay casos escalados en esta tienda todavía. Vector está conteniendo las consultas en N0.
+            {tr(
+              'No hay casos escalados en esta tienda todavía. Vector está conteniendo las consultas en N0.',
+              'No escalated tickets for this store yet. Vector is resolving inquiries at N0.',
+              '此店铺暂无升级工单，Vector 正在 N0 级别直接解决咨询。'
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -362,7 +498,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-mono font-bold text-amber-400">{tkt.ticketNumber}</span>
                     <span className="px-2 py-0.5 rounded bg-zinc-900 border border-white/[0.08] text-zinc-200 font-mono text-[10px]">
-                      {tkt.level} · Prioridad {tkt.priority}
+                      {tkt.level} · {tr('Prioridad', 'Priority', '优先级')} {tkt.priority}
                     </span>
                     <span className="text-zinc-400 text-[11px] flex items-center gap-1">
                       <Clock className="w-3 h-3" /> SLA {tkt.slaMinutes} min
@@ -378,10 +514,10 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
                       }
                       className="bg-zinc-900 border border-white/[0.1] rounded-lg px-2.5 py-1 text-[11px] text-zinc-200"
                     >
-                      <option value="open">Abierto</option>
-                      <option value="in_progress">En Atención</option>
-                      <option value="escalated">Escalado</option>
-                      <option value="resolved">Resuelto</option>
+                      <option value="open">{tr('Abierto', 'Open', '待处理')}</option>
+                      <option value="in_progress">{tr('En Atención', 'In Progress', '处理中')}</option>
+                      <option value="escalated">{tr('Escalado', 'Escalated', '已升级')}</option>
+                      <option value="resolved">{tr('Resuelto', 'Resolved', '已解决')}</option>
                     </select>
                   </div>
                 </div>

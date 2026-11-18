@@ -86,7 +86,7 @@ interface SuperAdminPanelProps {
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehouseApp }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
@@ -265,12 +265,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       await adminSetStoreStatus(store, nextStatus);
       showNotice(
-        `Cuenta "${store.storeName}" actualizada manualmente a: ${
-          nextStatus === 'active' ? 'ACTIVA' : 'DESACTIVADA'
-        }.`
+        tr(
+          `Cuenta "${store.storeName}" actualizada manualmente a: ${nextStatus === 'active' ? 'ACTIVA' : 'DESACTIVADA'}.`,
+          `Account "${store.storeName}" manually updated to: ${nextStatus === 'active' ? 'ACTIVE' : 'SUSPENDED'}.`,
+          `账户 "${store.storeName}" 已手动更新为：${nextStatus === 'active' ? '已激活' : '已停用'}。`
+        )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error cambiando estado de tienda.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error cambiando estado de tienda.', 'Error changing store status.', '更改商店状态失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -283,12 +285,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       await adminSetGlobalWarehousePos(nextVal, billing);
       setBilling((prev) => ({ ...prev, warehousePosEnabled: nextVal }));
       showNotice(
-        `Módulo Almacén & POS global ${
-          nextVal ? 'ACTIVADO' : 'DESACTIVADO'
-        } por el Administrador.`
+        tr(
+          `Módulo Almacén & POS global ${nextVal ? 'ACTIVADO' : 'DESACTIVADO'} por el Administrador.`,
+          `Global Warehouse & POS module ${nextVal ? 'ENABLED' : 'DISABLED'} by Administrator.`,
+          `全局仓库与 POS 模块已被管理员${nextVal ? '启用' : '停用'}。`
+        )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error cambiando estado de Almacén & POS.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error cambiando estado de Almacén & POS.', 'Error changing Warehouse & POS state.', '更改仓库与 POS 状态失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -300,13 +304,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       await adminSetStoreWarehousePos(store, nextVal);
       showNotice(
-        `Almacén & POS ${nextVal ? 'ACTIVADO' : 'DESACTIVADO'} exclusivamente para "${
-          store.storeName
-        }".`
+        tr(
+          `Almacén & POS ${nextVal ? 'ACTIVADO' : 'DESACTIVADO'} exclusivamente para "${store.storeName}".`,
+          `Warehouse & POS ${nextVal ? 'ENABLED' : 'DISABLED'} exclusively for "${store.storeName}".`,
+          `已专为 "${store.storeName}" ${nextVal ? '启用' : '停用'}仓库与 POS。`
+        )
       );
     } catch (err) {
       setErrorNotice(
-        err instanceof Error ? err.message : 'Error cambiando Almacén & POS de la tienda.'
+        err instanceof Error ? err.message : tr('Error cambiando Almacén & POS de la tienda.', 'Error changing store Warehouse & POS state.', '更改商店仓库与 POS 状态失败。')
       );
     } finally {
       setIsBusy(false);
@@ -322,15 +328,27 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       const result = await adminResolveSubscriptionPayment(payment, nextStatus, activateStore);
       const couponNote = result?.couponIssuedCode
-        ? ` · 🎁 Cupón de referido ${result.couponIssuedCode} otorgado automáticamente a "${result.referrerStoreName}"!`
+        ? tr(
+            ` · 🎁 Cupón de referido ${result.couponIssuedCode} otorgado automáticamente a "${result.referrerStoreName}"!`,
+            ` · 🎁 Referral coupon ${result.couponIssuedCode} automatically issued to "${result.referrerStoreName}"!`,
+            ` · 🎁 推荐优惠券 ${result.couponIssuedCode} 已自动发放给 "${result.referrerStoreName}"！`
+          )
         : '';
       showNotice(
         nextStatus === 'approved'
-          ? `Pago #${payment.referenceNumber} aprobado${activateStore ? ' y tienda activada' : ''}${couponNote}.`
-          : `Pago #${payment.referenceNumber} marcado como rechazado.`
+          ? tr(
+              `Pago #${payment.referenceNumber} aprobado${activateStore ? ' y tienda activada' : ''}${couponNote}.`,
+              `Payment #${payment.referenceNumber} approved${activateStore ? ' and store activated' : ''}${couponNote}.`,
+              `付款 #${payment.referenceNumber} 已批准${activateStore ? '且商店已激活' : ''}${couponNote}。`
+            )
+          : tr(
+              `Pago #${payment.referenceNumber} marcado como rechazado.`,
+              `Payment #${payment.referenceNumber} marked as rejected.`,
+              `付款 #${payment.referenceNumber} 已标记为拒绝。`
+            )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error actualizando pago.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error actualizando pago.', 'Error updating payment.', '更新付款失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -369,12 +387,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
         body: emailBody,
       });
       showNotice(
-        `Correo enviado a ${res.sentCount} tienda(s) [${res.deliveryChannel.toUpperCase()}]. ${res.message}`
+        tr(
+          `Correo enviado a ${res.sentCount} tienda(s) [${res.deliveryChannel.toUpperCase()}]. ${res.message}`,
+          `Email sent to ${res.sentCount} store(s) [${res.deliveryChannel.toUpperCase()}]. ${res.message}`,
+          `邮件已发送至 ${res.sentCount} 家商店 [${res.deliveryChannel.toUpperCase()}]。${res.message}`
+        )
       );
       setEmailSubject('');
       setEmailBody('');
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error enviando correos.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error enviando correos.', 'Error sending emails.', '发送邮件失败。'));
     } finally {
       setIsSendingEmail(false);
     }
@@ -388,7 +410,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           .filter((em): em is string => Boolean(em && em.includes('@')))
       )
     );
-    const subj = encodeURIComponent(emailSubject || 'Comunicado Smith Solutions E-Commerce');
+    const subj = encodeURIComponent(emailSubject || tr('Comunicado Smith Solutions E-Commerce', 'Smith Solutions E-Commerce Notice', 'Smith Solutions 电子商务通知'));
     const body = encodeURIComponent(emailBody || '');
     if (emails.length <= 1) {
       return `mailto:${emails[0] || ''}?subject=${subj}&body=${body}`;
@@ -402,10 +424,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       await savePlatformBillingSettings(billing);
       showNotice(
-        'Cuentas receptoras (Bancos Venezuela, Pago Móvil, Binance Pay, Bybit) y recompensa por referidos guardadas en Firestore.'
+        tr(
+          'Cuentas receptoras (Bancos Venezuela, Pago Móvil, Binance Pay, Bybit) y recompensa por referidos guardadas en Firestore.',
+          'Receiving accounts (Local Banks, Mobile Pay, Binance Pay, Bybit) and referral rewards saved to Firestore.',
+          '收款账户（本地银行、移动支付、Binance Pay、Bybit）及推荐奖励已保存至 Firestore。'
+        )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error guardando cuentas.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error guardando cuentas.', 'Error saving billing accounts.', '保存收款账户失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -439,12 +465,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       );
       showNotice(
         editingMethodTarget
-          ? `Método de pago "${pmName}" actualizado en platform_billing.`
-          : `Método de pago "${pmName}" guardado en platform_billing. Ya está disponible en el flujo de compra de suscripción.`
+          ? tr(`Método de pago "${pmName}" actualizado en la plataforma.`, `Payment method "${pmName}" updated on platform.`, `平台收款方式 "${pmName}" 已更新。`)
+          : tr(`Método de pago "${pmName}" guardado. Ya está disponible en el flujo de compra de suscripción.`, `Payment method "${pmName}" saved. Now available in subscription checkout.`, `收款方式 "${pmName}" 已保存，现已在订阅付款流程中可用。`)
       );
       resetPaymentMethodForm();
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error guardando método de pago.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error guardando método de pago.', 'Error saving payment method.', '保存收款方式失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -454,9 +480,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     setIsBusy(true);
     try {
       await togglePlatformPaymentMethodActive(method, !method.isActive);
-      showNotice(`Método "${method.name}" ${!method.isActive ? 'activado' : 'pausado'}.`);
+      showNotice(
+        tr(
+          `Método "${method.name}" ${!method.isActive ? 'activado' : 'pausado'}.`,
+          `Method "${method.name}" ${!method.isActive ? 'activated' : 'paused'}.`,
+          `收款方式 "${method.name}" 已${!method.isActive ? '启用' : '暂停'}。`
+        )
+      );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error cambiando estado del método.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error cambiando estado del método.', 'Error changing method status.', '更改方式状态失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -470,9 +502,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       if (editingMethodTarget?.id === method.id) {
         resetPaymentMethodForm();
       }
-      showNotice(`Método de cobro de suscripción "${method.name}" eliminado.`);
+      showNotice(tr(`Método de cobro de suscripción "${method.name}" eliminado.`, `Subscription payment method "${method.name}" deleted.`, `订阅收款方式 "${method.name}" 已删除。`));
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error eliminando método.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error eliminando método.', 'Error deleting method.', '删除收款方式失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -514,13 +546,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       );
       showNotice(
         editingStoreSubTarget
-          ? `Método "${ssPmName}" actualizado para cobrar suscripción a "${targetStore.storeName}".`
-          : `Método "${ssPmName}" asignado manualmente a "${targetStore.storeName}" para cobrar su suscripción.`
+          ? tr(`Método "${ssPmName}" actualizado para cobrar suscripción a "${targetStore.storeName}".`, `Method "${ssPmName}" updated for billing "${targetStore.storeName}".`, `已更新 "${targetStore.storeName}" 的订阅收款方式 "${ssPmName}"。`)
+          : tr(`Método "${ssPmName}" asignado manualmente a "${targetStore.storeName}" para cobrar su suscripción.`, `Method "${ssPmName}" manually assigned to "${targetStore.storeName}" for subscription billing.`, `已手动为 "${targetStore.storeName}" 分配订阅收款方式 "${ssPmName}"。`)
       );
       resetStoreSubMethodForm();
     } catch (err) {
       setErrorNotice(
-        err instanceof Error ? err.message : 'Error guardando método de suscripción para la tienda.'
+        err instanceof Error ? err.message : tr('Error guardando método de suscripción para la tienda.', 'Error saving subscription method for store.', '保存商店订阅方式失败。')
       );
     } finally {
       setIsBusy(false);
@@ -535,10 +567,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       await toggleStoreSubscriptionPaymentMethodActive(targetStore, method, !method.isActive);
       showNotice(
-        `Método "${method.name}" (${targetStore.storeName}) ${!method.isActive ? 'activado' : 'pausado'}.`
+        tr(
+          `Método "${method.name}" (${targetStore.storeName}) ${!method.isActive ? 'activado' : 'pausado'}.`,
+          `Method "${method.name}" (${targetStore.storeName}) ${!method.isActive ? 'activated' : 'paused'}.`,
+          `方式 "${method.name}"（${targetStore.storeName}）已${!method.isActive ? '启用' : '暂停'}。`
+        )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error cambiando estado del método.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error cambiando estado del método.', 'Error changing method status.', '更改方式状态失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -555,10 +591,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       if (editingStoreSubTarget?.id === method.id) {
         resetStoreSubMethodForm();
       }
-      showNotice(`Método "${method.name}" eliminado de "${targetStore.storeName}".`);
+      showNotice(tr(`Método "${method.name}" eliminado de "${targetStore.storeName}".`, `Method "${method.name}" deleted from "${targetStore.storeName}".`, `已从 "${targetStore.storeName}" 删除方式 "${method.name}"。`));
     } catch (err) {
       setErrorNotice(
-        err instanceof Error ? err.message : 'Error eliminando método de suscripción de la tienda.'
+        err instanceof Error ? err.message : tr('Error eliminando método de suscripción de la tienda.', 'Error deleting store subscription method.', '删除商店订阅方式失败。')
       );
     } finally {
       setIsBusy(false);
@@ -591,12 +627,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       );
       showNotice(
         editingSalesMethodTarget
-          ? `Método para ventas "${spName}" actualizado correctamente.`
-          : `Método para ventas "${spName}" guardado. Ya aparece disponible para los dueños de tiendas al registrar ventas.`
+          ? tr(`Método para ventas "${spName}" actualizado correctamente.`, `Sales method "${spName}" updated successfully.`, `销售收款方式 "${spName}" 更新成功。`)
+          : tr(`Método para ventas "${spName}" guardado. Ya aparece disponible para los dueños de tiendas al registrar ventas.`, `Sales method "${spName}" saved. Now available to store owners when recording sales.`, `销售收款方式 "${spName}" 已保存，店主记录销售时现已可选。`)
       );
       resetSalesMethodForm();
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error guardando método para ventas.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error guardando método para ventas.', 'Error saving sales method.', '保存销售方式失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -607,10 +643,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     try {
       await toggleSalesPaymentMethodActive(method, !method.isActive);
       showNotice(
-        `Método de venta "${method.name}" ${!method.isActive ? 'activado' : 'pausado'} para tiendas.`
+        tr(
+          `Método de venta "${method.name}" ${!method.isActive ? 'activado' : 'pausado'} para tiendas.`,
+          `Sales method "${method.name}" ${!method.isActive ? 'activated' : 'paused'} for stores.`,
+          `商店销售方式 "${method.name}" 已${!method.isActive ? '启用' : '暂停'}。`
+        )
       );
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error actualizando estado.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error actualizando estado.', 'Error updating status.', '更新状态失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -624,9 +664,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       if (editingSalesMethodTarget?.id === method.id) {
         resetSalesMethodForm();
       }
-      showNotice(`Método para ventas "${method.name}" eliminado.`);
+      showNotice(tr(`Método para ventas "${method.name}" eliminado.`, `Sales method "${method.name}" deleted.`, `销售方式 "${method.name}" 已删除。`));
     } catch (err) {
-      setErrorNotice(err instanceof Error ? err.message : 'Error eliminando método para ventas.');
+      setErrorNotice(err instanceof Error ? err.message : tr('Error eliminando método para ventas.', 'Error deleting sales method.', '删除销售方式失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -639,7 +679,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     setManualWhatsapp('+58 ');
     setManualStoreName('');
     setManualRif('');
-    setManualCategory('Comercio General');
+    setManualCategory(tr('Comercio General', 'General Retail', '综合零售'));
     setManualStatus('active');
     setManualWarehousePos(true);
     setManualNationalShipping(true);
@@ -688,7 +728,11 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           [editingStoreTarget.id]: manualOwnerEmail.trim().toLowerCase(),
         }));
         showNotice(
-          `Datos del dueño "${manualOwnerName}" y tienda "${manualStoreName}" actualizados correctamente.`
+          tr(
+            `Datos del dueño "${manualOwnerName}" y tienda "${manualStoreName}" actualizados correctamente.`,
+            `Owner "${manualOwnerName}" and store "${manualStoreName}" updated successfully.`,
+            `店主 "${manualOwnerName}" 和商店 "${manualStoreName}" 信息更新成功。`
+          )
         );
       } else {
         const { store } = await adminCreateStoreWithOwner(user, {
@@ -709,13 +753,17 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           [store.id]: manualOwnerEmail.trim().toLowerCase(),
         }));
         showNotice(
-          `Dueño "${manualOwnerName}" (${manualOwnerEmail.trim().toLowerCase()}) y tienda "${store.storeName}" registrados manualmente. Al iniciar sesión con ese correo Google heredará el control total.`
+          tr(
+            `Dueño "${manualOwnerName}" (${manualOwnerEmail.trim().toLowerCase()}) y tienda "${store.storeName}" registrados manualmente. Al iniciar sesión con ese correo Google heredará el control total.`,
+            `Owner "${manualOwnerName}" (${manualOwnerEmail.trim().toLowerCase()}) and store "${store.storeName}" registered manually. Signing in with that Google email will grant full control.`,
+            `已手动登记店主 "${manualOwnerName}"（${manualOwnerEmail.trim().toLowerCase()}）和商店 "${store.storeName}"。使用该 Google 邮箱登录即可获得完全控制权。`
+          )
         );
       }
       setShowOwnerModal(false);
     } catch (err) {
       setErrorNotice(
-        err instanceof Error ? err.message : 'Error guardando persona dueña y tienda.'
+        err instanceof Error ? err.message : tr('Error guardando persona dueña y tienda.', 'Error saving store owner and store.', '保存店主与商店信息失败。')
       );
     } finally {
       setIsBusy(false);
@@ -928,7 +976,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           }`}
         >
           <Wallet className="w-4 h-4 shrink-0" />
-          <span>Métodos Suscripción ({customPaymentMethods.length})</span>
+          <span>{tr('Métodos Suscripción', 'Sub. Methods', '订阅方式')} ({customPaymentMethods.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('billing')}
@@ -939,7 +987,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           }`}
         >
           <Settings className="w-4 h-4 shrink-0" />
-          <span>Cobro Suscripción (${billing.monthlyPriceUSD})</span>
+          <span>{tr('Cobro Suscripción', 'Sub. Billing', '订阅计费')} (${billing.monthlyPriceUSD})</span>
         </button>
         <button
           onClick={() => setActiveTab('emails')}
@@ -974,7 +1022,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           }`}
         >
           <Compass className="w-4 h-4 shrink-0" />
-          <span>Centro Vector</span>
+          <span>{tr('Centro Vector', 'Vector Hub', 'Vector 中心')}</span>
         </button>
         <button
           onClick={() => setActiveTab('sales_methods')}
@@ -985,7 +1033,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           }`}
         >
           <Wallet className="w-4 h-4 shrink-0" />
-          <span>Métodos Pago Ventas ({salesPaymentMethods.length})</span>
+          <span>{tr('Métodos Pago Ventas', 'Sales Methods', '销售收款方式')} ({salesPaymentMethods.length})</span>
         </button>
       </div>
 
@@ -1031,7 +1079,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 className="px-4 py-2 min-h-[42px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 whitespace-nowrap"
               >
                 <UserPlus className="w-4 h-4 shrink-0" />
-                <span>Registrar Dueño y Tienda</span>
+                <span>{tr('Registrar Dueño y Tienda', 'Register Owner & Store', '登记店主与商店')}</span>
               </button>
             </div>
           </div>
@@ -1092,7 +1140,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           </span>
                           {pendingClaim && (
                             <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500/15 border border-amber-500/30 text-amber-300">
-                              Por vincular Google
+                              {tr('Por vincular Google', 'Pending Google Link', '待绑定 Google')}
                             </span>
                           )}
                         </div>
@@ -1103,7 +1151,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         </div>
                         <div className="text-[11px] text-zinc-500 font-mono flex flex-wrap gap-2">
                           <span>
-                            /tienda/{store.slug} · ${store.subscriptionPriceUSD}/mo
+                            /tienda/{store.slug} · ${store.subscriptionPriceUSD}{tr('/mes', '/mo', '/月')}
                           </span>
                           <span
                             className={
@@ -1114,15 +1162,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           >
                             ·{' '}
                             {(storeSubMethodsMap[store.id] || []).length > 0
-                              ? `Cobro Suscripción: ${(storeSubMethodsMap[store.id] || []).filter((m) => m.isActive).length}/${(storeSubMethodsMap[store.id] || []).length} asignados`
-                              : 'Cobro Suscripción: Global'}
+                              ? tr(
+                                  `Cobro Suscripción: ${(storeSubMethodsMap[store.id] || []).filter((m) => m.isActive).length}/${(storeSubMethodsMap[store.id] || []).length} asignados`,
+                                  `Sub. Billing: ${(storeSubMethodsMap[store.id] || []).filter((m) => m.isActive).length}/${(storeSubMethodsMap[store.id] || []).length} assigned`,
+                                  `订阅收款：已分配 ${(storeSubMethodsMap[store.id] || []).filter((m) => m.isActive).length}/${(storeSubMethodsMap[store.id] || []).length}`
+                                )
+                              : tr('Cobro Suscripción: Global', 'Sub. Billing: Global', '订阅收款：全局')}
                           </span>
                           {store.referralCode && (
                             <span className="text-amber-300/90">Ref: {store.referralCode}</span>
                           )}
                           {store.referredByStoreName && (
                             <span className="text-emerald-300/90">
-                              Invitada por: {store.referredByStoreName}
+                              {tr('Invitada por:', 'Invited by:', '邀请方：')} {store.referredByStoreName}
                             </span>
                           )}
                         </div>
@@ -1141,7 +1193,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       >
                         <CreditCard className="w-3.5 h-3.5 text-amber-400" />
                         <span>
-                          Cobro Suscripción
+                          {tr('Cobro Suscripción', 'Sub. Billing', '订阅收款')}
                           {(storeSubMethodsMap[store.id] || []).length > 0
                             ? ` (${(storeSubMethodsMap[store.id] || []).length})`
                             : ''}
@@ -1154,7 +1206,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         className="px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 min-h-[40px] bg-[#09090b] border border-white/[0.1] hover:border-amber-400 text-zinc-200 whitespace-nowrap"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Editar Dueño</span>
+                        <span>{tr('Editar Dueño', 'Edit Owner', '编辑店主')}</span>
                       </button>
 
                       <button
@@ -1233,13 +1285,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <div>
                       <h3 className="text-base font-bold text-white font-display">
                         {editingStoreTarget
-                          ? `Editar Dueño y Tienda · ${editingStoreTarget.storeName}`
-                          : 'Registrar Dueño de Tienda Manualmente'}
+                          ? `${tr('Editar Dueño y Tienda', 'Edit Owner & Store', '编辑店主与商店')} · ${editingStoreTarget.storeName}`
+                          : tr('Registrar Dueño de Tienda Manualmente', 'Manually Register Store Owner', '手动登记店主')}
                       </h3>
                       <p className="text-xs text-zinc-400">
                         {editingStoreTarget
-                          ? 'Actualiza los datos personales de contacto del propietario y su negocio.'
-                          : 'Crea la tienda y asigna el correo Google de la persona dueña para que herede su panel al iniciar sesión.'}
+                          ? tr('Actualiza los datos personales de contacto del propietario y su negocio.', 'Update owner contact details and business info.', '更新店主个人联系信息及商店资料。')
+                          : tr('Crea la tienda y asigna el correo Google de la persona dueña para que herede su panel al iniciar sesión.', 'Create the store and assign the owner Google email so they inherit their dashboard on sign-in.', '创建商店并指定店主的 Google 邮箱，登录后即可继承管理面板。')}
                       </p>
                     </div>
                   </div>
@@ -1247,7 +1299,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     type="button"
                     onClick={() => setShowOwnerModal(false)}
                     className="min-h-[40px] min-w-[40px] rounded-lg bg-[#09090b] border border-white/[0.1] text-zinc-400 hover:text-white flex items-center justify-center"
-                    aria-label="Cerrar modal"
+                    aria-label={tr('Cerrar modal', 'Close modal', '关闭弹窗')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1256,7 +1308,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="text-xs text-zinc-300 block mb-1">
-                      Nombre Completo del Dueño *
+                      {tr('Nombre Completo del Dueño *', 'Owner Full Name *', '店主姓名 *')}
                     </label>
                     <input
                       required
@@ -1264,14 +1316,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       maxLength={100}
                       value={manualOwnerName}
                       onChange={(e) => setManualOwnerName(e.target.value)}
-                      placeholder="Ej: María Gabriela Rodríguez"
+                      placeholder={tr('Ej: María Gabriela Rodríguez', 'Ex: Maria Rodriguez', '例：张三 / Maria Rodriguez')}
                       className="w-full px-3.5 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                     />
                   </div>
 
                   <div>
                     <label className="text-xs text-zinc-300 block mb-1">
-                      Correo Google del Dueño *
+                      {tr('Correo Google del Dueño *', 'Owner Google Email *', '店主 Google 邮箱 *')}
                     </label>
                     <input
                       required
@@ -1279,14 +1331,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       maxLength={160}
                       value={manualOwnerEmail}
                       onChange={(e) => setManualOwnerEmail(e.target.value)}
-                      placeholder="dueno@gmail.com"
+                      placeholder={tr('dueno@gmail.com', 'owner@gmail.com', 'owner@gmail.com')}
                       className="w-full px-3.5 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                     />
                   </div>
 
                   <div>
                     <label className="text-xs text-zinc-300 block mb-1">
-                      Nombre de la Tienda *
+                      {tr('Nombre de la Tienda *', 'Store Name *', '商店名称 *')}
                     </label>
                     <input
                       required
@@ -1294,14 +1346,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       maxLength={100}
                       value={manualStoreName}
                       onChange={(e) => setManualStoreName(e.target.value)}
-                      placeholder="Ej: Bodegón Los Palos Grandes"
+                      placeholder={tr('Ej: Bodegón Los Palos Grandes', 'Ex: Central Market Store', '例：中央精品商店')}
                       className="w-full px-3.5 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                     />
                   </div>
 
                   <div>
                     <label className="text-xs text-zinc-300 block mb-1">
-                      WhatsApp Comercial *
+                      {tr('WhatsApp Comercial *', 'Business WhatsApp *', '商业 WhatsApp *')}
                     </label>
                     <input
                       required
@@ -1315,7 +1367,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   </div>
 
                   <div>
-                    <label className="text-xs text-zinc-300 block mb-1">RIF / Cédula (Opcional)</label>
+                    <label className="text-xs text-zinc-300 block mb-1">{tr('RIF / Cédula (Opcional)', 'Tax ID / RIF (Optional)', '税号 / 身份证（可选）')}</label>
                     <input
                       type="text"
                       maxLength={30}
@@ -1327,13 +1379,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   </div>
 
                   <div>
-                    <label className="text-xs text-zinc-300 block mb-1">Categoría</label>
+                    <label className="text-xs text-zinc-300 block mb-1">{tr('Categoría', 'Category', '类别')}</label>
                     <input
                       type="text"
                       maxLength={60}
                       value={manualCategory}
                       onChange={(e) => setManualCategory(e.target.value)}
-                      placeholder="Bodegón, Tecnología, Alimentos..."
+                      placeholder={tr('Bodegón, Tecnología, Alimentos...', 'Grocery, Tech, Food...', '商超、数码、食品...')}
                       className="w-full px-3.5 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                     />
                   </div>
@@ -1343,15 +1395,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <div className="space-y-3 border-t border-white/[0.08] pt-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
-                        <label className="text-xs text-zinc-300 block mb-1">Estado Inicial</label>
+                        <label className="text-xs text-zinc-300 block mb-1">{tr('Estado Inicial', 'Initial Status', '初始状态')}</label>
                         <select
                           value={manualStatus}
                           onChange={(e) => setManualStatus(e.target.value as StoreStatus)}
                           className="w-full px-3.5 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                         >
-                          <option value="active">Activa (Visible en Directorio)</option>
-                          <option value="pending">Pendiente de Pago ($25/mes)</option>
-                          <option value="suspended">Suspendida</option>
+                          <option value="active">{tr('Activa (Visible en Directorio)', 'Active (Visible in Directory)', '已激活（目录可见）')}</option>
+                          <option value="pending">{tr('Pendiente de Pago ($25/mes)', 'Pending Payment ($25/mo)', '待付款（$25/月）')}</option>
+                          <option value="suspended">{tr('Suspendida', 'Suspended', '已停用')}</option>
                         </select>
                       </div>
 
@@ -1363,7 +1415,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             onChange={(e) => setManualWarehousePos(e.target.checked)}
                             className="accent-amber-500"
                           />
-                          <span>Activar Almacén & POS para esta tienda</span>
+                          <span>{tr('Activar Almacén & POS para esta tienda', 'Enable Warehouse & POS for this store', '为此商店启用仓库与 POS')}</span>
                         </label>
                       </div>
                     </div>
@@ -1376,7 +1428,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           onChange={(e) => setManualNationalShipping(e.target.checked)}
                           className="accent-amber-500"
                         />
-                        <span>Envío Nacional</span>
+                        <span>{tr('Envío Nacional', 'National Shipping', '全国配送')}</span>
                       </label>
                       <label className="px-3 py-2.5 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center gap-2 text-zinc-300 cursor-pointer">
                         <input
@@ -1385,7 +1437,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           onChange={(e) => setManualLocalDelivery(e.target.checked)}
                           className="accent-amber-500"
                         />
-                        <span>Delivery Local</span>
+                        <span>{tr('Delivery Local', 'Local Delivery', '同城配送')}</span>
                       </label>
                       <label className="px-3 py-2.5 rounded-xl bg-[#09090b] border border-white/[0.08] flex items-center gap-2 text-zinc-300 cursor-pointer">
                         <input
@@ -1394,7 +1446,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           onChange={(e) => setManualPickupEnabled(e.target.checked)}
                           className="accent-amber-500"
                         />
-                        <span>Retiro en Tienda</span>
+                        <span>{tr('Retiro en Tienda', 'Store Pickup', '门店自提')}</span>
                       </label>
                     </div>
                   </div>
@@ -1416,8 +1468,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <Save className="w-4 h-4" />
                     <span>
                       {editingStoreTarget
-                        ? 'Guardar Cambios del Dueño'
-                        : 'Crear Dueño y Tienda'}
+                        ? tr('Guardar Cambios del Dueño', 'Save Owner Changes', '保存店主更改')
+                        : tr('Crear Dueño y Tienda', 'Create Owner & Store', '创建店主与商店')}
                     </span>
                   </button>
                 </div>
@@ -1434,12 +1486,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             <div className="space-y-1">
               <h2 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Métodos de Cobro Activos para Suscripción (${billing.monthlyPriceUSD}/mes)</span>
+                <span>{tr('Métodos de Cobro Activos para Suscripción', 'Active Subscription Billing Methods', '启用的订阅收款方式')} (${billing.monthlyPriceUSD}/{tr('mes', 'mo', '月')})</span>
               </h2>
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                 {customPaymentMethods.filter((m) => m.isActive).length === 0 ? (
                   <span className="text-amber-300">
-                    Aún no has agregado métodos manuales en «Métodos Suscripción». Agrégalos para que los dueños de tienda los seleccionen al pagar.
+                    {tr(
+                      'Aún no has agregado métodos manuales en «Métodos Suscripción». Agrégalos para que los dueños de tienda los seleccionen al pagar.',
+                      'No manual methods added yet in "Sub. Methods". Add them so store owners can select them when paying.',
+                      '尚未在“订阅方式”中添加手动收款方式。请添加以便店主付款时选择。'
+                    )}
                   </span>
                 ) : (
                   customPaymentMethods
@@ -1462,7 +1518,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               className="px-4 py-2.5 min-h-[42px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-2 whitespace-nowrap shrink-0 self-start lg:self-auto"
             >
               <Plus className="w-4 h-4 shrink-0" />
-              <span>Configurar Métodos de Pago Manuales</span>
+              <span>{tr('Configurar Métodos de Pago Manuales', 'Configure Manual Payment Methods', '配置手动收款方式')}</span>
             </button>
           </div>
 
@@ -1519,10 +1575,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       >
                         <img
                           src={pay.proofImageUrl}
-                          alt="Captura de pago"
+                          alt={tr('Captura de pago', 'Payment screenshot', '付款截图')}
                           className="w-6 h-6 rounded object-cover"
                         />
-                        <span>Ver Captura Adjunta</span>
+                        <span>{tr('Ver Captura Adjunta', 'View Attached Proof', '查看付款凭证')}</span>
                       </button>
                     </div>
                   )}
@@ -1567,18 +1623,18 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-white">Captura del Comprobante</span>
+                  <span className="text-sm font-bold text-white">{tr('Captura del Comprobante', 'Payment Receipt Screenshot', '付款凭证截图')}</span>
                   <button
                     type="button"
                     onClick={() => setPreviewProofUrl(null)}
                     className="min-h-[40px] px-3 py-1.5 rounded-lg bg-zinc-900 text-zinc-300 hover:text-white text-xs font-semibold"
                   >
-                    Cerrar
+                    {tr('Cerrar', 'Close', '关闭')}
                   </button>
                 </div>
                 <img
                   src={previewProofUrl}
-                  alt="Captura de pago completa"
+                  alt={tr('Captura de pago completa', 'Full payment screenshot', '完整付款截图')}
                   className="w-full max-h-[70dvh] object-contain rounded-xl bg-[#09090b]"
                 />
               </div>
@@ -1643,7 +1699,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   {stores.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.storeName} — {s.registeredOwnerName}{' '}
-                      {ownerEmailMap[s.id] ? `(${ownerEmailMap[s.id]})` : '(Bandeja Tienda)'}
+                      {ownerEmailMap[s.id] ? `(${ownerEmailMap[s.id]})` : tr('(Bandeja Tienda)', '(Store Inbox)', '(店铺收件箱)')}
                     </option>
                   ))}
                 </select>
@@ -1794,7 +1850,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             : 'bg-amber-500/20 text-amber-300'
                         }`}
                       >
-                        {em.mode === 'collective' ? 'Colectivo' : 'Individual'} · {em.recipientCount}
+                        {em.mode === 'collective' ? tr('Colectivo', 'Collective', '群发') : tr('Individual', 'Individual', '单独')} · {em.recipientCount}
                       </span>
                       <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px] font-mono">
                         {em.deliveryChannel}
@@ -1826,10 +1882,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             </div>
             <div className="flex flex-wrap gap-3 text-xs font-mono">
               <div className="px-3 py-2 rounded-xl bg-[#09090b] border border-white/[0.08]">
-                Referidos: <strong className="text-white">{referrals.length}</strong>
+                {tr('Referidos:', 'Referrals:', '推荐数:')} <strong className="text-white">{referrals.length}</strong>
               </div>
               <div className="px-3 py-2 rounded-xl bg-[#09090b] border border-emerald-500/30">
-                Cupones Activos:{' '}
+                {tr('Cupones Activos:', 'Active Coupons:', '有效优惠券:')}{' '}
                 <strong className="text-emerald-300">
                   {coupons.filter((c) => c.status === 'available').length}
                 </strong>
@@ -1866,8 +1922,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         </span>
                       </div>
                       <div className="text-[11px] text-zinc-400 font-mono">
-                        Código usado: {r.referrerCode}
-                        {r.rewardCouponCode ? ` · Cupón: ${r.rewardCouponCode}` : ''}
+                        {tr('Código usado:', 'Code used:', '使用推荐码:')} {r.referrerCode}
+                        {r.rewardCouponCode ? ` · ${tr('Cupón:', 'Coupon:', '优惠券:')} ${r.rewardCouponCode}` : ''}
                       </div>
                     </div>
                   ))}
@@ -1896,7 +1952,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <div className="text-zinc-300">{c.storeName}</div>
                         {c.referredStoreName && (
                           <div className="text-[11px] text-zinc-400">
-                            Por referir a: {c.referredStoreName}
+                            {tr('Por referir a:', 'For referring:', '推荐奖励来源:')} {c.referredStoreName}
                           </div>
                         )}
                       </div>
@@ -1951,56 +2007,100 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           {
             name: 'Pago Móvil',
             currency: 'Bs',
-            detailsPlaceholder: 'Banco: Banesco (0134) · Cédula/RIF: J-XXXXXXXX-X · Teléfono: 04XX-XXXXXXX',
-            instructions: 'Calcular monto al cambio oficial BCV del día y adjuntar captura o últimos 6 dígitos.',
+            detailsPlaceholder: tr(
+              'Banco: Banesco (0134) · Cédula/RIF: J-XXXXXXXX-X · Teléfono: 04XX-XXXXXXX',
+              'Bank: Banesco (0134) · ID/RIF: J-XXXXXXXX-X · Phone: 04XX-XXXXXXX',
+              '银行: Banesco (0134) · 证件/税号: J-XXXXXXXX-X · 电话: 04XX-XXXXXXX'
+            ),
+            instructions: tr(
+              'Calcular monto al cambio oficial BCV del día y adjuntar captura o últimos 6 dígitos.',
+              'Calculate amount at the official daily BCV rate and attach screenshot or last 6 digits.',
+              '按当日 BCV 官方汇率计算金额，并附上截图或后6位参考号。'
+            ),
           },
           {
-            name: 'Transferencia Banesco',
+            name: tr('Transferencia Banesco', 'Banesco Transfer', 'Banesco 银行转账'),
             currency: 'Bs',
-            detailsPlaceholder: 'Banesco · Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X',
-            instructions: 'Indicar nombre de la tienda en el concepto y enviar número de referencia.',
+            detailsPlaceholder: tr(
+              'Banesco · Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X',
+              'Banesco · Checking Account: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X',
+              'Banesco · 支票账户: 0134-XXXX-XX-XXXXXXXXXX · 税号: J-XXXXXXXX-X'
+            ),
+            instructions: tr(
+              'Indicar nombre de la tienda en el concepto y enviar número de referencia.',
+              'Include your store name in the memo and submit the reference number.',
+              '请在备注中填写店铺名称并发送转账参考号。'
+            ),
           },
           {
             name: 'Binance Pay',
             currency: 'USDT',
-            detailsPlaceholder: 'Binance Pay ID: XXXXXXXXX · Correo: pagos@tudominio.com · Red USDT BEP20/TRC20',
-            instructions: `Enviar exactamente $${billing.monthlyPriceUSD} USDT netos e indicar Order ID o correo Binance.`,
+            detailsPlaceholder: tr(
+              'Binance Pay ID: XXXXXXXXX · Correo: pagos@tudominio.com · Red USDT BEP20/TRC20',
+              'Binance Pay ID: XXXXXXXXX · Email: payments@yourdomain.com · USDT Network BEP20/TRC20',
+              'Binance Pay ID: XXXXXXXXX · 邮箱: payments@yourdomain.com · USDT 网络 BEP20/TRC20'
+            ),
+            instructions: tr(
+              `Enviar exactamente $${billing.monthlyPriceUSD} USDT netos e indicar Order ID o correo Binance.`,
+              `Send exact $${billing.monthlyPriceUSD} net USDT and provide your Order ID or Binance email.`,
+              `请足额发送 $${billing.monthlyPriceUSD} USDT 并注明订单号或币安邮箱。`
+            ),
           },
           {
             name: 'Zelle',
             currency: 'USD',
-            detailsPlaceholder: 'Correo Zelle: pagos@tuempresa.com',
-            instructions: 'Colocar únicamente el nombre de tu tienda en el memo/concepto de Zelle.',
+            detailsPlaceholder: tr('Correo Zelle: pagos@tuempresa.com', 'Zelle Email: payments@yourcompany.com', 'Zelle 邮箱: payments@yourcompany.com'),
+            instructions: tr(
+              'Colocar únicamente el nombre de tu tienda en el memo/concepto de Zelle.',
+              'Put only your store name in the Zelle memo field.',
+              '请仅在 Zelle 备注栏填写您的店铺名称。'
+            ),
           },
           {
             name: 'Zinli',
             currency: 'USD',
-            detailsPlaceholder: 'Correo Zinli: pagos@tuempresa.com',
-            instructions: 'Enviar comprobante con correo emisor y código de transacción.',
+            detailsPlaceholder: tr('Correo Zinli: pagos@tuempresa.com', 'Zinli Email: payments@yourcompany.com', 'Zinli 邮箱: payments@yourcompany.com'),
+            instructions: tr(
+              'Enviar comprobante con correo emisor y código de transacción.',
+              'Submit receipt with sender email and transaction code.',
+              '请提交包含发送方邮箱与交易码的凭证。'
+            ),
           },
           {
             name: 'Bybit Pay',
             currency: 'USDT',
-            detailsPlaceholder: 'Bybit UID: XXXXXXXX · Correo interno sin comisión',
-            instructions: 'Transferencia interna instantánea en USDT y reportar UID emisor.',
+            detailsPlaceholder: tr('Bybit UID: XXXXXXXX · Correo interno sin comisión', 'Bybit UID: XXXXXXXX · Zero-fee internal email', 'Bybit UID: XXXXXXXX · 内部免手续费邮箱'),
+            instructions: tr(
+              'Transferencia interna instantánea en USDT y reportar UID emisor.',
+              'Instant internal USDT transfer and report your sender UID.',
+              'USDT 内部即时转账并填报发送方 UID。'
+            ),
           },
           {
             name: 'Wally',
             currency: 'USD',
-            detailsPlaceholder: 'Usuario / Teléfono Wally: +58 4XX-XXXXXXX',
-            instructions: 'Adjuntar captura del pago completado.',
+            detailsPlaceholder: tr('Usuario / Teléfono Wally: +58 4XX-XXXXXXX', 'Wally User / Phone: +58 4XX-XXXXXXX', 'Wally 用户 / 电话: +58 4XX-XXXXXXX'),
+            instructions: tr('Adjuntar captura del pago completado.', 'Attach screenshot of completed payment.', '请附上已完成付款的截图。'),
           },
           {
             name: 'PayPal',
             currency: 'USD',
-            detailsPlaceholder: 'Correo PayPal: pagos@tuempresa.com',
-            instructions: 'Cubrir comisión PayPal para acreditar el monto neto de la mensualidad.',
+            detailsPlaceholder: tr('Correo PayPal: pagos@tuempresa.com', 'PayPal Email: payments@yourcompany.com', 'PayPal 邮箱: payments@yourcompany.com'),
+            instructions: tr(
+              'Cubrir comisión PayPal para acreditar el monto neto de la mensualidad.',
+              'Cover PayPal fees so the net monthly subscription amount is credited.',
+              '请承担 PayPal 手续费以确保月费净额到账。'
+            ),
           },
           {
-            name: 'Efectivo USD',
+            name: tr('Efectivo USD', 'USD Cash', '美元现金'),
             currency: 'USD',
-            detailsPlaceholder: 'Pago presencial en taquilla / oficina autorizada',
-            instructions: 'Coordinar entrega previa vía WhatsApp oficial para emitir recibo.',
+            detailsPlaceholder: tr('Pago presencial en taquilla / oficina autorizada', 'In-person payment at authorized desk / office', '在授权网点或办公室当面付款'),
+            instructions: tr(
+              'Coordinar entrega previa vía WhatsApp oficial para emitir recibo.',
+              'Coordinate delivery beforehand via official WhatsApp to issue a receipt.',
+              '请提前通过官方 WhatsApp 预约交接以便开具收据。'
+            ),
           },
         ];
 
@@ -2033,7 +2133,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   }`}
                 >
                   <CreditCard className="w-4 h-4 shrink-0" />
-                  <span>Métodos Globales ({customPaymentMethods.length})</span>
+                  <span>{tr('Métodos Globales', 'Global Methods', '全局收款方式')} ({customPaymentMethods.length})</span>
                 </button>
                 <button
                   type="button"
@@ -2045,13 +2145,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   }`}
                 >
                   <Store className="w-4 h-4 shrink-0" />
-                  <span>Por Tienda Registrada ({totalPerStoreMethodsCount})</span>
+                  <span>{tr('Por Tienda Registrada', 'Per Registered Store', '按注册店铺分配')} ({totalPerStoreMethodsCount})</span>
                 </button>
               </div>
               <span className="text-[11px] text-zinc-400 px-2">
                 {subMethodsScope === 'global'
-                  ? 'Aplican a todas las tiendas en el flujo de suscripción'
-                  : 'Asigna cuentas o billeteras exclusivas para cobrar a cada tienda'}
+                  ? tr('Aplican a todas las tiendas en el flujo de suscripción', 'Applies to all stores during subscription checkout', '适用于所有店铺的订阅结账流程')
+                  : tr('Asigna cuentas o billeteras exclusivas para cobrar a cada tienda', 'Assign exclusive bank accounts or wallets to bill each store', '为每家店铺指定专属收款账户或钱包')}
               </span>
             </div>
 
@@ -2062,17 +2162,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <div className="space-y-1">
                     <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
                       <Store className="w-5 h-5 text-amber-400 shrink-0" />
-                      <span>Cobro Manual de Suscripción por Cada Tienda Registrada</span>
+                      <span>{tr('Cobro Manual de Suscripción por Cada Tienda Registrada', 'Manual Subscription Billing Per Registered Store', '按注册店铺配置手动订阅收款')}</span>
                     </h2>
                     <p className="text-xs text-zinc-400 max-w-2xl">
-                      Selecciona una tienda registrada y configura de forma manual los métodos de pago específicos para cobrar su suscripción mensual (${billing.monthlyPriceUSD}/mes). La tienda los verá prioritariamente en su portal de suscripción.
+                      {tr(
+                        `Selecciona una tienda registrada y configura de forma manual los métodos de pago específicos para cobrar su suscripción mensual ($${billing.monthlyPriceUSD}/mes). La tienda los verá prioritariamente en su portal de suscripción.`,
+                        `Select a registered store and manually configure dedicated payment methods to bill its monthly subscription ($${billing.monthlyPriceUSD}/mo). The store will see them prioritized in its subscription portal.`,
+                        `选择已注册店铺并手动配置月度订阅（$${billing.monthlyPriceUSD}/月）专属收款方式，该店铺将在其订阅门户中优先看到这些方式。`
+                      )}
                     </p>
                   </div>
 
                   {stores.length > 0 && (
                     <div className="min-w-[260px]">
                       <label className="text-[11px] text-zinc-400 block mb-1">
-                        Tienda Registrada Seleccionada *
+                        {tr('Tienda Registrada Seleccionada *', 'Selected Registered Store *', '已选注册店铺 *')}
                       </label>
                       <select
                         value={selectedSubStore?.id || ''}
@@ -2087,7 +2191,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           const cnt = (storeSubMethodsMap[s.id] || []).length;
                           return (
                             <option key={s.id} value={s.id}>
-                              {s.storeName} — {s.registeredOwnerName} ({cnt} método{cnt === 1 ? '' : 's'})
+                              {s.storeName} — {s.registeredOwnerName} ({cnt} {tr(cnt === 1 ? 'método' : 'métodos', cnt === 1 ? 'method' : 'methods', '种方式')})
                             </option>
                           );
                         })}
@@ -2098,7 +2202,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
 
                 {!selectedSubStore ? (
                   <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-8 text-center text-xs text-zinc-400">
-                    No hay tiendas registradas todavía para asignar métodos de cobro de suscripción.
+                    {tr('No hay tiendas registradas todavía para asignar métodos de cobro de suscripción.', 'No registered stores yet to assign subscription billing methods.', '暂无已注册店铺可分配订阅收款方式。')}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -2112,12 +2216,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                             <span>
                               {editingStoreSubTarget
-                                ? `Editar Método (${selectedSubStore.storeName})`
-                                : `Añadir Método para "${selectedSubStore.storeName}"`}
+                                ? `${tr('Editar Método', 'Edit Method', '编辑方式')} (${selectedSubStore.storeName})`
+                                : `${tr('Añadir Método para', 'Add Method for', '为以下店铺添加方式')} "${selectedSubStore.storeName}"`}
                             </span>
                           </h3>
                           <p className="text-[11px] text-zinc-400 mt-0.5">
-                            Dueño: {selectedSubStore.registeredOwnerName}
+                            {tr('Dueño:', 'Owner:', '店主:')} {selectedSubStore.registeredOwnerName}
                             {ownerEmailMap[selectedSubStore.id]
                               ? ` · ${ownerEmailMap[selectedSubStore.id]}`
                               : ''}
@@ -2129,14 +2233,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             onClick={resetStoreSubMethodForm}
                             className="text-xs text-zinc-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-[#09090b] border border-white/[0.08] shrink-0"
                           >
-                            Cancelar
+                            {t.common.cancel}
                           </button>
                         )}
                       </div>
 
                       {!editingStoreSubTarget && (
                         <div className="space-y-1.5">
-                          <div className="text-[11px] text-zinc-400">Plantillas rápidas:</div>
+                          <div className="text-[11px] text-zinc-400">{tr('Plantillas rápidas:', 'Quick templates:', '快速模板：')}</div>
                           <div className="flex flex-wrap gap-1.5">
                             {subscriptionPresets.map((preset) => (
                               <button
@@ -2163,7 +2267,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="sm:col-span-2">
                           <label className="text-xs text-zinc-300 block mb-1">
-                            Nombre del Método *
+                            {tr('Nombre del Método *', 'Method Name *', '方式名称 *')}
                           </label>
                           <input
                             required
@@ -2171,12 +2275,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             maxLength={80}
                             value={ssPmName}
                             onChange={(e) => setSsPmName(e.target.value)}
-                            placeholder="Ej: Zelle / Pago Móvil / Binance Pay"
+                            placeholder={tr('Ej: Zelle / Pago Móvil / Binance Pay', 'e.g. Zelle / Pago Móvil / Binance Pay', '例如：Zelle / Pago Móvil / Binance Pay')}
                             className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                          <label className="text-xs text-zinc-300 block mb-1">{tr('Moneda *', 'Currency *', '币种 *')}</label>
                           <select
                             value={ssPmCurrency}
                             onChange={(e) =>
@@ -2188,28 +2292,28 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             <option value="USDT">USDT</option>
                             <option value="Bs">Bs.</option>
                             <option value="EUR">EUR</option>
-                            <option value="Otro">Otro</option>
+                            <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                           </select>
                         </div>
                       </div>
 
                       <div>
                         <label className="text-xs text-zinc-300 block mb-1">
-                          Titular / Beneficiario
+                          {tr('Titular / Beneficiario', 'Account Holder / Beneficiary', '持有人 / 收款人')}
                         </label>
                         <input
                           type="text"
                           maxLength={120}
                           value={ssPmHolder}
                           onChange={(e) => setSsPmHolder(e.target.value)}
-                          placeholder="Ej: Inversiones Alhadiqa Invest C.A."
+                          placeholder={tr('Ej: Inversiones Alhadiqa Invest C.A.', 'e.g. Inversiones Alhadiqa Invest C.A.', '例如：Inversiones Alhadiqa Invest C.A.')}
                           className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                         />
                       </div>
 
                       <div>
                         <label className="text-xs text-zinc-300 block mb-1">
-                          Datos de Cobro Asignados a esta Tienda *
+                          {tr('Datos de Cobro Asignados a esta Tienda *', 'Billing Details Assigned to This Store *', '分配给此店铺的收款信息 *')}
                         </label>
                         <textarea
                           required
@@ -2217,21 +2321,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           maxLength={300}
                           value={ssPmDetails}
                           onChange={(e) => setSsPmDetails(e.target.value)}
-                          placeholder="Cuenta bancaria, teléfono Pago Móvil, correo Zelle o Binance Pay ID"
+                          placeholder={tr('Cuenta bancaria, teléfono Pago Móvil, correo Zelle o Binance Pay ID', 'Bank account, Pago Móvil phone, Zelle email, or Binance Pay ID', '银行账号、Pago Móvil 电话、Zelle 邮箱或 Binance Pay ID')}
                           className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white font-mono"
                         />
                       </div>
 
                       <div>
                         <label className="text-xs text-zinc-300 block mb-1">
-                          Instrucciones para esta Tienda (Opcional)
+                          {tr('Instrucciones para esta Tienda (Opcional)', 'Instructions for This Store (Optional)', '此店铺付款说明（可选）')}
                         </label>
                         <input
                           type="text"
                           maxLength={400}
                           value={ssPmInstructions}
                           onChange={(e) => setSsPmInstructions(e.target.value)}
-                          placeholder="Ej: Enviar captura o número de referencia al pagar mensualidad"
+                          placeholder={tr('Ej: Enviar captura o número de referencia al pagar mensualidad', 'e.g. Send screenshot or reference number when paying monthly plan', '例如：支付月费时发送截图或参考号')}
                           className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                         />
                       </div>
@@ -2243,7 +2347,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           onChange={(e) => setSsPmActive(e.target.checked)}
                           className="accent-amber-500 w-4 h-4"
                         />
-                        <span>Activo para cobrar la suscripción de esta tienda</span>
+                        <span>{tr('Activo para cobrar la suscripción de esta tienda', 'Active to bill this store subscription', '启用以向此店铺收取订阅费')}</span>
                       </label>
 
                       <button
@@ -2254,8 +2358,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <Save className="w-4 h-4" />
                         <span>
                           {editingStoreSubTarget
-                            ? 'Actualizar Método de esta Tienda'
-                            : 'Guardar Método para esta Tienda'}
+                            ? tr('Actualizar Método de esta Tienda', 'Update Store Method', '更新此店铺方式')
+                            : tr('Guardar Método para esta Tienda', 'Save Method for This Store', '保存此店铺方式')}
                         </span>
                       </button>
                     </form>
@@ -2263,11 +2367,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
                       <div className="border-b border-white/[0.08] pb-3.5">
                         <h3 className="text-sm sm:text-base font-bold text-white font-display">
-                          Métodos Asignados a "{selectedSubStore.storeName}" (
+                          {tr('Métodos Asignados a', 'Methods Assigned to', '分配给')} "{selectedSubStore.storeName}" (
                           {selectedStoreSubMethods.length})
                         </h3>
                         <p className="text-xs text-zinc-400">
-                          Estos métodos se guardan en Firestore por tienda y aparecen automáticamente en su checkout de suscripción.
+                          {tr(
+                            'Estos métodos se guardan en Firestore por tienda y aparecen automáticamente en su checkout de suscripción.',
+                            'These methods are stored in Firestore per store and appear automatically in its subscription checkout.',
+                            '这些收款方式按店铺保存在云端，并自动显示在其订阅结账页中。'
+                          )}
                         </p>
                       </div>
 
@@ -2275,10 +2383,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-2">
                           <CreditCard className="w-8 h-8 text-zinc-600 mx-auto" />
                           <p className="text-xs font-semibold text-zinc-300">
-                            "{selectedSubStore.storeName}" aún usa únicamente los métodos globales
+                            "{selectedSubStore.storeName}" {tr('aún usa únicamente los métodos globales', 'still uses global methods only', '目前仅使用全局收款方式')}
                           </p>
                           <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
-                            Usa el formulario a la izquierda para asignarle métodos de cobro manuales exclusivos para su suscripción.
+                            {tr(
+                              'Usa el formulario a la izquierda para asignarle métodos de cobro manuales exclusivos para su suscripción.',
+                              'Use the form on the left to assign exclusive manual billing methods for its subscription.',
+                              '请使用左侧表单为其订阅分配专属手动收款方式。'
+                            )}
                           </p>
                         </div>
                       ) : (
@@ -2312,12 +2424,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                     ) : (
                                       <XCircle className="w-3.5 h-3.5" />
                                     )}
-                                    <span>{method.isActive ? 'Activo' : 'Pausado'}</span>
+                                    <span>{method.isActive ? tr('Activo', 'Active', '启用') : tr('Pausado', 'Paused', '已暂停')}</span>
                                   </span>
                                 </div>
                                 {method.accountHolder && (
                                   <div className="text-zinc-400">
-                                    Titular:{' '}
+                                    {tr('Titular:', 'Holder:', '持有人:')}{' '}
                                     <span className="text-zinc-200">{method.accountHolder}</span>
                                   </div>
                                 )}
@@ -2344,7 +2456,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                       : 'bg-[#111114] border-white/[0.1] text-zinc-300'
                                   }`}
                                 >
-                                  {method.isActive ? 'Pausar' : 'Activar'}
+                                  {method.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Activate', '启用')}
                                 </button>
                                 <button
                                   type="button"
@@ -2358,7 +2470,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                     setSsPmActive(method.isActive);
                                   }}
                                   className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                                  title="Editar método"
+                                  title={tr('Editar método', 'Edit method', '编辑方式')}
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
@@ -2372,14 +2484,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                       }
                                       className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
                                     >
-                                      Confirmar
+                                      {tr('Confirmar', 'Confirm', '确认')}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setConfirmDeleteStoreSubId(null)}
                                       className="px-2 py-2 min-h-[38px] rounded-lg bg-[#111114] border border-white/[0.1] text-zinc-400 hover:text-white text-[11px] whitespace-nowrap"
                                     >
-                                      No
+                                      {tr('No', 'No', '否')}
                                     </button>
                                   </div>
                                 ) : (
@@ -2387,7 +2499,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                     type="button"
                                     onClick={() => setConfirmDeleteStoreSubId(method.id)}
                                     className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                                    title="Eliminar método"
+                                    title={tr('Eliminar método', 'Delete method', '删除方式')}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
@@ -2408,19 +2520,23 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <div className="space-y-1">
                 <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-amber-400 shrink-0" />
-                  <span>Métodos de Pago para que los Clientes Compren la Suscripción</span>
+                  <span>{tr('Métodos de Pago para que los Clientes Compren la Suscripción', 'Payment Methods for Store Owners to Buy Subscriptions', '客户购买订阅的全局收款方式')}</span>
                 </h2>
                 <p className="text-xs text-zinc-400 max-w-3xl">
-                  Agrega, edita, activa o elimina las cuentas y billeteras aceptadas (Binance, Zelle, Transferencia, Pago Móvil, Zinli, Bybit, PayPal, etc.). Se guardan en tiempo real en la colección <span className="font-mono text-amber-300">platform_billing</span> de Firestore para mostrarse al instante en el flujo de compra de suscripción (${billing.monthlyPriceUSD}/mes).
+                  {tr(
+                    `Agrega, edita, activa o elimina las cuentas y billeteras aceptadas (Binance, Zelle, Transferencia, Pago Móvil, Zinli, Bybit, PayPal, etc.). Se guardan en tiempo real en Firestore para mostrarse al instante en el flujo de compra de suscripción ($${billing.monthlyPriceUSD}/mes).`,
+                    `Add, edit, activate, or remove accepted accounts and wallets (Binance, Zelle, Bank Transfer, Pago Móvil, Zinli, Bybit, PayPal, etc.). Saved in real time to Firestore and shown immediately in subscription checkout ($${billing.monthlyPriceUSD}/mo).`,
+                    `添加、编辑、启用或删除收款账户和钱包（Binance、Zelle、银行转账、Pago Móvil、Zinli、Bybit、PayPal 等）。实时保存至云端并立即显示在订阅结账（$${billing.monthlyPriceUSD}/月）中。`
+                  )}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 shrink-0 text-xs">
                 <div className="px-3.5 py-2 rounded-xl bg-[#09090b] border border-white/[0.08] font-mono tabular-nums">
-                  <span className="text-zinc-400">Activos:</span>{' '}
+                  <span className="text-zinc-400">{tr('Activos:', 'Active:', '启用:')}</span>{' '}
                   <strong className="text-emerald-300">{activeSubCount}</strong>
                   <span className="text-zinc-600 mx-1.5">·</span>
-                  <span className="text-zinc-400">Pausados:</span>{' '}
+                  <span className="text-zinc-400">{tr('Pausados:', 'Paused:', '已暂停:')}</span>{' '}
                   <strong className="text-zinc-200">{pausedSubCount}</strong>
                 </div>
                 <button
@@ -2428,7 +2544,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   onClick={() => setActiveTab('billing')}
                   className="px-3.5 py-2 min-h-[40px] rounded-xl bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-400/40 text-xs font-semibold text-amber-300 whitespace-nowrap"
                 >
-                  Precio (${billing.monthlyPriceUSD}/mes) y WhatsApp
+                  {tr(`Precio ($${billing.monthlyPriceUSD}/mes) y WhatsApp`, `Price ($${billing.monthlyPriceUSD}/mo) & WhatsApp`, `价格 ($${billing.monthlyPriceUSD}/月) 与 WhatsApp`)}
                 </button>
               </div>
             </div>
@@ -2445,12 +2561,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>
                         {editingMethodTarget
-                          ? `Editar Método: ${editingMethodTarget.name}`
-                          : 'Añadir Método de Pago para Suscripción'}
+                          ? `${tr('Editar Método:', 'Edit Method:', '编辑方式:')} ${editingMethodTarget.name}`
+                          : tr('Añadir Método de Pago para Suscripción', 'Add Subscription Payment Method', '添加订阅收款方式')}
                       </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      Los clientes verán estos datos y podrán seleccionarlos al pagar su plan mensual.
+                      {tr('Los clientes verán estos datos y podrán seleccionarlos al pagar su plan mensual.', 'Store owners will see these details and select them when paying their monthly plan.', '客户在支付月度订阅方案时将看到并可选择这些信息。')}
                     </p>
                   </div>
                   {editingMethodTarget && (
@@ -2459,14 +2575,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       onClick={resetPaymentMethodForm}
                       className="text-xs text-zinc-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-[#09090b] border border-white/[0.08] whitespace-nowrap shrink-0"
                     >
-                      Cancelar
+                      {t.common.cancel}
                     </button>
                   )}
                 </div>
 
                 {!editingMethodTarget && (
                   <div className="space-y-1.5">
-                    <div className="text-[11px] text-zinc-400">Plantillas rápidas (1 clic para rellenar):</div>
+                    <div className="text-[11px] text-zinc-400">{tr('Plantillas rápidas (1 clic para rellenar):', 'Quick templates (1-click autofill):', '快速模板（一键填充）：')}</div>
                     <div className="flex flex-wrap gap-1.5">
                       {subscriptionPresets.map((preset) => (
                         <button
@@ -2492,19 +2608,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                    <label className="text-xs text-zinc-300 block mb-1">{tr('Nombre del Método *', 'Method Name *', '方式名称 *')}</label>
                     <input
                       required
                       type="text"
                       maxLength={80}
                       value={pmName}
                       onChange={(e) => setPmName(e.target.value)}
-                      placeholder="Ej: Pago Móvil Banesco / Zelle / Binance Pay"
+                      placeholder={tr('Ej: Pago Móvil Banesco / Zelle / Binance Pay', 'e.g. Pago Móvil Banesco / Zelle / Binance Pay', '例如：Pago Móvil Banesco / Zelle / Binance Pay')}
                       className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                    <label className="text-xs text-zinc-300 block mb-1">{tr('Moneda *', 'Currency *', '币种 *')}</label>
                     <select
                       value={pmCurrency}
                       onChange={(e) => setPmCurrency(e.target.value as PlatformPaymentCurrency)}
@@ -2514,26 +2630,26 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       <option value="USDT">USDT</option>
                       <option value="Bs">Bs.</option>
                       <option value="EUR">EUR</option>
-                      <option value="Otro">Otro</option>
+                      <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs text-zinc-300 block mb-1">Titular / Beneficiario</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Titular / Beneficiario', 'Account Holder / Beneficiary', '持有人 / 收款人')}</label>
                   <input
                     type="text"
                     maxLength={120}
                     value={pmHolder}
                     onChange={(e) => setPmHolder(e.target.value)}
-                    placeholder="Ej: Inversiones Alhadiqa Invest C.A."
+                    placeholder={tr('Ej: Inversiones Alhadiqa Invest C.A.', 'e.g. Inversiones Alhadiqa Invest C.A.', '例如：Inversiones Alhadiqa Invest C.A.')}
                     className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Datos de Cobro para el Cliente (Cuenta, Teléfono, Correo o Wallet) *
+                    {tr('Datos de Cobro para el Cliente (Cuenta, Teléfono, Correo o Wallet) *', 'Customer Billing Details (Account, Phone, Email or Wallet) *', '客户收款信息（账号、电话、邮箱或钱包）*')}
                   </label>
                   <textarea
                     required
@@ -2541,21 +2657,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     maxLength={300}
                     value={pmDetails}
                     onChange={(e) => setPmDetails(e.target.value)}
-                    placeholder="Ej: 0134 Banesco · V-XX.XXX.XXX · 0414-XXXXXXX"
+                    placeholder={tr('Ej: 0134 Banesco · V-XX.XXX.XXX · 0414-XXXXXXX', 'e.g. 0134 Banesco · ID V-XX.XXX.XXX · 0414-XXXXXXX', '例如：0134 Banesco · 证件 V-XX.XXX.XXX · 0414-XXXXXXX')}
                     className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white font-mono"
                   />
                 </div>
 
                 <div>
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Instrucciones de Compra (Opcional)
+                    {tr('Instrucciones de Compra (Opcional)', 'Payment Instructions (Optional)', '付款说明（可选）')}
                   </label>
                   <input
                     type="text"
                     maxLength={400}
                     value={pmInstructions}
                     onChange={(e) => setPmInstructions(e.target.value)}
-                    placeholder="Ej: Indicar nombre de tienda y reportar referencia o captura"
+                    placeholder={tr('Ej: Indicar nombre de tienda y reportar referencia o captura', 'e.g. Include store name and submit reference or screenshot', '例如：请注明店铺名称并提交参考号或截图')}
                     className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                   />
                 </div>
@@ -2567,7 +2683,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     onChange={(e) => setPmActive(e.target.checked)}
                     className="accent-amber-500 w-4 h-4"
                   />
-                  <span>Visible y disponible para que los clientes compren la suscripción</span>
+                  <span>{tr('Visible y disponible para que los clientes compren la suscripción', 'Visible and available for customers to pay subscriptions', '对客户可见并可用于订阅付款')}</span>
                 </label>
 
                 <button
@@ -2578,8 +2694,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <Save className="w-4 h-4" />
                   <span>
                     {editingMethodTarget
-                      ? 'Actualizar Método de Suscripción'
-                      : 'Guardar Método de Suscripción'}
+                      ? tr('Actualizar Método de Suscripción', 'Update Subscription Method', '更新订阅方式')
+                      : tr('Guardar Método de Suscripción', 'Save Subscription Method', '保存订阅方式')}
                   </span>
                 </button>
               </form>
@@ -2589,18 +2705,18 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/[0.08] pb-3.5">
                   <div>
                     <h3 className="text-sm sm:text-base font-bold text-white font-display">
-                      Métodos Configurados para Compra de Suscripción ({customPaymentMethods.length})
+                      {tr('Métodos Configurados para Compra de Suscripción', 'Configured Subscription Payment Methods', '已配置的订阅收款方式')} ({customPaymentMethods.length})
                     </h3>
                     <p className="text-xs text-zinc-400">
-                      Cada método activo se muestra automáticamente en el checkout de suscripción de los clientes.
+                      {tr('Cada método activo se muestra automáticamente en el checkout de suscripción de los clientes.', 'Every active method appears automatically in customer subscription checkout.', '所有已启用方式将自动显示在客户订阅结账页。')}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-1 p-1 bg-[#09090b] border border-white/[0.08] rounded-lg text-[11px] shrink-0">
                     {([
-                      { id: 'all', label: 'Todos' },
-                      { id: 'active', label: 'Activos' },
-                      { id: 'paused', label: 'Pausados' },
+                      { id: 'all', label: tr('Todos', 'All', '全部') },
+                      { id: 'active', label: tr('Activos', 'Active', '启用') },
+                      { id: 'paused', label: tr('Pausados', 'Paused', '已暂停') },
                     ] as const).map((opt) => (
                       <button
                         key={opt.id}
@@ -2625,7 +2741,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       type="text"
                       value={subMethodSearch}
                       onChange={(e) => setSubMethodSearch(e.target.value)}
-                      placeholder="Buscar por método, moneda, titular o cuenta..."
+                      placeholder={tr('Buscar por método, moneda, titular o cuenta...', 'Search by method, currency, holder, or account...', '按方式、币种、持有人或账号搜索...')}
                       className="w-full pl-9 pr-4 py-2 min-h-[40px] bg-[#09090b] border border-white/[0.08] rounded-xl text-xs text-white"
                     />
                   </div>
@@ -2636,11 +2752,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <CreditCard className="w-8 h-8 text-zinc-600 mx-auto" />
                     <p className="text-xs font-semibold text-zinc-300">
                       {customPaymentMethods.length === 0
-                        ? 'Aún no has agregado métodos de pago personalizados para la suscripción'
-                        : 'No hay métodos que coincidan con tu búsqueda o filtro'}
+                        ? tr('Aún no has agregado métodos de pago personalizados para la suscripción', 'You have not added custom subscription payment methods yet', '尚未添加自定义订阅收款方式')
+                        : tr('No hay métodos que coincidan con tu búsqueda o filtro', 'No methods match your search or filter', '没有匹配搜索或筛选的收款方式')}
                     </p>
                     <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
-                      Usa el formulario y las plantillas rápidas a la izquierda para registrar Pago Móvil, Binance Pay, Zelle, Zinli o transferencia bancaria.
+                      {tr(
+                        'Usa el formulario y las plantillas rápidas a la izquierda para registrar Pago Móvil, Binance Pay, Zelle, Zinli o transferencia bancaria.',
+                        'Use the form and quick templates on the left to add Pago Móvil, Binance Pay, Zelle, Zinli, or bank transfers.',
+                        '请使用左侧表单和快速模板登记 Pago Móvil、Binance Pay、Zelle、Zinli 或银行转账。'
+                      )}
                     </p>
                   </div>
                 ) : (
@@ -2668,12 +2788,12 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               ) : (
                                 <XCircle className="w-3.5 h-3.5" />
                               )}
-                              <span>{method.isActive ? 'Activo para clientes' : 'Pausado'}</span>
+                              <span>{method.isActive ? tr('Activo para clientes', 'Active for clients', '对客户启用') : tr('Pausado', 'Paused', '已暂停')}</span>
                             </span>
                           </div>
                           {method.accountHolder && (
                             <div className="text-zinc-400">
-                              Titular: <span className="text-zinc-200">{method.accountHolder}</span>
+                              {tr('Titular:', 'Holder:', '持有人:')} <span className="text-zinc-200">{method.accountHolder}</span>
                             </div>
                           )}
                           <div className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">
@@ -2695,7 +2815,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 : 'bg-[#111114] border-white/[0.1] text-zinc-300'
                             }`}
                           >
-                            {method.isActive ? 'Pausar' : 'Activar'}
+                            {method.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Activate', '启用')}
                           </button>
                           <button
                             type="button"
@@ -2709,7 +2829,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               setPmActive(method.isActive);
                             }}
                             className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                            title="Editar método"
+                            title={tr('Editar método', 'Edit method', '编辑方式')}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -2721,14 +2841,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 onClick={() => handleDeletePaymentMethod(method)}
                                 className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
                               >
-                                Confirmar
+                                {tr('Confirmar', 'Confirm', '确认')}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setConfirmDeleteMethodId(null)}
                                 className="px-2 py-2 min-h-[38px] rounded-lg bg-[#111114] border border-white/[0.1] text-zinc-400 hover:text-white text-[11px] whitespace-nowrap"
                               >
-                                No
+                                {tr('No', 'No', '否')}
                               </button>
                             </div>
                           ) : (
@@ -2736,7 +2856,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               type="button"
                               onClick={() => setConfirmDeleteMethodId(method.id)}
                               className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                              title="Eliminar método"
+                              title={tr('Eliminar método', 'Delete method', '删除方式')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

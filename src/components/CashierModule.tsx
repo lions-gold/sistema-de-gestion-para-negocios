@@ -7,6 +7,7 @@ import {
   FiscalPrinterConfig, 
   PaymentMethod 
 } from '../types';
+import { useLanguage } from '../i18n/LanguageContext';
 import { 
   Coins, 
   TrendingUp, 
@@ -85,6 +86,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   onClosingsChange,
   onClosingCompleted,
 }) => {
+  const { tr } = useLanguage();
   const [subTab, setSubTab] = useState<'closing' | 'fiscal_printers' | 'seniat_books' | 'petty_cash'>('closing');
 
   // Fiscal Printer Config
@@ -131,10 +133,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const [closingSuccessToast, setClosingSuccessToast] = useState<string | null>(null);
 
   // Terminal / Command Log for Fiscal Printer
-  const [fiscalLogs, setFiscalLogs] = useState<string[]>([
-    `[${formatCaracasClock()}] Impresora fiscal detectada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port}`,
-    `[${formatCaracasClock()}] Memoria fiscal activa: ${fiscalConfig.serialNumber} • Reporte Z actual: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
-    `[${formatCaracasClock()}] Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G`,
+  const [fiscalLogs, setFiscalLogs] = useState<string[]>(() => [
+    `[${formatCaracasClock()}] ${tr('Impresora fiscal detectada', 'Fiscal printer detected', '检测到税控打印机')}: ${fiscalConfig.brand} (${fiscalConfig.model}) · ${fiscalConfig.port}`,
+    `[${formatCaracasClock()}] ${tr('Memoria fiscal activa', 'Active fiscal memory', '已激活税控存储')}: ${fiscalConfig.serialNumber} • Z: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
+    `[${formatCaracasClock()}] ${tr('Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G', 'SENIAT approved protocol: OK • 3% IGTF configured on tier G', 'SENIAT 认证协议：正常 • IGTF 3% 已配置')}`,
   ]);
 
   // Petty Cash Movement Modal
@@ -254,7 +256,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
       differenceBs: diffBs,
       totalTransactions: paymentMethodStats.totalTransactions,
       status: Math.abs(diffUSD) < 0.01 && Math.abs(diffBs) < 0.01 ? 'Cuadrada' : 'Con Diferencia',
-      notes: closingNotes.trim() || 'Cierre fiscal de jornada comercial Smith Solutions E-Commerce.',
+      notes: closingNotes.trim() || tr('Cierre fiscal de jornada comercial Smith Solutions E-Commerce.', 'Commercial shift fiscal closing — Smith Solutions E-Commerce.', 'Smith Solutions E-Commerce 营业班次税控日结。'),
     };
 
     // Update fiscal config with new Z number
@@ -268,24 +270,24 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     setClosings([newClosing, ...closings]);
     onClosingCompleted?.(newClosing);
     setFiscalLogs((prev) => [
-      `[${formatCaracasClock()}] *** REPORTE Z GENERADO: ${zReportStr} ***`,
-      `[${formatCaracasClock()}] Total ventas: $${paymentMethodStats.totalSalesUSD.toFixed(2)} (${paymentMethodStats.totalSalesBs.toLocaleString('es-VE')} Bs.)`,
-      `[${formatCaracasClock()}] IGTF 3% Divisas consolidado: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
-      `[${formatCaracasClock()}] Memoria fiscal grabada con éxito. Cierre Nro ${nextClosingNum}`,
+      `[${formatCaracasClock()}] *** ${tr('REPORTE Z GENERADO', 'Z-REPORT GENERATED', 'Z 报表已生成')}: ${zReportStr} ***`,
+      `[${formatCaracasClock()}] ${tr('Total ventas', 'Total sales', '销售总额')}: $${paymentMethodStats.totalSalesUSD.toFixed(2)} (${paymentMethodStats.totalSalesBs.toLocaleString('es-VE')} Bs.)`,
+      `[${formatCaracasClock()}] ${tr('IGTF 3% Divisas consolidado', 'Consolidated 3% FX IGTF', '外汇 3% IGTF 汇总')}: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
+      `[${formatCaracasClock()}] ${tr('Memoria fiscal grabada con éxito. Cierre Nro', 'Fiscal memory saved. Closing #', '税控存储写入成功，结账编号')} ${nextClosingNum}`,
       ...prev,
     ]);
 
-    setClosingSuccessToast(`Cierre de Caja ${nextClosingNum} y Reporte ${zReportStr} emitidos exitosamente.`);
+    setClosingSuccessToast(tr(`Cierre de Caja ${nextClosingNum} y Reporte ${zReportStr} emitidos exitosamente.`, `Cash Closing ${nextClosingNum} and Report ${zReportStr} issued.`, `结账单 ${nextClosingNum} 与 Z 报表 ${zReportStr} 已成功签发。`));
     setTimeout(() => setClosingSuccessToast(null), 5000);
   };
 
   // Fiscal Printer Test Actions
   const handlePrintReportX = () => {
-    const { commandText, jsonPayload } = generateReportXCommand(fiscalConfig);
+    const { commandText } = generateReportXCommand(fiscalConfig);
     setFiscalLogs((prev) => [
-      `[${formatCaracasClock()}] [COMANDO ENVIADO: ${commandText}] Emisión de Reporte X (Lectura Parcial sin corte)`,
-      `[${formatCaracasClock()}] Ventas acumuladas en jornada: $${paymentMethodStats.totalSalesUSD.toFixed(2)} • IVA: $${paymentMethodStats.totalIVAUSD.toFixed(2)} • IGTF: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
-      `[${formatCaracasClock()}] Memoria de trabajo leída correctamente.`,
+      `[${formatCaracasClock()}] [${tr('COMANDO ENVIADO', 'COMMAND SENT', '已发送指令')}: ${commandText}] ${tr('Emisión de Reporte X (Lectura Parcial sin corte)', 'Issue Report X (Partial reading)', '签发 X 报表（部分读数）')}`,
+      `[${formatCaracasClock()}] ${tr('Ventas acumuladas en jornada', 'Shift accumulated sales', '当班累计销售额')}: $${paymentMethodStats.totalSalesUSD.toFixed(2)} • ${tr('IVA', 'VAT', '增值税')}: $${paymentMethodStats.totalIVAUSD.toFixed(2)} • IGTF: $${paymentMethodStats.totalIGTFUSD.toFixed(2)}`,
+      `[${formatCaracasClock()}] ${tr('Memoria de trabajo leída correctamente.', 'Working memory read successfully.', '工作内存读取成功。')}`,
       ...prev,
     ]);
     downloadFiscalSpoolerFile(commandText, `ReporteX_${fiscalConfig.brand.replace(/\s+/g, '_')}.txt`);
@@ -299,7 +301,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     e.preventDefault();
     saveStoredFiscalConfig(fiscalConfig);
     setFiscalLogs((prev) => [
-      `[${formatCaracasClock()}] Configuración de impresora fiscal actualizada: ${fiscalConfig.brand} (${fiscalConfig.model}) en ${fiscalConfig.port} @ ${fiscalConfig.baudRate}bps`,
+      `[${formatCaracasClock()}] ${tr('Configuración de impresora fiscal actualizada', 'Fiscal printer settings updated', '税控打印机设置已更新')}: ${fiscalConfig.brand} (${fiscalConfig.model}) · ${fiscalConfig.port} @ ${fiscalConfig.baudRate}bps`,
       ...prev,
     ]);
   };
@@ -364,6 +366,19 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const totalRetencionesBs = purchases.reduce((acc, p) => acc + p.retentionAmountUSD, 0) * exchangeRate;
   const saldoIVABs = totalDebitoFiscalBs - totalCreditoFiscalBs;
 
+  const methodLabel = (method: string) => {
+    const map: Record<string, string> = {
+      'Efectivo USD': tr('Efectivo USD', 'Cash USD', '美元现金'),
+      'Efectivo Bs': tr('Efectivo Bs', 'Cash Bs', '玻利瓦尔现金'),
+      'Pago Móvil': tr('Pago Móvil', 'Pago Móvil', '移动支付 Pago Móvil'),
+      'Punto de Venta': tr('Punto de Venta', 'POS Card', 'POS 刷卡'),
+      'Zelle': 'Zelle',
+      'Fiado (Crédito)': tr('Fiado (Crédito)', 'Store Credit', '赊账 (信用)'),
+      'Otro': tr('Otro', 'Other', '其他'),
+    };
+    return map[method] || method;
+  };
+
   return (
     <div className="space-y-6">
       {/* Module Title & Sub-tabs */}
@@ -375,16 +390,16 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
             <div>
               <h2 className="font-bold text-white text-base sm:text-lg font-display flex items-center gap-2">
-                Caja, Cierre Dual & Fiscalidad SENIAT
+                {tr('Caja, Cierre Dual & Fiscalidad SENIAT', 'Cashier, Dual Closing & SENIAT Tax Compliance', '收银、双币日结与 SENIAT 税务合规')}
               </h2>
               <p className="text-xs text-zinc-400">
-                Arqueo dual por método de pago, IGTF 3%, impresoras fiscales y libros de compra/venta
+                {tr('Arqueo dual por método de pago, IGTF 3%, impresoras fiscales y libros de compra/venta', 'Dual cash count by payment method, 3% IGTF, fiscal printers, and sales/purchase ledgers', '按支付方式双币盘点、3% IGTF、税控打印机及进销项账簿')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 bg-[#09090b] p-1 rounded-xl border border-white/[0.08] self-start sm:self-auto text-xs">
-            <span className="text-zinc-400 px-2 hidden sm:inline">Tasa BCV:</span>
+            <span className="text-zinc-400 px-2 hidden sm:inline">{tr('Tasa BCV:', 'BCV Rate:', 'BCV 汇率：')}</span>
             <span className="font-mono font-bold text-amber-400 px-2 py-1 bg-[#111114] rounded-lg">
               {exchangeRate.toFixed(2)} Bs / USD
             </span>
@@ -403,7 +418,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             }`}
           >
             <Coins className="w-4 h-4 shrink-0" />
-            <span>Cierre Dual & Arqueo</span>
+            <span>{tr('Cierre Dual & Arqueo', 'Dual Closing & Count', '双币日结与盘点')}</span>
           </button>
 
           <button
@@ -416,7 +431,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             }`}
           >
             <Printer className="w-4 h-4 shrink-0" />
-            <span>Impresoras Fiscales</span>
+            <span>{tr('Impresoras Fiscales', 'Fiscal Printers', '税控打印机')}</span>
           </button>
 
           <button
@@ -429,7 +444,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             }`}
           >
             <FileSpreadsheet className="w-4 h-4 shrink-0" />
-            <span>Libros Compra/Venta</span>
+            <span>{tr('Libros Compra/Venta', 'Purchase/Sales Books', '进销项税簿')}</span>
           </button>
 
           <button
@@ -442,7 +457,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             }`}
           >
             <DollarSign className="w-4 h-4 shrink-0" />
-            <span>Caja Chica & Gastos</span>
+            <span>{tr('Caja Chica & Gastos', 'Petty Cash & Expenses', '备用金与支出')}</span>
           </button>
         </div>
       </div>
@@ -467,7 +482,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           {/* Top KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Ventas Totales del Día</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Ventas Totales del Día', 'Total Daily Sales', '当日销售总额')}</span>
               <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
                 ${paymentMethodStats.totalSalesUSD.toFixed(2)}
               </div>
@@ -477,17 +492,17 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Base Imponible (16%)</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Base Imponible (16%)', 'Taxable Base (16%)', '应税基数 (16%)')}</span>
               <div className="text-xl font-bold font-mono text-white tabular-nums">
                 ${paymentMethodStats.totalBaseUSD.toFixed(2)}
               </div>
               <span className="text-xs text-zinc-500 font-mono">
-                IVA (16%): ${paymentMethodStats.totalIVAUSD.toFixed(2)}
+                {tr('IVA (16%):', 'VAT (16%):', '增值税 (16%)：')} ${paymentMethodStats.totalIVAUSD.toFixed(2)}
               </span>
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">IGTF 3% Percibido (Divisas)</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('IGTF 3% Percibido (Divisas)', '3% IGTF Collected (FX)', '已收 3% 外汇 IGTF')}</span>
               <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
                 ${paymentMethodStats.totalIGTFUSD.toFixed(2)}
               </div>
@@ -497,12 +512,12 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Reporte Fiscal Oficial</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Reporte Fiscal Oficial', 'Official Fiscal Report', '官方税控报表')}</span>
               <div className="text-xl font-bold font-mono text-blue-400 tabular-nums">
                 Z-{String(fiscalConfig.currentZReport).padStart(4, '0')}
               </div>
               <span className="text-xs text-zinc-500 font-mono">
-                {paymentMethodStats.totalTransactions} transacciones registradas
+                {paymentMethodStats.totalTransactions} {tr('transacciones registradas', 'recorded transactions', '笔已登记交易')}
               </span>
             </div>
           </div>
@@ -513,10 +528,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div>
                 <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-amber-400" />
-                  Desglose Exacto por Método de Pago Recibido
+                  {tr('Desglose Exacto por Método de Pago Recibido', 'Exact Breakdown by Payment Method', '按收款方式精确明细')}
                 </h3>
                 <span className="text-[11px] text-zinc-400">
-                  Separación estricta de ingresos en divisas ($ USD) y moneda nacional (Bs.)
+                  {tr('Separación estricta de ingresos en divisas ($ USD) y moneda nacional (Bs.)', 'Strict separation of foreign currency ($ USD) and local currency (Bs.)', '严格区分外汇美元 ($ USD) 与本币玻利瓦尔 (Bs.) 收入')}
                 </span>
               </div>
             </div>
@@ -525,12 +540,12 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-[#09090b]/90 text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-3 px-4">Método de Pago</th>
-                    <th className="py-3 px-4 text-center">Transacciones</th>
-                    <th className="py-3 px-4 text-right">Monto Recaudado ($ USD)</th>
-                    <th className="py-3 px-4 text-right">Contravalor en Bolívares (Bs.)</th>
-                    <th className="py-3 px-4 text-right">IGTF 3% Divisas</th>
-                    <th className="py-3 px-4 text-center">Destino de Caja</th>
+                    <th className="py-3 px-4">{tr('Método de Pago', 'Payment Method', '支付方式')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Transacciones', 'Transactions', '笔数')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Monto Recaudado ($ USD)', 'Collected ($ USD)', '实收金额 ($ USD)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Contravalor en Bolívares (Bs.)', 'Bs. Equivalent', '折合玻利瓦尔 (Bs.)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('IGTF 3% Divisas', '3% FX IGTF', '3% 外汇 IGTF')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Destino de Caja', 'Destination', '资金去向')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]/80">
@@ -540,7 +555,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                         <span className={`w-2.5 h-2.5 rounded-full ${
                           method.includes('USD') || method === 'Zelle' ? 'bg-emerald-400' : 'bg-amber-400'
                         }`} />
-                        <span>{method}</span>
+                        <span>{methodLabel(method)}</span>
                       </td>
                       <td className="py-3 px-4 text-center font-mono text-zinc-300">
                         {data.count}
@@ -562,7 +577,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                             ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                             : 'bg-zinc-900 text-zinc-300 border-white/[0.1]'
                         }`}>
-                          {method.includes('Efectivo') ? 'Gaveta Física' : 'Cuenta Bancaria'}
+                          {method.includes('Efectivo') ? tr('Gaveta Física', 'Cash Drawer', '实体钱箱') : tr('Cuenta Bancaria', 'Bank Account', '银行账户')}
                         </span>
                       </td>
                     </tr>
@@ -570,7 +585,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                 </tbody>
                 <tfoot className="bg-[#09090b] font-bold border-t border-white/[0.08] text-xs">
                   <tr>
-                    <td className="py-3 px-4 text-amber-400 uppercase">Totales Consolidados</td>
+                    <td className="py-3 px-4 text-amber-400 uppercase">{tr('Totales Consolidados', 'Consolidated Totals', '汇总合计')}</td>
                     <td className="py-3 px-4 text-center font-mono text-amber-400">{paymentMethodStats.totalTransactions}</td>
                     <td className="py-3 px-4 text-right font-mono text-amber-400 text-sm">
                       ${paymentMethodStats.totalSalesUSD.toFixed(2)}
@@ -581,7 +596,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                     <td className="py-3 px-4 text-right font-mono text-emerald-400">
                       ${paymentMethodStats.totalIGTFUSD.toFixed(2)}
                     </td>
-                    <td className="py-3 px-4 text-center text-zinc-400 text-[11px]">100% Cuadrado</td>
+                    <td className="py-3 px-4 text-center text-zinc-400 text-[11px]">{tr('100% Cuadrado', '100% Balanced', '100% 平账')}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -594,14 +609,14 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div>
                 <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                   <Scale className="w-4 h-4 text-amber-400" />
-                  Arqueo Físico de Gaveta (Conteo Real en Efectivo)
+                  {tr('Arqueo Físico de Gaveta (Conteo Real en Efectivo)', 'Physical Cash Drawer Count', '钱箱现金实盘核对')}
                 </h3>
                 <span className="text-[11px] text-zinc-400">
-                  Ingresa el efectivo contado físicamente en caja para verificar sobrantes o faltantes
+                  {tr('Ingresa el efectivo contado físicamente en caja para verificar sobrantes o faltantes', 'Enter physical cash counted to verify overages or shortages', '输入实际清点现金以核对长短款')}
                 </span>
               </div>
               <span className="text-xs font-mono text-amber-400">
-                Arqueo Dual USD / Bs.
+                {tr('Arqueo Dual USD / Bs.', 'Dual Count USD / Bs.', '双币盘点 USD / Bs.')}
               </span>
             </div>
 
@@ -610,14 +625,14 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div className="bg-[#09090b] p-4 rounded-xl border border-white/[0.08] space-y-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-emerald-400 flex items-center gap-1">
-                    <DollarSign className="w-4 h-4" /> Efectivo en Dólares ($ USD)
+                    <DollarSign className="w-4 h-4" /> {tr('Efectivo en Dólares ($ USD)', 'USD Cash ($ USD)', '美元现金 ($ USD)')}
                   </span>
                   <span className="text-zinc-400 font-mono">
-                    Esperado: ${paymentMethodStats.expectedCashUSD.toFixed(2)}
+                    {tr('Esperado:', 'Expected:', '应有：')} ${paymentMethodStats.expectedCashUSD.toFixed(2)}
                   </span>
                 </div>
                 <div>
-                  <label className="text-[11px] text-zinc-400 block mb-1">Monto Declarado Contado:</label>
+                  <label className="text-[11px] text-zinc-400 block mb-1">{tr('Monto Declarado Contado:', 'Declared Counted Amount:', '申报实盘金额：')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -628,15 +643,15 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   />
                 </div>
                 <div className="pt-1 flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">Diferencia:</span>
+                  <span className="text-zinc-400">{tr('Diferencia:', 'Difference:', '差额：')}</span>
                   <span className={`font-bold ${
                     Math.abs(diffUSD) < 0.01 ? 'text-emerald-400' : diffUSD > 0 ? 'text-blue-400' : 'text-rose-400'
                   }`}>
                     {Math.abs(diffUSD) < 0.01 
-                      ? '✓ $0.00 (Cuadrado Exacto)' 
+                      ? tr('✓ $0.00 (Cuadrado Exacto)', '✓ $0.00 (Exact Match)', '✓ $0.00 (完全平账)') 
                       : diffUSD > 0 
-                      ? `+$${diffUSD.toFixed(2)} (Sobrante)` 
-                      : `-$${Math.abs(diffUSD).toFixed(2)} (Faltante)`}
+                      ? `+$${diffUSD.toFixed(2)} (${tr('Sobrante', 'Overage', '长款')})` 
+                      : `-$${Math.abs(diffUSD).toFixed(2)} (${tr('Faltante', 'Shortage', '短款')})`}
                   </span>
                 </div>
               </div>
@@ -645,14 +660,14 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div className="bg-[#09090b] p-4 rounded-xl border border-white/[0.08] space-y-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-amber-400 flex items-center gap-1">
-                    <Coins className="w-4 h-4" /> Efectivo en Bolívares (Bs.)
+                    <Coins className="w-4 h-4" /> {tr('Efectivo en Bolívares (Bs.)', 'Bolívares Cash (Bs.)', '玻利瓦尔现金 (Bs.)')}
                   </span>
                   <span className="text-zinc-400 font-mono">
-                    Esperado: {paymentMethodStats.expectedCashBs.toFixed(2)} Bs.
+                    {tr('Esperado:', 'Expected:', '应有：')} {paymentMethodStats.expectedCashBs.toFixed(2)} Bs.
                   </span>
                 </div>
                 <div>
-                  <label className="text-[11px] text-zinc-400 block mb-1">Monto Declarado Contado:</label>
+                  <label className="text-[11px] text-zinc-400 block mb-1">{tr('Monto Declarado Contado:', 'Declared Counted Amount:', '申报实盘金额：')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -663,25 +678,25 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   />
                 </div>
                 <div className="pt-1 flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">Diferencia:</span>
+                  <span className="text-zinc-400">{tr('Diferencia:', 'Difference:', '差额：')}</span>
                   <span className={`font-bold ${
                     Math.abs(diffBs) < 0.01 ? 'text-emerald-400' : diffBs > 0 ? 'text-blue-400' : 'text-rose-400'
                   }`}>
                     {Math.abs(diffBs) < 0.01 
-                      ? '✓ 0.00 Bs. (Cuadrado Exacto)' 
+                      ? tr('✓ 0.00 Bs. (Cuadrado Exacto)', '✓ 0.00 Bs. (Exact Match)', '✓ 0.00 Bs. (完全平账)') 
                       : diffBs > 0 
-                      ? `+${diffBs.toFixed(2)} Bs. (Sobrante)` 
-                      : `-${Math.abs(diffBs).toFixed(2)} Bs. (Faltante)`}
+                      ? `+${diffBs.toFixed(2)} Bs. (${tr('Sobrante', 'Overage', '长款')})` 
+                      : `-${Math.abs(diffBs).toFixed(2)} Bs. (${tr('Faltante', 'Shortage', '短款')})`}
                   </span>
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="text-xs text-zinc-300 block mb-1">Observaciones / Notas del Cierre:</label>
+              <label className="text-xs text-zinc-300 block mb-1">{tr('Observaciones / Notas del Cierre:', 'Closing Notes / Remarks:', '结账备注：')}</label>
               <input
                 type="text"
-                placeholder="Ej: Cierre de turno nocturno sin incidentes. Arqueo verificado."
+                placeholder={tr('Ej: Cierre de turno nocturno sin incidentes. Arqueo verificado.', 'E.g.: Night shift closing with no issues. Cash verified.', '例如：夜班无异常结账，钱箱已核验。')}
                 value={closingNotes}
                 onChange={(e) => setClosingNotes(e.target.value)}
                 className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-xs text-white"
@@ -691,7 +706,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             {/* Actions for Closing */}
             <div className="pt-3 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs text-zinc-400 font-mono">
-                Al ejecutar el cierre se emitirá automáticamente el Reporte Z oficial en la memoria fiscal.
+                {tr('Al ejecutar el cierre se emitirá automáticamente el Reporte Z oficial en la memoria fiscal.', 'Closing cash drawer automatically writes the official Z-Report to fiscal memory.', '执行日结将在税控存储中自动签发官方 Z 报表。')}
               </span>
 
               <div className="flex items-center gap-2">
@@ -699,10 +714,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   type="button"
                   onClick={handlePrintReportX}
                   className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-white/[0.1] rounded-xl text-xs font-bold flex items-center gap-2 min-h-[44px]"
-                  title="Emitir lectura de comprobación sin corte"
+                  title={tr('Emitir lectura de comprobación sin corte', 'Issue check reading without closing shift', '签发不清零核对读数')}
                 >
                   <Printer className="w-4 h-4 text-amber-400" />
-                  <span>Emitir Reporte X</span>
+                  <span>{tr('Emitir Reporte X', 'Issue Report X', '签发 X 报表')}</span>
                 </button>
 
                 <button
@@ -711,7 +726,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-amber-500/20 active:scale-95 transition-all min-h-[44px]"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Realizar Cierre de Caja (Reporte Z)</span>
+                  <span>{tr('Realizar Cierre de Caja (Reporte Z)', 'Close Cash Drawer (Z-Report)', '执行收银日结 (Z 报表)')}</span>
                 </button>
               </div>
             </div>
@@ -721,20 +736,20 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           <div className="bg-[#111114] border border-white/[0.08] rounded-xl overflow-hidden shadow-sm">
             <div className="px-4 py-3 bg-[#09090b]/70 border-b border-white/[0.08] flex items-center justify-between">
               <h3 className="font-bold text-white text-sm font-display">
-                Historial de Cierres de Caja Anteriores ({closings.length})
+                {tr('Historial de Cierres de Caja Anteriores', 'Past Cash Closings History', '历史日结记录')} ({closings.length})
               </h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-[#09090b]/90 text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-3 px-4">Cierre #</th>
-                    <th className="py-3 px-4">Fecha y Hora</th>
-                    <th className="py-3 px-4">Reporte Fiscal</th>
-                    <th className="py-3 px-4 text-right">Total ($ USD)</th>
-                    <th className="py-3 px-4 text-right">Total (Bs.)</th>
-                    <th className="py-3 px-4 text-center">Estado Cuadre</th>
-                    <th className="py-3 px-4 text-center">Comprobante PDF</th>
+                    <th className="py-3 px-4">{tr('Cierre #', 'Closing #', '结账单号')}</th>
+                    <th className="py-3 px-4">{tr('Fecha y Hora', 'Date & Time', '日期时间')}</th>
+                    <th className="py-3 px-4">{tr('Reporte Fiscal', 'Fiscal Report', '税控报表')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Total ($ USD)', 'Total ($ USD)', '合计 ($ USD)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Total (Bs.)', 'Total (Bs.)', '合计 (Bs.)')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Estado Cuadre', 'Balance Status', '平账状态')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Comprobante PDF', 'PDF Receipt', 'PDF 凭证')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]/80">
@@ -761,7 +776,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                             : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                         }`}>
-                          {c.status}
+                          {c.status === 'Cuadrada' ? tr('Cuadrada', 'Balanced', '已平账') : tr('Con Diferencia', 'Discrepancy', '存在差额')}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
@@ -769,7 +784,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                           type="button"
                           onClick={() => exportCashClosingPDF(c)}
                           className="px-2.5 py-1.5 bg-[#09090b] hover:bg-zinc-800/80 border border-white/[0.08] text-amber-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 mx-auto transition-colors"
-                          title="Descargar comprobante en PDF"
+                          title={tr('Descargar comprobante en PDF', 'Download PDF receipt', '下载 PDF 凭证')}
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>PDF</span>
@@ -796,45 +811,45 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
                 <span className="font-bold text-white text-sm font-display flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  Estado de Homologación Fiscal
+                  {tr('Estado de Homologación Fiscal', 'Fiscal Certification Status', '税控认证状态')}
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  CONECTADA
+                  {tr('CONECTADA', 'CONNECTED', '已连接')}
                 </span>
               </div>
 
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Marca Activa:</span>
+                  <span className="text-zinc-400">{tr('Marca Activa:', 'Active Brand:', '当前品牌：')}</span>
                   <span className="font-bold text-amber-400">{fiscalConfig.brand}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Modelo Homologado:</span>
+                  <span className="text-zinc-400">{tr('Modelo Homologado:', 'Approved Model:', '认证型号：')}</span>
                   <span className="text-white">{fiscalConfig.model}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Serial Fiscal (SENIAT):</span>
+                  <span className="text-zinc-400">{tr('Serial Fiscal (SENIAT):', 'Fiscal Serial (SENIAT):', '税控序列号：')}</span>
                   <span className="font-mono text-emerald-400 font-bold">{fiscalConfig.serialNumber}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Puerto / Enlace:</span>
+                  <span className="text-zinc-400">{tr('Puerto / Enlace:', 'Port / Link:', '端口 / 连接：')}</span>
                   <span className="font-mono text-white">{fiscalConfig.port} ({fiscalConfig.baudRate} bps)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-400">Último Reporte Z:</span>
+                  <span className="text-zinc-400">{tr('Último Reporte Z:', 'Last Z-Report:', '最新 Z 报表：')}</span>
                   <span className="font-mono text-blue-400 font-bold">Z-{String(fiscalConfig.currentZReport).padStart(4, '0')}</span>
                 </div>
               </div>
 
               <div className="pt-2 border-t border-white/[0.08] grid grid-cols-3 gap-1.5 text-center text-[10px]">
                 <div className="p-1.5 bg-[#09090b] rounded border border-white/[0.08] text-emerald-400">
-                  Papel: OK
+                  {tr('Papel: OK', 'Paper: OK', '纸张：正常')}
                 </div>
                 <div className="p-1.5 bg-[#09090b] rounded border border-white/[0.08] text-emerald-400">
-                  Memoria: OK
+                  {tr('Memoria: OK', 'Memory: OK', '存储：正常')}
                 </div>
                 <div className="p-1.5 bg-[#09090b] rounded border border-white/[0.08] text-emerald-400">
-                  Reloj: OK
+                  {tr('Reloj: OK', 'Clock: OK', '时钟：正常')}
                 </div>
               </div>
             </div>
@@ -843,7 +858,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             <div className="lg:col-span-2 min-w-0 bg-[#111114] border border-white/[0.08] p-4 sm:p-5 rounded-xl space-y-4">
               <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                 <Printer className="w-5 h-5 text-amber-400" />
-                Marcas de Impresoras Fiscales Homologadas en Venezuela
+                {tr('Marcas de Impresoras Fiscales Homologadas en Venezuela', 'Certified Fiscal Printer Brands', '委内瑞拉认证税控打印机品牌')}
               </h3>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -912,7 +927,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 border border-white/[0.1] min-h-[44px]"
                 >
                   <Printer className="w-4 h-4 text-amber-400" />
-                  <span>Emitir Reporte X</span>
+                  <span>{tr('Emitir Reporte X', 'Issue Report X', '签发 X 报表')}</span>
                 </button>
 
                 <button
@@ -921,7 +936,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm min-h-[44px]"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Emitir Reporte Z (Cierre Fiscal)</span>
+                  <span>{tr('Emitir Reporte Z (Cierre Fiscal)', 'Issue Z-Report (Fiscal Closing)', '签发 Z 报表（税控日结）')}</span>
                 </button>
 
                 <button
@@ -930,7 +945,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-4 py-2.5 bg-[#09090b] hover:bg-zinc-800/80 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-2 min-h-[44px] ml-auto"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Descargar Trama Spooler HKA</span>
+                  <span>{tr('Descargar Trama Spooler HKA', 'Download HKA Spooler Log', '下载 HKA 缓冲日志')}</span>
                 </button>
               </div>
             </div>
@@ -942,29 +957,29 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             <form onSubmit={handleSavePrinterSettings} className="lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] p-4 sm:p-5 rounded-xl space-y-4 text-xs">
               <h3 className="font-bold text-white text-sm font-display flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-amber-400" />
-                Parámetros de Conexión Fiscal
+                {tr('Parámetros de Conexión Fiscal', 'Fiscal Connection Parameters', '税控连接参数')}
               </h3>
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Puerto Serie / Conexión</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('Puerto Serie / Conexión', 'Serial Port / Connection', '串口 / 连接方式')}</label>
                   <select
                     value={fiscalConfig.port}
                     onChange={(e) => setFiscalConfig({ ...fiscalConfig, port: e.target.value })}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   >
-                    <option value="COM1">COM1 (Puerto Serie Nativo)</option>
+                    <option value="COM1">{tr('COM1 (Puerto Serie Nativo)', 'COM1 (Native Serial Port)', 'COM1（原生串口）')}</option>
                     <option value="COM2">COM2</option>
-                    <option value="COM3">COM3 (Adaptador USB-Serial Prolific/FTDI)</option>
+                    <option value="COM3">{tr('COM3 (Adaptador USB-Serial Prolific/FTDI)', 'COM3 (USB-Serial Prolific/FTDI Adapter)', 'COM3（USB 转串口适配器）')}</option>
                     <option value="COM4">COM4</option>
-                    <option value="192.168.1.150:8080">TCP/IP (Red Local Ethernet 192.168.1.150:8080)</option>
+                    <option value="192.168.1.150:8080">{tr('TCP/IP (Red Local Ethernet 192.168.1.150:8080)', 'TCP/IP (Local Ethernet 192.168.1.150:8080)', 'TCP/IP（局域网 192.168.1.150:8080）')}</option>
                     <option value="SpoolerHKA">Spooler HKA Service (C:\SpoolerHKA\in)</option>
                   </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-zinc-300 font-medium mb-1">Baud Rate (bps)</label>
+                    <label className="block text-zinc-300 font-medium mb-1">{tr('Baud Rate (bps)', 'Baud Rate (bps)', '波特率 (bps)')}</label>
                     <select
                       value={fiscalConfig.baudRate}
                       onChange={(e) => setFiscalConfig({ ...fiscalConfig, baudRate: parseInt(e.target.value) })}
@@ -977,7 +992,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-zinc-300 font-medium mb-1">Serial Fiscal</label>
+                    <label className="block text-zinc-300 font-medium mb-1">{tr('Serial Fiscal', 'Fiscal Serial', '税控序列号')}</label>
                     <input
                       type="text"
                       value={fiscalConfig.serialNumber}
@@ -988,7 +1003,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Encabezado Razón Social (Fiscal)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('Encabezado Razón Social (Fiscal)', 'Legal Business Header', '税控抬头公司名称')}</label>
                   <input
                     type="text"
                     value={fiscalConfig.headerCompany}
@@ -999,7 +1014,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-zinc-300 font-medium mb-1">RIF Fiscal</label>
+                    <label className="block text-zinc-300 font-medium mb-1">{tr('RIF Fiscal', 'Fiscal Tax ID (RIF)', '税号 RIF')}</label>
                     <input
                       type="text"
                       value={fiscalConfig.headerRIF}
@@ -1008,7 +1023,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-300 font-medium mb-1">Consecutivo Factura</label>
+                    <label className="block text-zinc-300 font-medium mb-1">{tr('Consecutivo Factura', 'Invoice Sequence #', '发票连续编号')}</label>
                     <input
                       type="number"
                       value={fiscalConfig.currentInvoiceNum}
@@ -1025,7 +1040,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Guardar Parámetros Fiscales</span>
+                  <span>{tr('Guardar Parámetros Fiscales', 'Save Fiscal Parameters', '保存税控参数')}</span>
                 </button>
               </div>
             </form>
@@ -1035,7 +1050,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
                 <span className="text-emerald-400 font-bold flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Consola de Tramas Fiscales (Spooler Driver)
+                  {tr('Consola de Tramas Fiscales (Spooler Driver)', 'Fiscal Frame Console (Spooler Driver)', '税控指令控制台')}
                 </span>
                 <span className="text-zinc-500 text-[10px]">ESC/POS Fiscal Protocol</span>
               </div>
@@ -1049,8 +1064,8 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               </div>
 
               <div className="text-[10px] text-zinc-500 flex items-center justify-between pt-1">
-                <span>Homologado conforme a Providencia SENIAT/00071</span>
-                <span>Desarrollado por Smith Bussines Solutions 2026</span>
+                <span>{tr('Homologado conforme a Providencia SENIAT/00071', 'Compliant with SENIAT Ruling 00071', '符合 SENIAT 00071 号税控法规')}</span>
+                <span>Smith Bussines Solutions 2026</span>
               </div>
             </div>
           </div>
@@ -1065,7 +1080,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           {/* Fiscal Summary Cards (Débito vs Crédito Fiscal) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Débito Fiscal IVA (Ventas)</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Débito Fiscal IVA (Ventas)', 'VAT Output Tax (Sales)', '销项增值税 (销售)')}</span>
               <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
                 ${paymentMethodStats.totalIVAUSD.toFixed(2)}
               </div>
@@ -1075,7 +1090,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Crédito Fiscal IVA (Compras)</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Crédito Fiscal IVA (Compras)', 'VAT Input Credit (Purchases)', '进项增值税 (采购)')}</span>
               <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
                 ${purchases.reduce((acc, p) => acc + p.ivaAmountUSD, 0).toFixed(2)}
               </div>
@@ -1085,7 +1100,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">IGTF 3% Percibido a Enterar</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('IGTF 3% Percibido a Enterar', '3% IGTF Payable', '应缴 3% IGTF')}</span>
               <div className="text-xl font-bold font-mono text-blue-400 tabular-nums">
                 ${paymentMethodStats.totalIGTFUSD.toFixed(2)}
               </div>
@@ -1095,7 +1110,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Retenciones IVA Aplicadas</span>
+              <span className="text-xs text-zinc-400 block mb-1">{tr('Retenciones IVA Aplicadas', 'VAT Withholdings Applied', '已适用增值税预扣')}</span>
               <div className="text-xl font-bold font-mono text-white tabular-nums">
                 ${purchases.reduce((acc, p) => acc + p.retentionAmountUSD, 0).toFixed(2)}
               </div>
@@ -1111,10 +1126,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div>
                 <h3 className="font-bold text-white text-base font-display flex items-center gap-2">
                   <FileText className="w-5 h-5 text-amber-400" />
-                  Libro de Ventas Fiscal (SENIAT) - Noviembre 2026
+                  {tr('Libro de Ventas Fiscal (SENIAT)', 'Fiscal Sales Book (SENIAT)', 'SENIAT 税控销售账簿')}
                 </h3>
                 <span className="text-xs text-zinc-400">
-                  Desglose oficial de facturas con IGTF 3% en divisas ({sales.length} comprobantes emitidos)
+                  {tr('Desglose oficial de facturas con IGTF 3% en divisas', 'Official invoice breakdown with 3% FX IGTF', '含 3% 外汇 IGTF 的官方发票明细')} ({sales.length} {tr('comprobantes emitidos', 'receipts issued', '张已开票据')})
                 </span>
               </div>
 
@@ -1125,7 +1140,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-white/[0.1] min-h-[40px]"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                  <span>Exportar Excel/CSV</span>
+                  <span>{tr('Exportar Excel/CSV', 'Export Excel/CSV', '导出 Excel/CSV')}</span>
                 </button>
 
                 <button
@@ -1134,7 +1149,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm min-h-[40px]"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Descargar Libro en PDF</span>
+                  <span>{tr('Descargar Libro en PDF', 'Download PDF Book', '下载 PDF 账簿')}</span>
                 </button>
               </div>
             </div>
@@ -1143,17 +1158,17 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#09090b] text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-2.5 px-3">Op</th>
-                    <th className="py-2.5 px-3">Fecha</th>
-                    <th className="py-2.5 px-3">RIF/CI</th>
-                    <th className="py-2.5 px-3">Cliente</th>
-                    <th className="py-2.5 px-3">Factura</th>
-                    <th className="py-2.5 px-3">Reporte Z</th>
-                    <th className="py-2.5 px-3 text-right">Total ($)</th>
-                    <th className="py-2.5 px-3 text-right">Base Imponible (Bs.)</th>
-                    <th className="py-2.5 px-3 text-right">IVA 16% (Bs.)</th>
-                    <th className="py-2.5 px-3 text-right">IGTF 3% (Bs.)</th>
-                    <th className="py-2.5 px-3">Método</th>
+                    <th className="py-2.5 px-3">{tr('Op', 'No.', '序号')}</th>
+                    <th className="py-2.5 px-3">{tr('Fecha', 'Date', '日期')}</th>
+                    <th className="py-2.5 px-3">{tr('RIF/CI', 'Tax ID', '税号/证件')}</th>
+                    <th className="py-2.5 px-3">{tr('Cliente', 'Customer', '客户')}</th>
+                    <th className="py-2.5 px-3">{tr('Factura', 'Invoice', '发票号')}</th>
+                    <th className="py-2.5 px-3">{tr('Reporte Z', 'Z-Report', 'Z 报表')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Total ($)', 'Total ($)', '合计 ($)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Base Imponible (Bs.)', 'Tax Base (Bs.)', '应税基数 (Bs.)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('IVA 16% (Bs.)', 'VAT 16% (Bs.)', '增值税 16% (Bs.)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('IGTF 3% (Bs.)', 'IGTF 3% (Bs.)', 'IGTF 3% (Bs.)')}</th>
+                    <th className="py-2.5 px-3">{tr('Método', 'Method', '方式')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]">
@@ -1174,7 +1189,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                         <td className="py-2.5 px-3 text-right text-zinc-300">{(baseUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                         <td className="py-2.5 px-3 text-right text-zinc-300">{(ivaUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</td>
                         <td className="py-2.5 px-3 text-right text-emerald-400">{igtfUSD > 0 ? (igtfUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 }) : '-'}</td>
-                        <td className="py-2.5 px-3 text-zinc-400 font-sans text-[11px]">{s.paymentMethod}</td>
+                        <td className="py-2.5 px-3 text-zinc-400 font-sans text-[11px]">{methodLabel(s.paymentMethod)}</td>
                       </tr>
                     );
                   })}
@@ -1189,10 +1204,10 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div>
                 <h3 className="font-bold text-white text-base font-display flex items-center gap-2">
                   <Building className="w-5 h-5 text-emerald-400" />
-                  Libro de Compras Fiscal - Proveedores de Licores
+                  {tr('Libro de Compras Fiscal - Proveedores', 'Fiscal Purchase Book - Suppliers', '税控采购账簿 - 供应商进项')}
                 </h3>
                 <span className="text-xs text-zinc-400">
-                  Créditos fiscales por compras a Polar, Santa Teresa, DUSA, Diageo y distribuidores ({purchases.length} facturas)
+                  {tr('Créditos fiscales por compras a proveedores y distribuidores autorizados', 'VAT input tax credits from suppliers and distributors', '来自供应商与授权分销商的进项税抵扣')} ({purchases.length} {tr('facturas', 'invoices', '张发票')})
                 </span>
               </div>
 
@@ -1203,7 +1218,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm min-h-[40px]"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Registrar Factura Compra</span>
+                  <span>{tr('Registrar Factura Compra', 'Log Purchase Invoice', '登记采购发票')}</span>
                 </button>
 
                 <button
@@ -1221,7 +1236,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-amber-400 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-white/[0.1] min-h-[40px]"
                 >
                   <Download className="w-4 h-4" />
-                  <span>PDF Compras</span>
+                  <span>{tr('PDF Compras', 'Purchases PDF', '采购 PDF')}</span>
                 </button>
               </div>
             </div>
@@ -1230,16 +1245,16 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#09090b] text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-2.5 px-3">Op</th>
-                    <th className="py-2.5 px-3">Fecha</th>
-                    <th className="py-2.5 px-3">RIF Proveedor</th>
-                    <th className="py-2.5 px-3">Distribuidor</th>
-                    <th className="py-2.5 px-3">Factura #</th>
-                    <th className="py-2.5 px-3">Control #</th>
-                    <th className="py-2.5 px-3 text-right">Total ($ USD)</th>
-                    <th className="py-2.5 px-3 text-right">Base Imponible (Bs.)</th>
-                    <th className="py-2.5 px-3 text-right">Crédito IVA 16% (Bs.)</th>
-                    <th className="py-2.5 px-3 text-right">Retención 75% (Bs.)</th>
+                    <th className="py-2.5 px-3">{tr('Op', 'No.', '序号')}</th>
+                    <th className="py-2.5 px-3">{tr('Fecha', 'Date', '日期')}</th>
+                    <th className="py-2.5 px-3">{tr('RIF Proveedor', 'Supplier RIF', '供应商税号')}</th>
+                    <th className="py-2.5 px-3">{tr('Distribuidor', 'Distributor', '分销商')}</th>
+                    <th className="py-2.5 px-3">{tr('Factura #', 'Invoice #', '发票号')}</th>
+                    <th className="py-2.5 px-3">{tr('Control #', 'Control #', '控税号')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Total ($ USD)', 'Total ($ USD)', '合计 ($ USD)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Base Imponible (Bs.)', 'Tax Base (Bs.)', '应税基数 (Bs.)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Crédito IVA 16% (Bs.)', 'VAT Credit 16% (Bs.)', '进项税 16% (Bs.)')}</th>
+                    <th className="py-2.5 px-3 text-right">{tr('Retención 75% (Bs.)', 'Withholding 75% (Bs.)', '预扣税 75% (Bs.)')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]">
@@ -1273,7 +1288,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-zinc-400">Total Ingresos Registrados</span>
+                <span className="text-xs text-zinc-400">{tr('Total Ingresos Registrados', 'Total Recorded Income', '累计登记收入')}</span>
                 <ArrowUpRight className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
@@ -1286,7 +1301,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-zinc-400">Total Gastos Operativos</span>
+                <span className="text-xs text-zinc-400">{tr('Total Gastos Operativos', 'Total Operating Expenses', '累计运营支出')}</span>
                 <ArrowDownRight className="w-4 h-4 text-rose-400" />
               </div>
               <div className="text-xl font-bold font-mono text-rose-400 tabular-nums">
@@ -1299,14 +1314,14 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-zinc-400">Balance Neto de Caja Chica</span>
+                <span className="text-xs text-zinc-400">{tr('Balance Neto de Caja Chica', 'Petty Cash Net Balance', '备用金净余额')}</span>
                 <Coins className="w-4 h-4 text-amber-400" />
               </div>
               <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
                 ${(movements.filter(m => m.type === 'ingreso').reduce((a, m) => a + m.amountUSD, 0) - movements.filter(m => m.type === 'gasto').reduce((a, m) => a + m.amountUSD, 0)).toFixed(2)} USD
               </div>
               <span className="text-xs text-zinc-500 font-mono tabular-nums">
-                Control de efectivo menudo
+                {tr('Control de efectivo menudo', 'Petty cash control', '零用现金管控')}
               </span>
             </div>
           </div>
@@ -1314,7 +1329,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
           {/* Action bar */}
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-white text-base font-display">
-              Libro Diario de Caja Chica y Egresos Menores
+              {tr('Libro Diario de Caja Chica y Egresos Menores', 'Daily Petty Cash & Minor Expenses Ledger', '备用金及小额支出日记账')}
             </h3>
 
             <button
@@ -1323,7 +1338,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-2 shadow-sm min-h-[44px]"
             >
               <Plus className="w-4 h-4" />
-              <span>Registrar Movimiento</span>
+              <span>{tr('Registrar Movimiento', 'Record Entry', '登记流水')}</span>
             </button>
           </div>
 
@@ -1333,12 +1348,12 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-[#09090b]/80 text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-3 px-4">Fecha y Hora</th>
-                    <th className="py-3 px-4">Tipo</th>
-                    <th className="py-3 px-4">Categoría</th>
-                    <th className="py-3 px-4">Descripción del Gasto / Ingreso</th>
-                    <th className="py-3 px-4 text-right">Monto (USD)</th>
-                    <th className="py-3 px-4 text-right">Monto (Bs.)</th>
+                    <th className="py-3 px-4">{tr('Fecha y Hora', 'Date & Time', '日期时间')}</th>
+                    <th className="py-3 px-4">{tr('Tipo', 'Type', '类型')}</th>
+                    <th className="py-3 px-4">{tr('Categoría', 'Category', '类别')}</th>
+                    <th className="py-3 px-4">{tr('Descripción del Gasto / Ingreso', 'Description', '收支说明')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Monto (USD)', 'Amount (USD)', '金额 (USD)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Monto (Bs.)', 'Amount (Bs.)', '金额 (Bs.)')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]/80">
@@ -1349,7 +1364,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                         <span className={`inline-flex items-center gap-1 font-semibold text-xs ${
                           m.type === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'
                         }`}>
-                          {m.type === 'ingreso' ? '+' : '-'} {m.type.toUpperCase()}
+                          {m.type === 'ingreso' ? `+ ${tr('INGRESO', 'INCOME', '收入')}` : `- ${tr('GASTO', 'EXPENSE', '支出')}`}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-zinc-300">{m.category}</td>
@@ -1374,7 +1389,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
         <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
           <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <h3 className="font-bold text-white text-base font-display">Registrar Factura de Compra (Proveedor)</h3>
+              <h3 className="font-bold text-white text-base font-display">{tr('Registrar Factura de Compra (Proveedor)', 'Log Supplier Purchase Invoice', '登记供应商采购发票')}</h3>
               <button onClick={() => setShowAddPurchaseModal(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -1382,11 +1397,11 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
             <form onSubmit={handleCreatePurchase} className="space-y-3.5">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Nombre o Razón Social del Distribuidor</label>
+                <label className="block text-zinc-300 font-medium mb-1">{tr('Nombre o Razón Social del Distribuidor', 'Supplier / Distributor Legal Name', '供应商或分销商名称')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Cervecería Polar C.A. / Ron Santa Teresa"
+                  placeholder={tr('Ej: Distribuidora Central C.A.', 'E.g.: Central Distributors Corp.', '例如：中央分销有限公司')}
                   value={newSupplierName}
                   onChange={(e) => setNewSupplierName(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -1395,7 +1410,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">RIF Proveedor</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('RIF Proveedor', 'Supplier Tax ID', '供应商税号')}</label>
                   <input
                     type="text"
                     required
@@ -1406,24 +1421,24 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Categoría</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('Categoría', 'Category', '类别')}</label>
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value as PurchaseInvoice['category'])}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   >
-                    <option value="Licores">Licores</option>
-                    <option value="Cervezas">Cervezas</option>
-                    <option value="Insumos / Hielo">Insumos / Hielo</option>
-                    <option value="Servicios">Servicios</option>
-                    <option value="Otro">Otro</option>
+                    <option value="Licores">{tr('Licores', 'Spirits & Liquors', '烈酒与洋酒')}</option>
+                    <option value="Cervezas">{tr('Cervezas', 'Beers', '啤酒')}</option>
+                    <option value="Insumos / Hielo">{tr('Insumos / Hielo', 'Supplies / Ice', '物料 / 冰块')}</option>
+                    <option value="Servicios">{tr('Servicios', 'Services', '服务')}</option>
+                    <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Nro. Factura Proveedor</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('Nro. Factura Proveedor', 'Supplier Invoice #', '供应商发票号')}</label>
                   <input
                     type="text"
                     required
@@ -1434,7 +1449,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Nro. Control Fiscal</label>
+                  <label className="block text-zinc-300 font-medium mb-1">{tr('Nro. Control Fiscal', 'Fiscal Control #', '税控编号')}</label>
                   <input
                     type="text"
                     placeholder="00-884920"
@@ -1446,7 +1461,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Base Imponible ($ USD)</label>
+                <label className="block text-zinc-300 font-medium mb-1">{tr('Base Imponible ($ USD)', 'Taxable Base ($ USD)', '应税基数 ($ USD)')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1458,9 +1473,9 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                 />
                 {newBaseUSD && (
                   <div className="mt-1 text-[11px] text-zinc-400 space-y-0.5">
-                    <span>IVA 16%: ${(parseFloat(newBaseUSD) * 0.16).toFixed(2)}</span>
+                    <span>{tr('IVA 16%:', 'VAT 16%:', '增值税 16%：')} ${(parseFloat(newBaseUSD) * 0.16).toFixed(2)}</span>
                     <span className="block font-bold text-amber-400">
-                      Total Compra: ${(parseFloat(newBaseUSD) * 1.16).toFixed(2)} USD (≈ {((parseFloat(newBaseUSD) * 1.16) * exchangeRate).toFixed(2)} Bs.)
+                      {tr('Total Compra:', 'Purchase Total:', '采购总额：')} ${(parseFloat(newBaseUSD) * 1.16).toFixed(2)} USD (≈ {((parseFloat(newBaseUSD) * 1.16) * exchangeRate).toFixed(2)} Bs.)
                     </span>
                   </div>
                 )}
@@ -1472,13 +1487,13 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   onClick={() => setShowAddPurchaseModal(false)}
                   className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
                 >
-                  Registrar en Libro
+                  {tr('Registrar en Libro', 'Record in Ledger', '记入账簿')}
                 </button>
               </div>
             </form>
@@ -1491,7 +1506,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
         <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
           <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <h3 className="font-bold text-white text-base font-display">Registrar Movimiento de Caja Menuda</h3>
+              <h3 className="font-bold text-white text-base font-display">{tr('Registrar Movimiento de Caja Menuda', 'Record Petty Cash Entry', '登记备用金流水')}</h3>
               <button onClick={() => setShowAddMovementModal(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -1508,7 +1523,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                       : 'bg-[#09090b] text-zinc-400 border border-white/[0.08]'
                   }`}
                 >
-                  Registrar Gasto
+                  {tr('Registrar Gasto', 'Log Expense', '登记支出')}
                 </button>
                 <button
                   type="button"
@@ -1519,32 +1534,32 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                       : 'bg-[#09090b] text-zinc-400 border border-white/[0.08]'
                   }`}
                 >
-                  Registrar Ingreso
+                  {tr('Registrar Ingreso', 'Log Income', '登记收入')}
                 </button>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Categoría</label>
+                <label className="block text-zinc-300 font-medium mb-1">{tr('Categoría', 'Category', '类别')}</label>
                 <select
                   value={movementCategory}
                   onChange={(e) => setMovementCategory(e.target.value as CashMovement['category'])}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                 >
-                  <option value="Inventario">Inventario (Mercancía / Hielo)</option>
-                  <option value="Caja Chica">Caja Chica / Insumos / Papel</option>
-                  <option value="Servicios">Servicios (Luz / Internet / Fletes)</option>
-                  <option value="Nómina">Nómina / Pago Personal</option>
-                  <option value="Venta">Venta Extraordinaria</option>
-                  <option value="Otro">Otro Concepto</option>
+                  <option value="Inventario">{tr('Inventario (Mercancía / Insumos)', 'Inventory (Merchandise / Supplies)', '库存（商品 / 物料）')}</option>
+                  <option value="Caja Chica">{tr('Caja Chica / Insumos / Papel', 'Petty Cash / Supplies / Paper', '备用金 / 耗材 / 纸张')}</option>
+                  <option value="Servicios">{tr('Servicios (Luz / Internet / Fletes)', 'Utilities & Services (Power / Internet / Freight)', '服务费用（水电 / 网络 / 运费）')}</option>
+                  <option value="Nómina">{tr('Nómina / Pago Personal', 'Payroll / Staff', '薪资 / 员工付款')}</option>
+                  <option value="Venta">{tr('Venta Extraordinaria', 'Extraordinary Sale', '额外销售收入')}</option>
+                  <option value="Otro">{tr('Otro Concepto', 'Other Concept', '其他项目')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Descripción</label>
+                <label className="block text-zinc-300 font-medium mb-1">{tr('Descripción', 'Description', '说明')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Bolsas de hielo gourmet para la cava"
+                  placeholder={tr('Ej: Compra de insumos operativos del turno', 'E.g.: Purchase of shift operating supplies', '例如：购买当班运营物资')}
                   value={movementDescription}
                   onChange={(e) => setMovementDescription(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -1552,7 +1567,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Monto en Dólares ($ USD)</label>
+                <label className="block text-zinc-300 font-medium mb-1">{tr('Monto en Dólares ($ USD)', 'Amount in USD ($)', '美元金额 ($ USD)')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1564,7 +1579,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                 />
                 {movementAmountUSD && (
                   <span className="text-[11px] text-amber-400 font-mono mt-1 block">
-                    Equivale a {(parseFloat(movementAmountUSD) * exchangeRate).toFixed(2)} Bs.
+                    {tr('Equivale a', 'Equals', '折合')} {(parseFloat(movementAmountUSD) * exchangeRate).toFixed(2)} Bs.
                   </span>
                 )}
               </div>
@@ -1575,13 +1590,13 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                   onClick={() => setShowAddMovementModal(false)}
                   className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold"
                 >
-                  Guardar Movimiento
+                  {tr('Guardar Movimiento', 'Save Entry', '保存流水')}
                 </button>
               </div>
             </form>

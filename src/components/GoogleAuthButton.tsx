@@ -12,6 +12,7 @@ import {
   signInWithSupabaseGoogleBackup,
   startOpenSourceGoogleSignIn,
 } from '../services/authService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface GoogleAuthButtonProps {
   label?: string;
@@ -46,8 +47,8 @@ const GoogleGIcon: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }
 );
 
 export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
-  label = 'Continuar con Google',
-  loadingLabel = 'Conectando con Google...',
+  label,
+  loadingLabel,
   onSuccess,
   onError,
   variant = 'primary',
@@ -55,6 +56,10 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
   className = '',
   showDeviceNotice = true,
 }) => {
+  const { tr } = useLanguage();
+  const resolvedLabel = label || tr('Continuar con Google', 'Continue with Google', '使用 Google 账号继续');
+  const resolvedLoadingLabel =
+    loadingLabel || tr('Conectando con Google...', 'Connecting to Google...', '正在连接 Google...');
   const [isBusy, setIsBusy] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [authError, setAuthError] = useState<GoogleAuthFriendlyError | null>(null);
@@ -139,7 +144,7 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
         ) : (
           <GoogleGIcon className={variant === 'compact' ? 'w-4 h-4 shrink-0' : 'w-5 h-5 shrink-0'} />
         )}
-        <span>{isBusy ? loadingLabel : label}</span>
+        <span>{isBusy ? resolvedLoadingLabel : resolvedLabel}</span>
       </button>
 
       {/* Proactive guidance inside WhatsApp / Instagram / Facebook / TikTok built-in browsers */}
@@ -149,11 +154,18 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-amber-300">
-                Estás abriendo desde {env.inAppName || 'una app externa'}
+                {tr(
+                  `Estás abriendo desde ${env.inAppName || 'una app externa'}`,
+                  `You are opening from ${env.inAppName || 'an in-app browser'}`,
+                  `您正在 ${env.inAppName || '第三方应用内浏览器'} 中打开`
+                )}
               </p>
               <p className="text-[11px] text-amber-100/80 mt-0.5 leading-relaxed">
-                Google bloquea el inicio de sesión en navegadores integrados. Abre este enlace en{' '}
-                {env.isIOS ? 'Safari' : 'Chrome'} para acceder sin errores.
+                {tr(
+                  `Google bloquea el inicio de sesión en navegadores integrados. Abre este enlace en ${env.isIOS ? 'Safari' : 'Chrome'} para acceder sin errores.`,
+                  `Google blocks sign-in inside embedded browsers. Open this link in ${env.isIOS ? 'Safari' : 'Chrome'} to sign in smoothly.`,
+                  `Google 拦截应用内嵌浏览器的登录请求。请在 ${env.isIOS ? 'Safari' : 'Chrome'} 浏览器中打开此链接以顺利登录。`
+                )}
               </p>
             </div>
           </div>
@@ -165,12 +177,24 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
             {copiedUrl ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Enlace copiado · Pégalo en {env.isIOS ? 'Safari' : 'Chrome'}</span>
+                <span>
+                  {tr(
+                    `Enlace copiado · Pégalo en ${env.isIOS ? 'Safari' : 'Chrome'}`,
+                    `Link copied · Paste in ${env.isIOS ? 'Safari' : 'Chrome'}`,
+                    `链接已复制 · 请在 ${env.isIOS ? 'Safari' : 'Chrome'} 中打开`
+                  )}
+                </span>
               </>
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5 text-amber-400" />
-                <span>Copiar enlace para {env.isIOS ? 'Safari' : 'Chrome'}</span>
+                <span>
+                  {tr(
+                    `Copiar enlace para ${env.isIOS ? 'Safari' : 'Chrome'}`,
+                    `Copy link for ${env.isIOS ? 'Safari' : 'Chrome'}`,
+                    `复制链接至 ${env.isIOS ? 'Safari' : 'Chrome'}`
+                  )}
+                </span>
               </>
             )}
           </button>
@@ -201,7 +225,7 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
                 className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>Continuar en esta pestaña</span>
+                <span>{tr('Continuar en esta pestaña', 'Continue in this tab', '在此标签页中继续')}</span>
               </button>
             )}
 
@@ -217,7 +241,7 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
                 }}
                 className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/35 text-emerald-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
               >
-                <span>Usar respaldo Supabase</span>
+                <span>{tr('Usar respaldo Supabase', 'Use Supabase backup', '使用 Supabase 备用登录')}</span>
               </button>
             )}
 
@@ -230,7 +254,7 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
                 }}
                 className="flex-1 min-h-[40px] px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-amber-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
               >
-                <span>Acceso Open Source (Google)</span>
+                <span>{tr('Acceso Open Source (Google)', 'Open Source Sign-In (Google)', '开源 OAuth 登录 (Google)')}</span>
               </button>
             )}
 
@@ -243,12 +267,12 @@ export const GoogleAuthButton: React.FC<GoogleAuthButtonProps> = ({
                 {copiedUrl ? (
                   <>
                     <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Enlace copiado</span>
+                    <span>{tr('Enlace copiado', 'Link copied', '链接已复制')}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Copiar enlace</span>
+                    <span>{tr('Copiar enlace', 'Copy link', '复制链接')}</span>
                   </>
                 )}
               </button>

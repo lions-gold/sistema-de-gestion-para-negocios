@@ -42,6 +42,57 @@ import {
   VECTOR_QA_CRITERIA,
   VECTOR_TRIGGERS,
 } from '../services/vectorService';
+import { useLanguage } from '../i18n/LanguageContext';
+
+const VECTOR_METRIC_I18N: Record<
+  string,
+  {
+    label: { es: string; en: string; zh: string };
+    def: { es: string; en: string; zh: string };
+    target: { es: string; en: string; zh: string };
+  }
+> = {
+  escalationRate: {
+    label: { es: 'Tasa de escalamiento', en: 'Escalation rate', zh: '人工升级率' },
+    def: { es: '% de hilos traspasados a humano', en: '% of threads handed off to human', zh: '转接人工处理的对话占比' },
+    target: { es: '< 15–25% según canal', en: '< 15–25% by channel', zh: '按渠道 < 15–25%' },
+  },
+  precision: {
+    label: { es: 'Precisión de traspaso', en: 'Handoff accuracy', zh: '转接准确率' },
+    def: { es: 'Tickets con nivel y motivo correcto', en: 'Tickets with accurate level & reason', zh: '级别与原因判定准确的工单' },
+    target: { es: '>= 92%', en: '>= 92%', zh: '>= 92%' },
+  },
+  containment: {
+    label: { es: 'Contención N0', en: 'N0 containment', zh: 'N0 自助解决率' },
+    def: { es: '% resuelto sin humano con cierre satisfactorio', en: '% resolved without human & satisfied', zh: '无需人工且满意结单的占比' },
+    target: { es: '>= 70% en consultas repetitivas', en: '>= 70% on repetitive queries', zh: '高频重复咨询 >= 70%' },
+  },
+  firstContact: {
+    label: { es: 'Tiempo primer contacto humano', en: 'Human first-response time', zh: '人工首次响应时间' },
+    def: { es: 'Desde traspaso hasta primera respuesta', en: 'From handoff to first human reply', zh: '从转接到首次人工回复耗时' },
+    target: { es: 'Dentro del SLA por prioridad', en: 'Within SLA by priority', zh: '符合对应优先级 SLA' },
+  },
+  slaCompliance: {
+    label: { es: 'Cumplimiento SLA', en: 'SLA compliance', zh: 'SLA 达成率' },
+    def: { es: '% casos resueltos en tiempo pactado', en: '% cases resolved within agreed SLA', zh: '在规定时限内结单的比例' },
+    target: { es: '>= 90%', en: '>= 90%', zh: '>= 90%' },
+  },
+  reEscalation: {
+    label: { es: 'Tasa de re-escalamiento', en: 'Re-escalation rate', zh: '二次升级率' },
+    def: { es: '% devueltos por falta de información', en: '% returned due to missing context', zh: '因信息不全被退回升级占比' },
+    target: { es: '< 5%', en: '< 5%', zh: '< 5%' },
+  },
+  csat: {
+    label: { es: 'Satisfacción (CSAT)', en: 'Satisfaction (CSAT)', zh: '客户满意度 (CSAT)' },
+    def: { es: 'Calificación del usuario post-atención', en: 'Post-support user rating', zh: '服务结束后用户评分' },
+    target: { es: '>= 4.5 / 5', en: '>= 4.5 / 5', zh: '>= 4.5 / 5' },
+  },
+  contextLeaks: {
+    label: { es: 'Fugas de contexto / idioma', en: 'Context / language leaks', zh: '上下文/语言串台率' },
+    def: { es: 'Mezcla de marcas o cambio erróneo', en: 'Brand mix-ups or wrong switches', zh: '品牌串台或错误切换语言' },
+    target: { es: '0% en producción', en: '0% in production', zh: '生产环境 0%' },
+  },
+};
 
 interface AdminVectorHubProps {
   adminUser: User;
@@ -58,6 +109,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
   onNotify,
   onError,
 }) => {
+  const { lang, tr } = useLanguage();
   const [subTab, setSubTab] = useState<'tickets' | 'campaigns' | 'metrics' | 'qa'>('tickets');
   const [tickets, setTickets] = useState<VectorTicket[]>([]);
   const [consents, setConsents] = useState<VectorConsentRecord[]>([]);
@@ -133,11 +185,19 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
       const count = await autoEscalateExpiredTickets(tickets);
       onNotify(
         count > 0
-          ? `${count} ticket(s) vencido(s) subieron automáticamente +1 nivel SLA.`
-          : 'Todos los tickets abiertos están dentro de su ventana SLA.'
+          ? tr(
+              `${count} ticket(s) vencido(s) subieron automáticamente +1 nivel SLA.`,
+              `${count} overdue ticket(s) automatically escalated +1 SLA level.`,
+              `${count} 个超时工单已自动提升 +1 个 SLA 级别。`
+            )
+          : tr(
+              'Todos los tickets abiertos están dentro de su ventana SLA.',
+              'All open tickets are within their SLA window.',
+              '所有未结工单均在 SLA 时限内。'
+            )
       );
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error verificando SLA.');
+      onError(err instanceof Error ? err.message : tr('Error verificando SLA.', 'Error verifying SLA.', '检查 SLA 时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -155,9 +215,13 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         channel: 'web_chat',
         language: 'es',
         trigger: VECTOR_TRIGGERS[8], // #9 Critical 15 min
-        summary: 'Prueba simulada QA §14: vencimiento automático de SLA crítico.',
+        summary: tr(
+          'Prueba simulada QA §14: vencimiento automático de SLA crítico.',
+          'QA §14 simulated test: automatic critical SLA expiration.',
+          'QA §14 模拟测试：紧急 SLA 自动超时升级。'
+        ),
         botAttempts: 0,
-        lastProposal: 'Escalado crítico inicial',
+        lastProposal: tr('Escalado crítico inicial', 'Initial critical escalation', '初始紧急升级'),
         offerConsent: 'no_preguntado',
         risk: 'fraude',
         threadId: `sim-${Date.now()}`,
@@ -171,9 +235,15 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         status: 'escalated',
         reEscalatedCount: 1,
       });
-      onNotify(`Caso simulado ${created.ticket.ticketNumber} ejecutado y verificado.`);
+      onNotify(
+        tr(
+          `Caso simulado ${created.ticket.ticketNumber} ejecutado y verificado.`,
+          `Simulated case ${created.ticket.ticketNumber} executed and verified.`,
+          `模拟工单 ${created.ticket.ticketNumber} 已执行并验证。`
+        )
+      );
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error en simulación QA.');
+      onError(err instanceof Error ? err.message : tr('Error en simulación QA.', 'Error running QA simulation.', 'QA 模拟执行失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -191,7 +261,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         realOffer: campOffer,
         validUntil: campValidUntil,
         primaryLanguage: campLang,
-        sampleStoreData: `${stores.length} tiendas totales, ${audiencePreview.eligibleCount} elegibles.`,
+        sampleStoreData: `${stores.length} stores total, ${audiencePreview.eligibleCount} eligible.`,
       });
       setDraftVariants(variants);
       const saved = await saveVectorCampaignDraft({
@@ -205,9 +275,15 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         variants,
       });
       setActiveDraftCampaign(saved);
-      onNotify('Borrador A/B (ES/EN/ZH) redactado por Vector. Requiere tu aprobación manual para enviar.');
+      onNotify(
+        tr(
+          'Borrador A/B (ES/EN/ZH) redactado por Vector. Requiere tu aprobación manual para enviar.',
+          'A/B draft (ES/EN/ZH) drafted by Vector. Requires your manual approval before sending.',
+          'Vector 已生成 A/B 三语草稿（ES/EN/ZH），需您手动审批后才能发送。'
+        )
+      );
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error generando borrador de campaña.');
+      onError(err instanceof Error ? err.message : tr('Error generando borrador de campaña.', 'Error generating campaign draft.', '生成推广草稿失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -226,15 +302,23 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
       });
       if (res.optOutAlertTriggered) {
         setOptOutAlertMsg(
-          'ALERTA VECTOR §4: La tasa de bajas (opt-out) superó el 2%. Revisa segmentación y frecuencia.'
+          tr(
+            'ALERTA VECTOR §4: La tasa de bajas (opt-out) superó el 2%. Revisa segmentación y frecuencia.',
+            'VECTOR §4 ALERT: Opt-out rate exceeded 2%. Review audience segmentation and frequency.',
+            'VECTOR §4 警告：退订率已超过 2%，请检查目标分群与发送频率。'
+          )
         );
       }
       onNotify(
-        `Campaña aprobada y enviada a ${res.sentCount} dueño(s) con enlace de baja (${res.excludedCount} excluido(s) por opt-out/rebote).`
+        tr(
+          `Campaña aprobada y enviada a ${res.sentCount} dueño(s) con enlace de baja (${res.excludedCount} excluido(s) por opt-out/rebote).`,
+          `Campaign approved and sent to ${res.sentCount} owner(s) with unsubscribe link (${res.excludedCount} excluded via opt-out/bounce).`,
+          `活动已审批并发送给 ${res.sentCount} 位店主（含退订链接，已排除 ${res.excludedCount} 位退订/退信用户）。`
+        )
       );
       setActiveDraftCampaign(null);
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error despachando campaña aprobada.');
+      onError(err instanceof Error ? err.message : tr('Error despachando campaña aprobada.', 'Error dispatching approved campaign.', '发送已审批活动失败。'));
     } finally {
       setIsBusy(false);
     }
@@ -271,24 +355,35 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-zinc-50 font-display">
-                Centro de Gobernanza Vector (N0–N4)
+                {tr('Centro de Gobernanza Vector (N0–N4)', 'Vector Governance Center (N0–N4)', 'Vector 治理中心（N0–N4）')}
               </h2>
               <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" /> Carlos Smith Zambrano Gonzalez
               </span>
             </div>
             <p className="text-xs text-zinc-400">
-              Cola N4 crítica, reportes [REPORTE], campañas con aprobación manual y métricas de contención.
+              {tr(
+                'Cola N4 crítica, reportes [REPORTE], campañas con aprobación manual y métricas de contención.',
+                'Critical N4 queue, [REPORT] escalations, manually approved campaigns, and containment metrics.',
+                'N4 紧急工单队列、自动报告、人工审批推广活动与自解决率监控。'
+              )}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
           {[
-            { id: 'tickets', label: `Tickets N0–N4 (${tickets.filter((t) => t.status !== 'resolved').length})` },
-            { id: 'campaigns', label: 'Campañas a Tiendas (§4)' },
-            { id: 'metrics', label: 'Métricas Control (§10)' },
-            { id: 'qa', label: 'QA & Checklist (§12/14)' },
+            {
+              id: 'tickets',
+              label: tr(
+                `Tickets N0–N4 (${tickets.filter((t) => t.status !== 'resolved').length})`,
+                `Tickets N0–N4 (${tickets.filter((t) => t.status !== 'resolved').length})`,
+                `工单 N0–N4 (${tickets.filter((t) => t.status !== 'resolved').length})`
+              ),
+            },
+            { id: 'campaigns', label: tr('Campañas a Tiendas (§4)', 'Store Campaigns (§4)', '店铺推广 (§4)') },
+            { id: 'metrics', label: tr('Métricas Control (§10)', 'Control Metrics (§10)', '核心指标 (§10)') },
+            { id: 'qa', label: tr('QA & Checklist (§12/14)', 'QA & Checklist (§12/14)', 'QA 与清单 (§12/14)') },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -310,13 +405,27 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
       {(kpis.lowSlaAlert || kpis.repeatedTriggerAlert || optOutAlertMsg) && (
         <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-xs text-rose-200 space-y-1">
           <div className="font-bold flex items-center gap-1.5 text-rose-300">
-            <AlertTriangle className="w-4 h-4" /> Alertas Automáticas al Administrador
+            <AlertTriangle className="w-4 h-4" /> {tr('Alertas Automáticas al Administrador', 'Automated Admin Alerts', '系统自动管理员预警')}
           </div>
           {kpis.lowSlaAlert && (
-            <p>• Cumplimiento de SLA cayó por debajo del 90% ({kpis.slaComplianceRate}%).</p>
+            <p>
+              •{' '}
+              {tr(
+                `Cumplimiento de SLA cayó por debajo del 90% (${kpis.slaComplianceRate}%).`,
+                `SLA compliance dropped below 90% (${kpis.slaComplianceRate}%).`,
+                `SLA 达成率已跌破 90%（当前 ${kpis.slaComplianceRate}%）。`
+              )}
+            </p>
           )}
           {kpis.repeatedTriggerAlert && (
-            <p>• Disparador #{kpis.repeatedTriggerAlert} superó 5 incidencias en las últimas 24 h.</p>
+            <p>
+              •{' '}
+              {tr(
+                `Disparador #${kpis.repeatedTriggerAlert} superó 5 incidencias en las últimas 24 h.`,
+                `Trigger #${kpis.repeatedTriggerAlert} exceeded 5 incidents in the last 24h.`,
+                `触发器 #${kpis.repeatedTriggerAlert} 在过去24小时内已超过5次异常。`
+              )}
+            </p>
           )}
           {optOutAlertMsg && <p>• {optOutAlertMsg}</p>}
         </div>
@@ -327,7 +436,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-bold text-zinc-100">
-              Cola Global de Escalamientos & Reportes Críticos
+              {tr('Cola Global de Escalamientos & Reportes Críticos', 'Global Escalation Queue & Critical Reports', '全局工单升级与紧急报告队列')}
             </h3>
             <div className="flex flex-wrap gap-2">
               <button
@@ -336,7 +445,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 onClick={handleAutoEscalateOverdue}
                 className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-amber-300 flex items-center gap-1.5"
               >
-                <RefreshCw className="w-3.5 h-3.5" /> Revisar Vencimientos SLA
+                <RefreshCw className="w-3.5 h-3.5" /> {tr('Revisar Vencimientos SLA', 'Check SLA Deadlines', '检查 SLA 超时工单')}
               </button>
               <button
                 type="button"
@@ -344,14 +453,14 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 onClick={handleSimulateTimeoutCase}
                 className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-zinc-200 flex items-center gap-1.5"
               >
-                <FileWarning className="w-3.5 h-3.5 text-amber-400" /> Simular Vencimiento Crítico (§14)
+                <FileWarning className="w-3.5 h-3.5 text-amber-400" /> {tr('Simular Vencimiento Crítico (§14)', 'Simulate Critical Expiration (§14)', '模拟紧急超时升级 (§14)')}
               </button>
             </div>
           </div>
 
           {tickets.length === 0 ? (
             <div className="p-8 rounded-xl bg-[#111114] border border-white/[0.08] text-center text-xs text-zinc-400">
-              No hay tickets escalados en el sistema todavía.
+              {tr('No hay tickets escalados en el sistema todavía.', 'No escalated tickets in the system yet.', '系统暂无升级工单。')}
             </div>
           ) : (
             <div className="space-y-3">
@@ -377,10 +486,10 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                       }
                       className="bg-zinc-950 border border-white/[0.1] rounded-lg px-2.5 py-1 text-xs text-zinc-100"
                     >
-                      <option value="open">Abierto</option>
-                      <option value="in_progress">En Atención</option>
-                      <option value="escalated">Escalado N4</option>
-                      <option value="resolved">Resuelto</option>
+                      <option value="open">{tr('Abierto', 'Open', '待处理')}</option>
+                      <option value="in_progress">{tr('En Atención', 'In Progress', '处理中')}</option>
+                      <option value="escalated">{tr('Escalado N4', 'Escalated N4', '已升至 N4')}</option>
+                      <option value="resolved">{tr('Resuelto', 'Resolved', '已解决')}</option>
                     </select>
                   </div>
 
@@ -390,7 +499,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                         type="button"
                         onClick={() => {
                           navigator.clipboard?.writeText(tkt.adminReport || '');
-                          onNotify('Formato [REPORTE] copiado.');
+                          onNotify(tr('Formato [REPORTE] copiado.', '[REPORT] packet copied.', '已复制 [REPORTE] 报告内容。'));
                         }}
                         className="absolute top-2 right-2 p-1 rounded bg-zinc-900 text-zinc-400 hover:text-zinc-100"
                       >
@@ -421,21 +530,25 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
                   <Mail className="w-4 h-4 text-amber-400" />
-                  <span>Nueva Campaña Comercial a Dueños de Tienda (Flujo §4)</span>
+                  <span>{tr('Nueva Campaña Comercial a Dueños de Tienda (Flujo §4)', 'New Commercial Campaign to Store Owners (Flow §4)', '向店主发起新商业推广活动（流程 §4）')}</span>
                 </h3>
                 <p className="text-[11px] text-zinc-400">
-                  3 bloques, máximo 120 palabras, datos verificables y enlace de baja obligatorio. Nada sale sin tu aprobación.
+                  {tr(
+                    '3 bloques, máximo 120 palabras, datos verificables y enlace de baja obligatorio. Nada sale sin tu aprobación.',
+                    '3 blocks, max 120 words, verifiable data, and mandatory unsubscribe link. Nothing dispatches without your approval.',
+                    '3段式结构、最多120字、真实可查数据与必含退订链接。未经您审批绝不发送。'
+                  )}
                 </p>
               </div>
               <div className="text-right text-[11px] font-mono">
-                <div className="text-emerald-400">{audiencePreview.eligibleCount} elegibles</div>
-                <div className="text-zinc-500">{audiencePreview.excludedCount} excluidos (opt-out/rebote)</div>
+                <div className="text-emerald-400">{audiencePreview.eligibleCount} {tr('elegibles', 'eligible', '符合条件')}</div>
+                <div className="text-zinc-500">{audiencePreview.excludedCount} {tr('excluidos (opt-out/rebote)', 'excluded (opt-out/bounce)', '已排除（退订/退信）')}</div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">Título Interno</label>
+                <label className="block text-zinc-400 mb-1">{tr('Título Interno', 'Internal Title', '内部标题')}</label>
                 <input
                   type="text"
                   required
@@ -445,20 +558,20 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Segmento de Tiendas</label>
+                <label className="block text-zinc-400 mb-1">{tr('Segmento de Tiendas', 'Store Segment', '店铺分群')}</label>
                 <select
                   value={campSegment}
                   onChange={(e) => setCampSegment(e.target.value as VectorCampaign['segment'])}
                   className="w-full bg-zinc-950 border border-white/[0.1] rounded-lg px-3 py-2 text-zinc-100"
                 >
-                  <option value="active">Tiendas Activas</option>
-                  <option value="all">Todas las Tiendas</option>
-                  <option value="pending">Pendientes de Activación</option>
-                  <option value="low_activity">Baja Actividad / Desactivadas</option>
+                  <option value="active">{tr('Tiendas Activas', 'Active Stores', '已激活店铺')}</option>
+                  <option value="all">{tr('Todas las Tiendas', 'All Stores', '全部店铺')}</option>
+                  <option value="pending">{tr('Pendientes de Activación', 'Pending Activation', '待审核店铺')}</option>
+                  <option value="low_activity">{tr('Baja Actividad / Desactivadas', 'Low Activity / Disabled', '低活跃/已停用店铺')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Idioma Principal / Vigencia</label>
+                <label className="block text-zinc-400 mb-1">{tr('Idioma Principal / Vigencia', 'Primary Language / Valid Until', '主语言 / 有效期')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <select
                     value={campLang}
@@ -483,7 +596,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div>
-                <label className="block text-zinc-400 mb-1">Objetivo de Campaña</label>
+                <label className="block text-zinc-400 mb-1">{tr('Objetivo de Campaña', 'Campaign Objective', '推广目标')}</label>
                 <input
                   type="text"
                   required
@@ -493,7 +606,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-zinc-400 mb-1">Oferta Real Verificable (Prohibido inventar)</label>
+                <label className="block text-zinc-400 mb-1">{tr('Oferta Real Verificable (Prohibido inventar)', 'Real Verifiable Offer (No fabrication)', '真实可验证优惠（严禁虚构）')}</label>
                 <input
                   type="text"
                   required
@@ -510,7 +623,11 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
               className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs flex items-center gap-2"
             >
               <Sparkles className="w-4 h-4" />
-              <span>{isBusy ? 'Redactando borradores A/B...' : 'Redactar Variantes A/B con Vector (ES/EN/ZH)'}</span>
+              <span>
+                {isBusy
+                  ? tr('Redactando borradores A/B...', 'Drafting A/B variants...', '正在生成 A/B 草稿...')
+                  : tr('Redactar Variantes A/B con Vector (ES/EN/ZH)', 'Draft A/B Variants with Vector (ES/EN/ZH)', '使用 Vector 生成三语 A/B 草稿')}
+              </span>
             </button>
           </form>
 
@@ -520,10 +637,14 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-bold text-amber-300">
-                    Paso 4: Revisión y Aprobación Obligatoria del Administrador
+                    {tr('Paso 4: Revisión y Aprobación Obligatoria del Administrador', 'Step 4: Mandatory Admin Review & Approval', '第4步：管理员强制审阅与审批')}
                   </h4>
                   <p className="text-[11px] text-zinc-400">
-                    Verifica los borradores generados (máx. 120 palabras, 3 bloques, enlace de baja incluido).
+                    {tr(
+                      'Verifica los borradores generados (máx. 120 palabras, 3 bloques, enlace de baja incluido).',
+                      'Review generated drafts (max 120 words, 3 blocks, unsubscribe link included).',
+                      '请核对生成的文案（不超过120字、3段结构、包含退订链接）。'
+                    )}
                   </p>
                 </div>
                 <button
@@ -533,7 +654,13 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                   className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Aprobar y Enviar a {audiencePreview.eligibleCount} Tienda(s)</span>
+                  <span>
+                    {tr(
+                      `Aprobar y Enviar a ${audiencePreview.eligibleCount} Tienda(s)`,
+                      `Approve & Send to ${audiencePreview.eligibleCount} Store(s)`,
+                      `审批并发送至 ${audiencePreview.eligibleCount} 家店铺`
+                    )}
+                  </span>
                 </button>
               </div>
 
@@ -541,8 +668,8 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 {draftVariants.map((v, idx) => (
                   <div key={idx} className="p-3.5 rounded-lg bg-[#111114] border border-white/[0.08] space-y-2 text-xs">
                     <div className="flex items-center justify-between font-mono text-[10px] text-amber-400">
-                      <span>Idioma: {v.lang.toUpperCase()} · Variante {v.variantLabel}</span>
-                      <span>{v.body.split(/\s+/).length} palabras</span>
+                      <span>{tr('Idioma', 'Language', '语言')}: {v.lang.toUpperCase()} · {tr('Variante', 'Variant', '版本')} {v.variantLabel}</span>
+                      <span>{v.body.split(/\s+/).length} {tr('palabras', 'words', '词')}</span>
                     </div>
                     <div className="font-bold text-zinc-100">{v.subject}</div>
                     <p className="text-zinc-400 whitespace-pre-line text-[11px]">{v.body}</p>
@@ -555,7 +682,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
           {/* Campaign History */}
           {campaigns.length > 0 && (
             <div className="p-5 rounded-xl bg-[#111114] border border-white/[0.08] space-y-3">
-              <h4 className="text-xs font-bold text-zinc-200">Historial de Campañas Vector</h4>
+              <h4 className="text-xs font-bold text-zinc-200">{tr('Historial de Campañas Vector', 'Vector Campaign History', 'Vector 推广活动历史')}</h4>
               <div className="space-y-2">
                 {campaigns.map((c) => (
                   <div
@@ -565,7 +692,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                     <div>
                       <span className="font-semibold text-zinc-100">{c.title}</span>
                       <span className="ml-2 text-[10px] font-mono text-zinc-400">
-                        {c.status.toUpperCase()} · Enviados: {c.sentCount} · Excluidos: {c.excludedCount} · Bajas: {c.optOutCount}
+                        {c.status.toUpperCase()} · {tr('Enviados', 'Sent', '已发')}: {c.sentCount} · {tr('Excluidos', 'Excluded', '排除')}: {c.excludedCount} · {tr('Bajas', 'Opt-outs', '退订')}: {c.optOutCount}
                       </span>
                     </div>
                     {c.status === 'draft' && (
@@ -574,7 +701,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                         onClick={() => handleApproveAndSendCampaign(c)}
                         className="px-3 py-1 rounded bg-emerald-500 text-zinc-950 font-bold text-[11px]"
                       >
-                        Aprobar y Enviar
+                        {tr('Aprobar y Enviar', 'Approve & Send', '审批并发送')}
                       </button>
                     )}
                   </div>
@@ -590,16 +717,16 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         <div className="p-5 rounded-xl bg-[#111114] border border-white/[0.08] space-y-4">
           <div className="flex items-center gap-2 text-sm font-bold text-zinc-100">
             <BarChart3 className="w-4 h-4 text-amber-400" />
-            <span>Panel de Métricas de Control (Sección 10)</span>
+            <span>{tr('Panel de Métricas de Control (Sección 10)', 'Control Metrics Dashboard (Section 10)', '核心管控指标面板（第10节）')}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-white/[0.08] text-zinc-400 font-mono text-[11px]">
-                  <th className="py-2 pr-4">Métrica</th>
-                  <th className="py-2 pr-4">Definición</th>
-                  <th className="py-2 pr-4">Valor Actual</th>
-                  <th className="py-2">Meta Sugerida</th>
+                  <th className="py-2 pr-4">{tr('Métrica', 'Metric', '指标')}</th>
+                  <th className="py-2 pr-4">{tr('Definición', 'Definition', '定义')}</th>
+                  <th className="py-2 pr-4">{tr('Valor Actual', 'Current Value', '当前值')}</th>
+                  <th className="py-2">{tr('Meta Sugerida', 'Suggested Target', '目标阈值')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06] text-zinc-200 tabular-nums">
@@ -614,12 +741,20 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                   if (row.key === 'csat') val = `${kpis.avgCsat} / 5`;
                   if (row.key === 'contextLeaks') val = `${kpis.contextLeakRate}%`;
 
+                  const localizedMetric = VECTOR_METRIC_I18N[row.key];
+
                   return (
                     <tr key={row.key}>
-                      <td className="py-2.5 pr-4 font-semibold">{row.label}</td>
-                      <td className="py-2.5 pr-4 text-zinc-400">{row.def}</td>
+                      <td className="py-2.5 pr-4 font-semibold">
+                        {localizedMetric ? localizedMetric.label[lang] : row.label}
+                      </td>
+                      <td className="py-2.5 pr-4 text-zinc-400">
+                        {localizedMetric ? localizedMetric.def[lang] : row.def}
+                      </td>
                       <td className="py-2.5 pr-4 font-mono font-bold text-amber-400">{val}</td>
-                      <td className="py-2.5 font-mono text-emerald-400">{row.target}</td>
+                      <td className="py-2.5 font-mono text-emerald-400">
+                        {localizedMetric ? localizedMetric.target[lang] : row.target}
+                      </td>
                     </tr>
                   );
                 })}
@@ -634,11 +769,16 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="p-5 rounded-xl bg-[#111114] border border-white/[0.08] space-y-3">
             <h3 className="text-sm font-bold text-zinc-100">
-              12. Criterios de Aceptación QA ({Object.values(qaChecked).filter(Boolean).length}/{VECTOR_QA_CRITERIA.length})
+              {tr(
+                `12. Criterios de Aceptación QA (${Object.values(qaChecked).filter(Boolean).length}/${VECTOR_QA_CRITERIA.length})`,
+                `12. QA Acceptance Criteria (${Object.values(qaChecked).filter(Boolean).length}/${VECTOR_QA_CRITERIA.length})`,
+                `12. QA 验收标准 (${Object.values(qaChecked).filter(Boolean).length}/${VECTOR_QA_CRITERIA.length})`
+              )}
             </h3>
             <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
               {VECTOR_QA_CRITERIA.map((item) => {
                 const checked = Boolean(qaChecked[item.id]);
+                const text = item[lang] || item.es;
                 return (
                   <button
                     key={item.id}
@@ -652,7 +792,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                       <Square className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
                     )}
                     <span className={checked ? 'text-zinc-300 line-through opacity-75' : 'text-zinc-200'}>
-                      {item.es}
+                      {text}
                     </span>
                   </button>
                 );
@@ -662,11 +802,16 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
 
           <div className="p-5 rounded-xl bg-[#111114] border border-white/[0.08] space-y-3">
             <h3 className="text-sm font-bold text-zinc-100">
-              14. Checklist de Implementación ({Object.values(implChecked).filter(Boolean).length}/{VECTOR_IMPL_CHECKLIST.length})
+              {tr(
+                `14. Checklist de Implementación (${Object.values(implChecked).filter(Boolean).length}/${VECTOR_IMPL_CHECKLIST.length})`,
+                `14. Implementation Checklist (${Object.values(implChecked).filter(Boolean).length}/${VECTOR_IMPL_CHECKLIST.length})`,
+                `14. 实施检查清单 (${Object.values(implChecked).filter(Boolean).length}/${VECTOR_IMPL_CHECKLIST.length})`
+              )}
             </h3>
             <div className="space-y-2">
               {VECTOR_IMPL_CHECKLIST.map((item) => {
                 const checked = Boolean(implChecked[item.id]);
+                const text = item[lang] || item.es;
                 return (
                   <button
                     key={item.id}
@@ -680,7 +825,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                       <Square className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
                     )}
                     <span className={checked ? 'text-zinc-300 line-through opacity-75' : 'text-zinc-200'}>
-                      {item.es}
+                      {text}
                     </span>
                   </button>
                 );

@@ -1,22 +1,19 @@
 import React, { useState } from 'react';
 import { Debtor } from '../types';
-import { 
-  BookOpen, 
-  MessageCircle, 
-  Plus, 
-  DollarSign, 
-  Phone, 
-  Search, 
-  Calendar, 
-  Check, 
+import {
+  MessageCircle,
+  Plus,
+  DollarSign,
+  Phone,
+  Search,
   X,
   History,
-  AlertCircle
 } from 'lucide-react';
 import {
   getCaracasDateString,
   normalizeVenezuelanPhone,
 } from '../utils/venezuelaTime';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface FiadosModuleProps {
   debtors: Debtor[];
@@ -31,11 +28,14 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
   onAddDebtor,
   onRecordPayment,
 }) => {
+  const { tr } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDebtorForPayment, setSelectedDebtorForPayment] = useState<Debtor | null>(null);
   const [paymentAmountUSD, setPaymentAmountUSD] = useState('');
-  const [paymentDesc, setPaymentDesc] = useState('Abono en efectivo en barra');
+  const [paymentDesc, setPaymentDesc] = useState(() =>
+    tr('Abono en efectivo en barra', 'Cash payment at counter', '柜台现金还款')
+  );
   const [historyModalDebtor, setHistoryModalDebtor] = useState<Debtor | null>(null);
 
   // New debtor form
@@ -62,7 +62,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
       phone: normalizeVenezuelanPhone(newPhone) || newPhone.replace(/\D/g, ''),
       balanceUSD: parseFloat(newBalance) || 0,
       lastPurchaseDate: getCaracasDateString(),
-      notes: newNotes.trim() || 'Cliente de confianza',
+      notes: newNotes.trim() || tr('Cliente de confianza', 'Trusted customer', '信用客户'),
     });
 
     setNewName('');
@@ -93,7 +93,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
       {/* Top summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-          <span className="text-xs text-zinc-400 block mb-1">Total Cuentas por Cobrar</span>
+          <span className="text-xs text-zinc-400 block mb-1">
+            {tr('Total Cuentas por Cobrar', 'Total Accounts Receivable', '应收账款总额')}
+          </span>
           <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
             ${totalOwedUSD.toFixed(2)} USD
           </div>
@@ -103,23 +105,30 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
         </div>
 
         <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-          <span className="text-xs text-zinc-400 block mb-1">Clientes Deudores</span>
+          <span className="text-xs text-zinc-400 block mb-1">
+            {tr('Clientes Deudores', 'Receivable Accounts', '赊账客户数')}
+          </span>
           <div className="text-xl font-bold font-mono text-white tabular-nums">
-            {debtors.length} <span className="text-xs font-normal text-zinc-400">personas registradas</span>
+            {debtors.length}{' '}
+            <span className="text-xs font-normal text-zinc-400">
+              {tr('personas registradas', 'registered accounts', '位已登记客户')}
+            </span>
           </div>
           <span className="text-xs text-zinc-500">
-            Libreta digital 100% sincronizada
+            {tr('Libreta digital 100% sincronizada', '100% synced digital ledger', '100% 云端同步数字账本')}
           </span>
         </div>
 
         <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-          <span className="text-xs text-zinc-400 block mb-1">Cobranza Automatizada</span>
+          <span className="text-xs text-zinc-400 block mb-1">
+            {tr('Cobranza Automatizada', 'Automated Collections', '自动催收提醒')}
+          </span>
           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-sm">
             <MessageCircle className="w-4 h-4 shrink-0" />
-            <span>Recordatorios WhatsApp</span>
+            <span>{tr('Recordatorios WhatsApp', 'WhatsApp Reminders', 'WhatsApp 一键提醒')}</span>
           </div>
           <span className="text-xs text-zinc-500 block mt-1">
-            Notificaciones preformateadas en 1 clic
+            {tr('Notificaciones preformateadas en 1 clic', 'Pre-formatted reminders in 1 click', '一键生成标准双币对账消息')}
           </span>
         </div>
       </div>
@@ -130,7 +139,11 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
           <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nombre de cliente o teléfono..."
+            placeholder={tr(
+              'Buscar por nombre de cliente o teléfono...',
+              'Search by customer name or phone...',
+              '按客户姓名或电话搜索...'
+            )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-[#111114] border border-white/[0.08] rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
@@ -142,7 +155,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
           className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm rounded-lg flex items-center justify-center gap-2 shadow-sm transition-colors whitespace-nowrap"
         >
           <Plus className="w-4 h-4" />
-          <span>Anotar Nuevo Fiado</span>
+          <span>{tr('Anotar Nuevo Fiado', 'Add Credit Account', '新增赊账记录')}</span>
         </button>
       </div>
 
@@ -150,7 +163,11 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredDebtors.length === 0 ? (
           <div className="col-span-full py-12 text-center text-zinc-500 text-sm bg-[#111114] rounded-xl border border-white/[0.08]">
-            No hay clientes con saldos pendientes con ese filtro.
+            {tr(
+              'No hay clientes con saldos pendientes con ese filtro.',
+              'No customers with pending balances match that filter.',
+              '没有符合筛选条件的待收款客户。'
+            )}
           </div>
         ) : (
           filteredDebtors.map((debtor) => {
@@ -177,7 +194,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
                   <div className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex items-baseline justify-between">
                     <div>
-                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">Saldo Pendiente</span>
+                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">
+                        {tr('Saldo Pendiente', 'Pending Balance', '待付余额')}
+                      </span>
                       <span className="font-mono font-bold text-lg text-rose-400 tabular-nums">
                         ${debtor.balanceUSD.toFixed(2)} USD
                       </span>
@@ -190,7 +209,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
                 <div className="space-y-2 pt-1 border-t border-white/[0.08]">
                   <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                    <span>Último movimiento:</span>
+                    <span>{tr('Último movimiento:', 'Last activity:', '最近交易：')}</span>
                     <span className="font-mono">{debtor.lastPurchaseDate}</span>
                   </div>
 
@@ -200,10 +219,14 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="py-1.5 px-2 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded font-medium text-xs flex items-center justify-center gap-1.5 transition-colors"
-                      title="Enviar recordatorio automático por WhatsApp"
+                      title={tr(
+                        'Enviar recordatorio automático por WhatsApp',
+                        'Send automated WhatsApp reminder',
+                        '通过 WhatsApp 发送自动催收提醒'
+                      )}
                     >
                       <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>Cobrar</span>
+                      <span>{tr('Cobrar', 'Collect', '催收')}</span>
                     </a>
 
                     <button
@@ -211,7 +234,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                       className="py-1.5 px-2 bg-zinc-900 hover:bg-zinc-800 text-amber-300 rounded font-medium text-xs flex items-center justify-center gap-1 transition-colors"
                     >
                       <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                      <span>Abonar</span>
+                      <span>{tr('Abonar', 'Pay', '还款')}</span>
                     </button>
                   </div>
 
@@ -220,7 +243,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                     className="w-full text-center text-[11px] text-zinc-400 hover:text-white flex items-center justify-center gap-1 py-1"
                   >
                     <History className="w-3 h-3" />
-                    <span>Ver historial de cuentas</span>
+                    <span>{tr('Ver historial de cuentas', 'View account history', '查看账户明细')}</span>
                   </button>
                 </div>
               </div>
@@ -235,7 +258,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
           <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div>
-                <h3 className="font-bold text-white text-base font-display">Registrar Abono</h3>
+                <h3 className="font-bold text-white text-base font-display">
+                  {tr('Registrar Abono', 'Record Installment', '登记还款')}
+                </h3>
                 <span className="text-zinc-400 text-xs">{selectedDebtorForPayment.name}</span>
               </div>
               <button
@@ -247,13 +272,17 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
             </div>
 
             <div className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex justify-between">
-              <span className="text-zinc-400">Deuda actual:</span>
-              <span className="font-mono font-bold text-rose-400">${selectedDebtorForPayment.balanceUSD.toFixed(2)} USD</span>
+              <span className="text-zinc-400">{tr('Deuda actual:', 'Current balance:', '当前欠款：')}</span>
+              <span className="font-mono font-bold text-rose-400">
+                ${selectedDebtorForPayment.balanceUSD.toFixed(2)} USD
+              </span>
             </div>
 
             <form onSubmit={handleApplyPayment} className="space-y-3">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Monto del Abono (USD)</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Monto del Abono (USD)', 'Payment Amount (USD)', '还款金额 (USD)')}
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -265,18 +294,28 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                 />
                 {paymentAmountUSD && (
                   <span className="text-[11px] text-zinc-400 font-mono mt-1 block">
-                    Equivale a {(parseFloat(paymentAmountUSD) * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
+                    {tr('Equivale a', 'Equals', '约合')}{' '}
+                    {(parseFloat(paymentAmountUSD) * exchangeRate).toLocaleString('es-VE', {
+                      minimumFractionDigits: 2,
+                    })}{' '}
+                    Bs.
                   </span>
                 )}
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Detalle / Método del Abono</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Detalle / Método del Abono', 'Payment Method / Note', '付款方式 / 备注')}
+                </label>
                 <input
                   type="text"
                   value={paymentDesc}
                   onChange={(e) => setPaymentDesc(e.target.value)}
-                  placeholder="Ej: Pago Móvil Banesco / Efectivo en barra"
+                  placeholder={tr(
+                    'Ej: Pago Móvil Banesco / Efectivo en barra',
+                    'e.g. Pago Móvil / Cash at counter',
+                    '例如：Pago Móvil / 柜台现金'
+                  )}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                 />
               </div>
@@ -287,13 +326,13 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                   onClick={() => setSelectedDebtorForPayment(null)}
                   className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
                 >
-                  Confirmar Abono
+                  {tr('Confirmar Abono', 'Confirm Payment', '确认收款')}
                 </button>
               </div>
             </form>
@@ -306,7 +345,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
         <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
           <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <h3 className="font-bold text-white text-base font-display">Anotar Cuenta Fiada en Libreta</h3>
+              <h3 className="font-bold text-white text-base font-display">
+                {tr('Anotar Cuenta Fiada en Libreta', 'Add Credit Account to Ledger', '新增客户赊账')}
+              </h3>
               <button
                 onClick={() => setShowAddModal(false)}
                 className="text-zinc-400 hover:text-white"
@@ -317,11 +358,13 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
             <form onSubmit={handleCreateDebtor} className="space-y-3">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Nombre Completo o Negocio</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Nombre Completo o Negocio', 'Full Name or Business', '姓名或商铺名称')}
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Rafael Peña (Taller Mecánico)"
+                  placeholder={tr('Ej: Rafael Peña (Taller Mecánico)', 'e.g. John Doe (Auto Shop)', '例如：张三（汽修店）')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -330,7 +373,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">WhatsApp / Celular (Venezuela)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('WhatsApp / Celular (Venezuela)', 'WhatsApp / Mobile', 'WhatsApp / 手机号')}
+                  </label>
                   <input
                     type="tel"
                     inputMode="tel"
@@ -342,7 +387,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Monto Inicial Fiado (USD)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Monto Inicial Fiado (USD)', 'Initial Credit Balance (USD)', '初始赊账金额 (USD)')}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -355,12 +402,18 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Observaciones / Concepto de Compra</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Observaciones / Concepto de Compra', 'Notes / Purchase Details', '备注 / 赊账明细')}
+                </label>
                 <textarea
                   rows={2}
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="Ej: Llevó 2 cajas de Polar y 1 botella de ron Cacique"
+                  placeholder={tr(
+                    'Ej: Llevó 2 cajas de cerveza y 1 botella de ron...',
+                    'e.g. Took 2 cases and 1 reserve bottle...',
+                    '例如：取货 2 箱商品，约定周五结算'
+                  )}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                 />
               </div>
@@ -371,13 +424,13 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                   onClick={() => setShowAddModal(false)}
                   className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold"
                 >
-                  Guardar en Libreta
+                  {tr('Guardar en Libreta', 'Save to Ledger', '保存至账本')}
                 </button>
               </div>
             </form>
@@ -391,7 +444,9 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
           <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 text-xs max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
               <div>
-                <h3 className="font-bold text-white text-sm font-display">Historial de Cuenta</h3>
+                <h3 className="font-bold text-white text-sm font-display">
+                  {tr('Historial de Cuenta', 'Account History', '往来账目记录')}
+                </h3>
                 <span className="text-amber-400">{historyModalDebtor.name}</span>
               </div>
               <button
@@ -427,7 +482,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
               onClick={() => setHistoryModalDebtor(null)}
               className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 rounded-lg"
             >
-              Cerrar
+              {tr('Cerrar', 'Close', '关闭')}
             </button>
           </div>
         </div>

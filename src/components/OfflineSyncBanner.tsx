@@ -43,7 +43,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
   onTogglePanel,
   onSynced,
 }) => {
-  const { lang } = useLanguage();
+  const { lang, tr } = useLanguage();
   const { isOnline, isNavigatorOnline, isManualOffline, setManualOffline, wasOffline } =
     useOnlineStatus();
   const [queue, setQueue] = useState<OfflineQueueItem[]>(() => getOfflineQueue());
@@ -82,7 +82,13 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
           await onRequestLogin();
         } catch (err) {
           const msg =
-            err instanceof Error ? err.message : 'No se pudo iniciar sesión con Google.';
+            err instanceof Error
+              ? err.message
+              : tr(
+                  'No se pudo iniciar sesión con Google.',
+                  'Could not sign in with Google.',
+                  '无法通过 Google 登录。'
+                );
           setSyncResultNote(msg);
           setTimeout(() => setSyncResultNote(null), 6500);
         } finally {
@@ -110,7 +116,9 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
         setSyncResultNote(
           lang === 'en'
             ? `${res.remaining} operation(s) still waiting for stable connection.`
-            : `${res.remaining} operación(es) aún esperan conexión estable con el servidor.`
+            : lang === 'zh'
+              ? `${res.remaining} 条操作仍在等待稳定网络连接。`
+              : `${res.remaining} operación(es) aún esperan conexión estable con el servidor.`
         );
         setTimeout(() => setSyncResultNote(null), 5000);
       }
@@ -280,8 +288,16 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
               disabled={!isNavigatorOnline}
               title={
                 isNavigatorOnline
-                  ? 'Desactivar modo offline manual y sincronizar'
-                  : 'Esperando señal de internet'
+                  ? tr(
+                      'Desactivar modo offline manual y sincronizar',
+                      'Disable manual offline mode and sync',
+                      '关闭手动离线模式并立即同步'
+                    )
+                  : tr(
+                      'Esperando señal de internet',
+                      'Waiting for internet connection',
+                      '正在等待网络连接'
+                    )
               }
               className="px-3 py-1.5 min-h-[38px] rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-200 font-semibold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
@@ -336,10 +352,12 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
                   <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
                 </div>
                 <div className="text-base font-bold text-zinc-50 font-mono tabular-nums">
-                  {summary.pendingSoldProductsCount} ventas · ${summary.pendingSoldUSD.toFixed(2)}
+                  {summary.pendingSoldProductsCount} {tr('ventas', 'sales', '笔销售')} · $
+                  {summary.pendingSoldUSD.toFixed(2)}
                 </div>
                 <div className="text-[11px] text-zinc-400 font-mono tabular-nums mt-0.5">
-                  {summary.pendingSoldUnitsCount} unidad(es) vendida(s) en cola local
+                  {summary.pendingSoldUnitsCount}{' '}
+                  {tr('unidad(es) vendida(s) en cola local', 'unit(s) queued locally', '件本地待同步商品')}
                 </div>
               </div>
 
@@ -349,10 +367,12 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
                   <Package className="w-3.5 h-3.5 text-sky-400" />
                 </div>
                 <div className="text-base font-bold text-zinc-50 font-mono tabular-nums">
-                  {summary.pendingInventoryOpsCount} ajuste(s) · {summary.pendingEmailsCount} email(s)
+                  {summary.pendingInventoryOpsCount} {tr('ajuste(s)', 'adj.', '次调整')} ·{' '}
+                  {summary.pendingEmailsCount} {tr('email(s)', 'email(s)', '封邮件')}
                 </div>
                 <div className="text-[11px] text-zinc-400 font-mono tabular-nums mt-0.5">
-                  {summary.pendingOtherOpsCount} evento(s) asistente · {summary.leadsCount} lead(s)
+                  {summary.pendingOtherOpsCount} {tr('evento(s) asistente', 'assistant event(s)', '条助手事件')} ·{' '}
+                  {summary.leadsCount} {tr('lead(s)', 'lead(s)', '条线索')}
                 </div>
               </div>
 
@@ -362,11 +382,12 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
                   <Database className="w-3.5 h-3.5 text-emerald-400" />
                 </div>
                 <div className="text-base font-bold text-zinc-50 font-mono tabular-nums">
-                  {summary.cachedStoresCount} tiendas · {summary.cachedProductsTotalCount} prods
+                  {summary.cachedStoresCount} {tr('tiendas', 'stores', '家店铺')} ·{' '}
+                  {summary.cachedProductsTotalCount} {tr('prods', 'items', '件商品')}
                 </div>
                 <div className="text-[11px] text-zinc-400 font-mono tabular-nums mt-0.5">
-                  {summary.cachedWarehousesCount} almacén(es) · BCV:{' '}
-                  {summary.cachedBcvValue ? `${summary.cachedBcvValue.toFixed(2)} Bs.` : 'Base'}
+                  {summary.cachedWarehousesCount} {tr('almacén(es)', 'warehouse(s)', '个仓库')} · BCV:{' '}
+                  {summary.cachedBcvValue ? `${summary.cachedBcvValue.toFixed(2)} Bs.` : tr('Base', 'Base', '基准')}
                 </div>
               </div>
 
@@ -376,15 +397,24 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
                   <HardDrive className="w-3.5 h-3.5 text-amber-400" />
                 </div>
                 <div className="text-sm font-bold text-zinc-50">
-                  {summary.indexedDbReady ? 'IndexedDB + LocalStorage' : 'LocalStorage Activo'}
+                  {summary.indexedDbReady
+                    ? 'IndexedDB + LocalStorage'
+                    : tr('LocalStorage Activo', 'LocalStorage Active', 'LocalStorage 已启用')}
                 </div>
                 <div className="text-[11px] text-zinc-400 font-mono tabular-nums mt-0.5">
                   {summary.lastSyncAt
-                    ? new Date(summary.lastSyncAt).toLocaleString('es-VE', {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      })
-                    : 'Sin sincronización previa en esta sesión'}
+                    ? new Date(summary.lastSyncAt).toLocaleString(
+                        lang === 'zh' ? 'zh-CN' : lang === 'en' ? 'en-US' : 'es-VE',
+                        {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        }
+                      )
+                    : tr(
+                        'Sin sincronización previa en esta sesión',
+                        'No sync yet in this session',
+                        '本次会话尚未同步'
+                      )}
                 </div>
               </div>
             </div>

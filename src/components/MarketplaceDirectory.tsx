@@ -79,7 +79,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   onNavigateMerchant,
   onVectorContextChange,
 }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [selectedStore, setSelectedStore] = useState<StoreTenant | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
@@ -480,10 +480,24 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     }
   };
 
+  const getShippingTypeLabel = (type: ShippingType) =>
+    type === 'Envío Nacional'
+      ? t.marketplace.nationalShipping
+      : type === 'Delivery Local'
+        ? t.marketplace.localDelivery
+        : t.marketplace.localPickup;
+
   const renderStars = (rating: number) => {
     const rounded = Math.round(Math.max(1, Math.min(5, rating || 5)));
     return (
-      <div className="flex items-center gap-0.5" title={`${rating.toFixed(1)} de 5 estrellas`}>
+      <div
+        className="flex items-center gap-0.5"
+        title={tr(
+          `${rating.toFixed(1)} de 5 estrellas`,
+          `${rating.toFixed(1)} out of 5 stars`,
+          `${rating.toFixed(1)} / 5 星评价`
+        )}
+      >
         {[1, 2, 3, 4, 5].map((n) => (
           <Star
             key={n}
@@ -633,11 +647,16 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                 <p className="text-xs text-zinc-300">
                   {t.common.total}: ${completedOrder.order.totalUSD.toFixed(2)} USD (
                   {completedOrder.order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}{' '}
-                  Bs.) · {completedOrder.order.shippingType} · {completedOrder.order.paymentMethod}
+                  Bs.) · {getShippingTypeLabel(completedOrder.order.shippingType)} ·{' '}
+                  {completedOrder.order.paymentMethod}
                 </p>
                 {!completedOrder.registeredInCloud && (
                   <p className="text-[11px] font-mono text-amber-300">
-                    Modo Offline: Factura PDF generada localmente y pedido guardado en cola para sincronizar automáticamente al volver internet.
+                    {tr(
+                      'Modo Offline: Factura PDF generada localmente y pedido guardado en cola para sincronizar automáticamente al volver internet.',
+                      'Offline Mode: Dual PDF invoice generated locally and order queued for automatic cloud sync when internet returns.',
+                      '离线模式：已在本地生成双联 PDF 发票，订单已加入队列，联网后将自动同步至云端。'
+                    )}
                   </p>
                 )}
               </div>
@@ -861,7 +880,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                             type="button"
                             onClick={() => updateCartQty(item.product.id, -item.quantity)}
                             className="w-10 h-10 rounded-lg bg-red-950/50 hover:bg-red-900/60 active:scale-95 flex items-center justify-center text-red-400 ml-0.5"
-                            title="Quitar"
+                            title={tr('Quitar', 'Remove', '移除')}
+                            aria-label={tr('Quitar', 'Remove', '移除')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -959,12 +979,18 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                             ))
                           ) : (
                             <>
-                              <option value="Pago Móvil">Pago Móvil (Bs.)</option>
-                              <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                              <option value="Pago Móvil">
+                                {tr('Pago Móvil (Bs.)', 'Pago Móvil (Bs.)', 'Pago Móvil 移动支付 (Bs.)')}
+                              </option>
+                              <option value="Transferencia Bancaria">
+                                {tr('Transferencia Bancaria', 'Bank Transfer', '银行转账')}
+                              </option>
                               <option value="Binance Pay">Binance Pay (USDT)</option>
                               <option value="Bybit">Bybit Pay</option>
                               <option value="Zelle">Zelle</option>
-                              <option value="Efectivo USD">Efectivo USD</option>
+                              <option value="Efectivo USD">
+                                {tr('Efectivo USD', 'Cash USD', '美元现金')}
+                              </option>
                             </>
                           )}
                         </select>
@@ -976,10 +1002,11 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         (m) => m.name === paymentMethod
                       );
                       if (!activeMethodInfo) return null;
+                      const holderPrefix = tr('Titular:', 'Holder:', '户名：');
                       const fullCopyText = [
                         `${activeMethodInfo.name} (${activeMethodInfo.currency})`,
                         activeMethodInfo.accountHolder
-                          ? `Titular: ${activeMethodInfo.accountHolder}`
+                          ? `${holderPrefix} ${activeMethodInfo.accountHolder}`
                           : '',
                         activeMethodInfo.accountDetails,
                       ]
@@ -989,7 +1016,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         <div className="p-3 rounded-xl bg-[#111114] border border-emerald-500/30 space-y-1.5 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-emerald-300">
-                              Datos de Cobro · {activeMethodInfo.name} ({activeMethodInfo.currency})
+                              {tr('Datos de Cobro', 'Payment Details', '收款账户信息')} · {activeMethodInfo.name} ({activeMethodInfo.currency})
                             </span>
                             <button
                               type="button"
@@ -1005,12 +1032,16 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                               ) : (
                                 <Copy className="w-3 h-3" />
                               )}
-                              <span>{copiedPaymentDetails ? 'Copiado' : 'Copiar'}</span>
+                              <span>
+                                {copiedPaymentDetails
+                                  ? tr('Copiado', 'Copied', '已复制')
+                                  : tr('Copiar', 'Copy', '复制')}
+                              </span>
                             </button>
                           </div>
                           {activeMethodInfo.accountHolder && (
                             <div className="text-[11px] text-zinc-400">
-                              Titular:{' '}
+                              {tr('Titular:', 'Holder:', '户名：')}{' '}
                               <span className="text-zinc-200">
                                 {activeMethodInfo.accountHolder}
                               </span>
@@ -1099,7 +1130,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         <span className="font-mono">${cartSubtotalUSD.toFixed(2)} USD</span>
                       </div>
                       <div className="flex justify-between text-zinc-400">
-                        <span>{t.marketplace.shippingCostLabel} ({shippingType}):</span>
+                        <span>{t.marketplace.shippingCostLabel} ({getShippingTypeLabel(shippingType)}):</span>
                         <span className="font-mono">${shippingFeeUSD.toFixed(2)} USD</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold text-white pt-1.5 border-t border-white/[0.08]">

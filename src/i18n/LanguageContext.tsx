@@ -15,16 +15,33 @@ function isSupportedLang(val: unknown): val is SupportedLanguage {
   return val === 'es' || val === 'en' || val === 'zh';
 }
 
+export function translateByLang(
+  lang: SupportedLanguage,
+  es: string,
+  en: string,
+  zh: string
+): string {
+  if (lang === 'en') return en;
+  if (lang === 'zh') return zh;
+  return es;
+}
+
+export function getSavedLanguageClient(): SupportedLanguage {
+  return getInitialLanguage();
+}
+
 interface LanguageContextValue {
   lang: SupportedLanguage;
   setLang: (next: SupportedLanguage) => void;
   t: TranslationDictionary;
+  tr: (es: string, en: string, zh: string) => string;
 }
 
 const LanguageContext = createContext<LanguageContextValue>({
   lang: 'es',
   setLang: () => {},
   t: translations.es,
+  tr: (es: string) => es,
 });
 
 function readStorageLang(key: string): SupportedLanguage | null {
@@ -138,8 +155,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const t: TranslationDictionary = translations[lang] || translations.es;
 
+  const tr = useCallback(
+    (es: string, en: string, zh: string) => translateByLang(lang, es, en, zh),
+    [lang]
+  );
+
   return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
+    <LanguageContext.Provider value={{ lang, setLang, t, tr }}>
       {children}
     </LanguageContext.Provider>
   );

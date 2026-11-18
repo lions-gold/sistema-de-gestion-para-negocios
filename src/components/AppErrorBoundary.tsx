@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { getSavedLanguageClient, translateByLang } from '../i18n/LanguageContext';
 
 interface State {
   hasError: boolean;
@@ -13,9 +14,17 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
   }
 
   static getDerivedStateFromError(error: Error): State {
+    const lang = getSavedLanguageClient();
     return {
       hasError: true,
-      message: error?.message || 'Error inesperado en la interfaz.',
+      message:
+        error?.message ||
+        translateByLang(
+          lang,
+          'Error inesperado en la interfaz.',
+          'Unexpected interface error.',
+          '界面发生意外错误。'
+        ),
     };
   }
 
@@ -25,6 +34,7 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
 
   render() {
     if (this.state.hasError) {
+      const lang = getSavedLanguageClient();
       return (
         <div className="min-h-screen bg-[#09090b] text-zinc-100 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-[#111114] border border-amber-400/30 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
@@ -32,11 +42,20 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h1 className="text-lg font-bold text-zinc-50">
-              Recuperación automática · Smith Solutions
+              {translateByLang(
+                lang,
+                'Recuperación automática · Smith Solutions',
+                'Auto-Recovery · Smith Solutions',
+                '自动恢复 · Smith Solutions'
+              )}
             </h1>
             <p className="text-xs text-zinc-400 break-words">
-              Se detectó un fallo puntual en un módulo ({this.state.message}). Tus datos locales de
-              inventario, caja y modo offline permanecen intactos.
+              {translateByLang(
+                lang,
+                `Se detectó un fallo puntual en un módulo (${this.state.message}). Tus datos locales de inventario, caja y modo offline permanecen intactos.`,
+                `A temporary module issue occurred (${this.state.message}). Your local inventory, cash register, and offline backup data remain intact.`,
+                `检测到模块出现临时异常 (${this.state.message})。您的本地库存、收银和离线备份数据均安全无损。`
+              )}
             </p>
             <button
               type="button"
@@ -44,7 +63,9 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
               className="w-full py-2.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold text-xs flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Recargar plataforma</span>
+              <span>
+                {translateByLang(lang, 'Recargar plataforma', 'Reload platform', '重新加载平台')}
+              </span>
             </button>
           </div>
         </div>

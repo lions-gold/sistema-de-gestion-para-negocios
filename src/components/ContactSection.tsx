@@ -4,7 +4,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { saveOfflineLead } from '../services/offlineSyncService';
 
 export const ContactSection: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [phone, setPhone] = useState('');
@@ -107,7 +107,13 @@ export const ContactSection: React.FC = () => {
                 <p className="text-sm text-zinc-400 max-w-md mx-auto">{t.contact.successDesc}</p>
                 <div className="inline-flex items-center gap-1.5 text-[11px] font-mono text-amber-300 bg-amber-400/10 border border-amber-400/25 rounded-lg px-3 py-1.5">
                   <Database className="w-3.5 h-3.5" />
-                  <span>Registro guardado en respaldo local offline</span>
+                  <span>
+                    {tr(
+                      'Registro guardado en respaldo local offline',
+                      'Request saved in local offline backup',
+                      '请求已保存至本地离线备份'
+                    )}
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                   {whatsappHref && (
@@ -118,7 +124,7 @@ export const ContactSection: React.FC = () => {
                       className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-2"
                     >
                       <MessageCircle className="w-4 h-4" />
-                      <span>Abrir WhatsApp</span>
+                      <span>{tr('Abrir WhatsApp', 'Open WhatsApp', '打开 WhatsApp')}</span>
                     </a>
                   )}
                   <button

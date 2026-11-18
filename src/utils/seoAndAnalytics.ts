@@ -144,6 +144,31 @@ const ROUTE_SEO_LANG_OVERRIDES: Partial<
       description:
         'Admin console to manually activate/deactivate SaaS store accounts, verify $25/mo payments, and configure receiving payment accounts.',
     },
+    inventory: {
+      title: 'Warehouse, Audit & Lot Traceability | Smith Solutions E-Commerce',
+      description:
+        'Control real-time inventory with low-stock email alerts, shrinkage audits, batch traceability, and automated WhatsApp supplier purchase orders.',
+    },
+    pos: {
+      title: 'Multi-Currency Point of Sale (POS) | Smith Solutions E-Commerce',
+      description:
+        'Invoice in USD and Bolívares instantly at the BCV rate with automatic VAT & IGTF (3%), barcode scanner, and thermal or fiscal printing.',
+    },
+    debtors: {
+      title: 'Customer Credit Ledger & WhatsApp Collections | Smith Solutions E-Commerce',
+      description:
+        'Manage USD receivable accounts, record partial installments, and send dual USD/VES balance reminders on WhatsApp in one click.',
+    },
+    cashier: {
+      title: 'Dual Cash Closing & SENIAT Fiscal Printers | Smith Solutions E-Commerce',
+      description:
+        'Run dual cash closings by Cash USD, Cash Bs, Pago Móvil, Zelle, and Card. Export SENIAT VAT Purchase & Sales ledgers and Z-Reports.',
+    },
+    sales: {
+      title: 'Net Profitability & Sales KPIs | Smith Solutions E-Commerce',
+      description:
+        'Calculate net daily profit deducting replacement costs and shrinkage. Analyze top-selling products, peak hours, and cashier team performance.',
+    },
     not_found: {
       title: '404 Page Not Found | Smith Solutions E-Commerce',
       description: 'The requested page does not exist on Smith Solutions E-Commerce.',
@@ -168,6 +193,26 @@ const ROUTE_SEO_LANG_OVERRIDES: Partial<
     admin: {
       title: '总管理员专属控制台 | Smith Solutions E-Commerce',
       description: '用于审核 $25 订阅付款、手动启用或停用 SaaS 店铺以及配置平台收款账户。',
+    },
+    inventory: {
+      title: '仓库库存、损耗审计与批次溯源 | Smith Solutions E-Commerce',
+      description: '实时掌控库存，支持低库存邮件预警、损耗审计、批次全链路溯源及 WhatsApp 自动补货订单。',
+    },
+    pos: {
+      title: '双币收银台 (POS) | Smith Solutions E-Commerce',
+      description: '按 BCV 官方汇率即时进行美元与玻利瓦尔双币结算，自动计算 IVA 与 3% IGTF，支持条码扫描与热敏/税控打印。',
+    },
+    debtors: {
+      title: '客户赊账本与 WhatsApp 催收 | Smith Solutions E-Commerce',
+      description: '管理美元应收账款与分期还款，一键通过 WhatsApp 发送美元与玻利瓦尔双币对账提醒。',
+    },
+    cashier: {
+      title: '双币日结与 SENIAT 税控打印 | Smith Solutions E-Commerce',
+      description: '按美元现金、玻利瓦尔现金、Pago Móvil、Zelle 与刷卡分类日结，导出 SENIAT 购销台账与 Z 报表。',
+    },
+    sales: {
+      title: '净利润与销售 KPI 分析 | Smith Solutions E-Commerce',
+      description: '扣除采购成本与损耗计算每日净利润，分析热销商品、营业高峰时段及团队销售绩效。',
     },
     not_found: {
       title: '404 未找到页面 | Smith Solutions E-Commerce',
@@ -209,6 +254,12 @@ export function applyRouteMetaTags(
   // OpenGraph
   setMeta('meta[property="og:title"]', 'property', 'og:title', config.title);
   setMeta('meta[property="og:description"]', 'property', 'og:description', config.description);
+  setMeta(
+    'meta[property="og:locale"]',
+    'property',
+    'og:locale',
+    lang === 'zh' ? 'zh_CN' : lang === 'en' ? 'en_US' : 'es_VE'
+  );
   const fullUrl = `${window.location.origin}${config.path === '/404' ? window.location.pathname : config.path}`;
   setMeta('meta[property="og:url"]', 'property', 'og:url', fullUrl);
 

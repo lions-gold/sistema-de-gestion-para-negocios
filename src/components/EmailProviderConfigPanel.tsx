@@ -70,6 +70,7 @@ import {
   loadCachedStorePaymentMethods,
   saveCachedStorePaymentMethods,
 } from '../services/offlineSyncService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface EmailProviderConfigPanelProps {
   storeId: string;
@@ -111,6 +112,9 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
   onLogsUpdated,
   onStorePaymentMethodsChange,
 }) => {
+  const { tr } = useLanguage();
+  const trRef = React.useRef(tr);
+  trRef.current = tr;
   const [subTab, setSubTab] = useState<'config' | 'payment_methods' | 'history'>(initialSubTab);
   const [config, setConfig] = useState<StoreEmailConfig>(() =>
     getLocalStoreEmailConfig(storeId, ownerUid, ownerEmail)
@@ -221,17 +225,29 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     setNotifPerm(perm);
     setNotifPrefs(getBrowserNotificationPrefs());
     if (perm === 'granted') {
-      const testRes = await sendTestBrowserNotification(storeName || 'Almacén & POS');
+      const testRes = await sendTestBrowserNotification(storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与POS'));
       setFeedback({
         type: 'success',
         text: testRes.delivered
-          ? 'Notificaciones del navegador activadas. Recibirás avisos en tiempo real por stock crítico y cierres de caja.'
-          : 'Permiso concedido. Verifica que el navegador no tenga silenciadas las alertas del sitio.',
+          ? tr(
+              'Notificaciones del navegador activadas. Recibirás avisos en tiempo real por stock crítico y cierres de caja.',
+              'Browser notifications enabled. You will receive real-time alerts for critical stock and cash closings.',
+              '浏览器通知已启用。您将收到关键库存与结账的实时提醒。'
+            )
+          : tr(
+              'Permiso concedido. Verifica que el navegador no tenga silenciadas las alertas del sitio.',
+              'Permission granted. Make sure your browser has not muted site alerts.',
+              '已授予权限。请确认浏览器未静音本站通知。'
+            ),
       });
     } else if (perm === 'denied') {
       setFeedback({
         type: 'error',
-        text: 'El navegador bloqueó el permiso de notificaciones. Habilítalo desde el icono de candado en la barra de dirección.',
+        text: tr(
+          'El navegador bloqueó el permiso de notificaciones. Habilítalo desde el icono de candado en la barra de dirección.',
+          'Your browser blocked notification permission. Enable it from the lock icon in the address bar.',
+          '浏览器屏蔽了通知权限。请点击地址栏的锁形图标启用通知。'
+        ),
       });
     }
   };
@@ -243,12 +259,20 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         await handleRequestBrowserPush();
         return;
       }
-      const res = await sendTestBrowserNotification(storeName || 'Almacén & POS');
+      const res = await sendTestBrowserNotification(storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与POS'));
       setFeedback({
         type: res.delivered ? 'success' : 'error',
         text: res.delivered
-          ? `Notificación de prueba enviada (${res.channel === 'service_worker' ? 'Service Worker / Segundo Plano' : 'Notification API'}).`
-          : `No se pudo mostrar la notificación (${res.reason || 'permiso requerido'}).`,
+          ? tr(
+              `Notificación de prueba enviada (${res.channel === 'service_worker' ? 'Service Worker / Segundo Plano' : 'Notification API'}).`,
+              `Test notification sent (${res.channel === 'service_worker' ? 'Service Worker / Background' : 'Notification API'}).`,
+              `测试通知已发送（${res.channel === 'service_worker' ? 'Service Worker / 后台' : 'Notification API'}）。`
+            )
+          : tr(
+              `No se pudo mostrar la notificación (${res.reason || 'permiso requerido'}).`,
+              `Could not display notification (${res.reason || 'permission required'}).`,
+              `无法显示通知（${res.reason || '需要权限'}）。`
+            ),
       });
     } finally {
       setIsTestingPush(false);
@@ -311,24 +335,45 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     const port = Number(cfg.smtpPort || 0);
     const user = (cfg.smtpUser || '').trim();
     const pass = cfg.smtpPass || '';
+    const tFn = trRef.current;
 
     if (!host && !user && !pass) {
       return null;
     }
     if (!host || !/^[a-zA-Z0-9.-]+$/.test(host) || !host.includes('.')) {
-      return 'Ingresa un servidor SMTP válido (ej. smtp.gmail.com o smtp-relay.brevo.com).';
+      return tFn(
+        'Ingresa un servidor SMTP válido (ej. smtp.gmail.com o smtp-relay.brevo.com).',
+        'Enter a valid SMTP host (e.g. smtp.gmail.com or smtp-relay.brevo.com).',
+        '请输入有效的 SMTP 服务器地址（如 smtp.gmail.com 或 smtp-relay.brevo.com）。'
+      );
     }
     if (host.toLowerCase() === 'mail.tudominio.com') {
-      return 'Reemplaza "mail.tudominio.com" por el dominio real de tu servidor de correo.';
+      return tFn(
+        'Reemplaza "mail.tudominio.com" por el dominio real de tu servidor de correo.',
+        'Replace "mail.tudominio.com" with your real mail server domain.',
+        '请将 "mail.tudominio.com" 替换为您真实的邮件服务器域名。'
+      );
     }
     if (Number.isNaN(port) || port < 1 || port > 65535) {
-      return 'Puerto SMTP inválido. Usa 465 (SSL/TLS) o 587 (STARTTLS).';
+      return tFn(
+        'Puerto SMTP inválido. Usa 465 (SSL/TLS) o 587 (STARTTLS).',
+        'Invalid SMTP port. Use 465 (SSL/TLS) or 587 (STARTTLS).',
+        '无效的 SMTP 端口。请使用 465 (SSL/TLS) 或 587 (STARTTLS)。'
+      );
     }
     if (!user) {
-      return 'Falta el Usuario SMTP para validar la autenticación.';
+      return tFn(
+        'Falta el Usuario SMTP para validar la autenticación.',
+        'SMTP username is required to validate authentication.',
+        '缺少 SMTP 用户名，无法验证身份。'
+      );
     }
     if (!pass) {
-      return 'Falta la Contraseña o App Password SMTP para autenticar el ping.';
+      return tFn(
+        'Falta la Contraseña o App Password SMTP para autenticar el ping.',
+        'SMTP password or App Password is required to authenticate the ping.',
+        '缺少 SMTP 密码或应用专用密码，无法验证连接。'
+      );
     }
     return null;
   };
@@ -339,13 +384,16 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       const controller = new AbortController();
       smtpPingAbortRef.current = controller;
       const seq = ++smtpPingSeqRef.current;
+      const tFn = trRef.current;
 
       smtpPingMetaRef.current = { status: 'checking', signature: sig };
       setSmtpPingState({
         status: 'checking',
-        message: `Haciendo ping SMTP a ${(targetCfg.smtpHost || '').trim()}:${Number(
-          targetCfg.smtpPort || 587
-        )}...`,
+        message: tFn(
+          `Haciendo ping SMTP a ${(targetCfg.smtpHost || '').trim()}:${Number(targetCfg.smtpPort || 587)}...`,
+          `Pinging SMTP ${(targetCfg.smtpHost || '').trim()}:${Number(targetCfg.smtpPort || 587)}...`,
+          `正在测试 SMTP 连接 ${(targetCfg.smtpHost || '').trim()}:${Number(targetCfg.smtpPort || 587)}...`
+        ),
         signature: sig,
       });
 
@@ -373,13 +421,13 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
           return {
             ok: false,
             stage: 'network',
-            message: 'Verificación reemplazada por cambios recientes.',
+            message: tFn('Verificación reemplazada por cambios recientes.', 'Verification superseded by recent changes.', '验证已被最新修改取代。'),
           };
         }
         const fallback: SmtpPingResult = {
           ok: false,
           stage: 'network',
-          message: 'No se pudo completar el ping SMTP.',
+          message: tFn('No se pudo completar el ping SMTP.', 'Could not complete SMTP ping.', '无法完成 SMTP 连接测试。'),
         };
         if (seq === smtpPingSeqRef.current) {
           smtpPingMetaRef.current = { status: 'error', signature: sig };
@@ -414,8 +462,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       smtpPingMetaRef.current = { status: 'idle', signature: currentSmtpSignature };
       setSmtpPingState({
         status: 'idle',
-        message:
-          'Completa host, puerto, usuario y contraseña SMTP para validar la conexión automáticamente.',
+        message: '',
         signature: currentSmtpSignature,
       });
       return;
@@ -488,7 +535,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         if (!host || !user || !pass || syntaxIssue) {
           const msg =
             syntaxIssue ||
-            'Completa Servidor SMTP (host), Puerto, Usuario y Contraseña antes de guardar.';
+            tr(
+              'Completa Servidor SMTP (host), Puerto, Usuario y Contraseña antes de guardar.',
+              'Complete SMTP Host, Port, Username, and Password before saving.',
+              '保存前请填写 SMTP 主机、端口、用户名和密码。'
+            );
           smtpPingMetaRef.current = { status: 'error', signature: currentSmtpSignature };
           setSmtpPingState({
             status: 'error',
@@ -512,7 +563,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             );
             setFeedback({
               type: 'error',
-              text: `No se guardaron las credenciales porque falló la prueba de conexión (ping) SMTP: ${pingRes.message}`,
+              text: tr(
+                `No se guardaron las credenciales porque falló la prueba de conexión (ping) SMTP: ${pingRes.message}`,
+                `Credentials were not saved because the SMTP ping test failed: ${pingRes.message}`,
+                `由于 SMTP 连接测试失败，未保存凭据：${pingRes.message}`
+              ),
             });
             return;
           }
@@ -530,9 +585,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         onConfigSaved?.(toSave);
         setFeedback({
           type: 'success',
-          text: `Conexión SMTP verificada mediante ping (${
-            verifiedLatency ?? 'OK'
-          } ms) y credenciales guardadas de forma segura para ${storeName}.`,
+          text: tr(
+            `Conexión SMTP verificada mediante ping (${verifiedLatency ?? 'OK'} ms) y credenciales guardadas de forma segura para ${storeName}.`,
+            `SMTP connection verified via ping (${verifiedLatency ?? 'OK'} ms) and credentials saved securely for ${storeName}.`,
+            `已通过 Ping 验证 SMTP 连接（${verifiedLatency ?? 'OK'} ms），并为 ${storeName} 安全保存凭据。`
+          ),
         });
         return;
       }
@@ -544,13 +601,21 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         type: 'success',
         text:
           toSave.provider === 'smtp'
-            ? `Configuración SMTP guardada sin verificación remota para ${storeName}.`
-            : `Configuración de Resend API guardada de forma segura para ${storeName}.`,
+            ? tr(
+                `Configuración SMTP guardada sin verificación remota para ${storeName}.`,
+                `SMTP configuration saved without remote check for ${storeName}.`,
+                `已为 ${storeName} 保存 SMTP 配置（未进行远程验证）。`
+              )
+            : tr(
+                `Configuración de Resend API guardada de forma segura para ${storeName}.`,
+                `Resend API configuration saved securely for ${storeName}.`,
+                `已为 ${storeName} 安全保存 Resend API 配置。`
+              ),
       });
     } catch (err) {
       setFeedback({
         type: 'error',
-        text: err instanceof Error ? err.message : 'No se pudo guardar la configuración.',
+        text: err instanceof Error ? err.message : tr('No se pudo guardar la configuración.', 'Could not save configuration.', '无法保存配置。'),
       });
     } finally {
       setIsVerifyingBeforeSave(false);
@@ -590,7 +655,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
       const netProfitUSD = Math.max(0, grossRevenueUSD - costOfGoodsUSD);
       return {
-        periodLabel: `Consolidado POS (${sales.length} tickets)`,
+        periodLabel: tr(
+          `Consolidado POS (${sales.length} tickets)`,
+          `POS Summary (${sales.length} tickets)`,
+          `POS 汇总（${sales.length} 笔）`
+        ),
         totalOrders: sales.length,
         grossRevenueUSD,
         costOfGoodsUSD,
@@ -624,7 +693,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     });
 
     return {
-      periodLabel: `Pedidos Tienda (${activeOrders.length} órdenes)`,
+      periodLabel: tr(
+        `Pedidos Tienda (${activeOrders.length} órdenes)`,
+        `Store Orders (${activeOrders.length} orders)`,
+        `店铺订单（${activeOrders.length} 笔）`
+      ),
       totalOrders: activeOrders.length,
       grossRevenueUSD,
       costOfGoodsUSD,
@@ -635,7 +708,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         totalUSD: v.totalUSD,
       })),
       topItems: activeOrders.slice(0, 6).map((o) => ({
-        name: `Factura ${o.invoiceNumber} · ${o.customerName}`,
+        name: `${tr('Factura', 'Invoice', '发票')} ${o.invoiceNumber} · ${o.customerName}`,
         quantity: o.itemsCount || 1,
         revenueUSD: o.totalUSD || 0,
       })),
@@ -666,11 +739,27 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         triggerEvent:
           action === 'stock_alert'
             ? lowStockProducts.length > 0
-              ? `Envío manual: ${lowStockProducts.length} producto(s) en stock crítico`
-              : 'Envío manual de verificación de inventario'
+              ? tr(
+                  `Envío manual: ${lowStockProducts.length} producto(s) en stock crítico`,
+                  `Manual dispatch: ${lowStockProducts.length} critical stock item(s)`,
+                  `手动发送：${lowStockProducts.length} 项库存告急商品`
+                )
+              : tr(
+                  'Envío manual de verificación de inventario',
+                  'Manual inventory verification dispatch',
+                  '手动库存核验发送'
+                )
             : action === 'sales_report'
-              ? 'Reporte de ventas solicitado desde el panel'
-              : 'Prueba de conexión SMTP / Resend API',
+              ? tr(
+                  'Reporte de ventas solicitado desde el panel',
+                  'Sales report requested from panel',
+                  '从面板请求的销售报告'
+                )
+              : tr(
+                  'Prueba de conexión SMTP / Resend API',
+                  'SMTP / Resend API connection test',
+                  'SMTP / Resend API 连接测试'
+                ),
         products: targetProducts,
         salesSummary: action === 'sales_report' ? buildSalesSummaryPayload() : undefined,
       });
@@ -744,7 +833,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     if (cleanName.length < 2 || cleanDetails.length < 2) {
       setFeedback({
         type: 'error',
-        text: 'Indica el nombre del método de pago y los datos de cobro para tus clientes.',
+        text: tr(
+          'Indica el nombre del método de pago y los datos de cobro para tus clientes.',
+          'Enter the payment method name and collection details for your customers.',
+          '请输入收款方式名称及客户付款账号信息。'
+        ),
       });
       return;
     }
@@ -778,11 +871,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     try {
       if (!isCloudStoreLinked || isAppEffectivelyOffline()) {
         saveLocallyFallback(
-          `Método "${cleanName}" guardado localmente para el POS${
-            storeId === 'default-warehouse'
-              ? ' (vincula una tienda SaaS para respaldo en Firestore).'
-              : ' (se sincronizará cuando tengas conexión).'
-          }`
+          tr(
+            `Método "${cleanName}" guardado localmente para el POS${storeId === 'default-warehouse' ? ' (vincula una tienda para respaldo en la nube).' : ' (se sincronizará cuando tengas conexión).'}`,
+            `Method "${cleanName}" saved locally for POS${storeId === 'default-warehouse' ? ' (link a store for cloud backup).' : ' (will sync when online).'}`,
+            `收款方式 “${cleanName}” 已本地保存至 POS${storeId === 'default-warehouse' ? '（绑定店铺即可云端备份）。' : '（联网后自动同步）。'}`
+          )
         );
         return;
       }
@@ -810,18 +903,18 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       setFeedback({
         type: 'success',
         text: editingStoreMethod
-          ? `Método "${cleanName}" actualizado en store_payment_methods y listo en Caja POS.`
-          : `Método "${cleanName}" guardado en store_payment_methods para tus clientes y Caja POS.`,
+          ? tr(`Método "${cleanName}" actualizado y listo en Caja POS.`, `Method "${cleanName}" updated and ready in POS Checkout.`, `收款方式 “${cleanName}” 已更新并可在 POS 使用。`)
+          : tr(`Método "${cleanName}" guardado para tus clientes y Caja POS.`, `Method "${cleanName}" saved for your customers and POS Checkout.`, `收款方式 “${cleanName}” 已保存至店铺与 POS。`),
       });
     } catch (err) {
       if (isNetworkOrOfflineError(err)) {
         saveLocallyFallback(
-          `Método "${cleanName}" guardado en caché local del POS sin conexión.`
+          tr(`Método "${cleanName}" guardado en caché local del POS sin conexión.`, `Method "${cleanName}" saved in offline POS cache.`, `收款方式 “${cleanName}” 已保存在离线 POS 缓存中。`)
         );
       } else {
         setFeedback({
           type: 'error',
-          text: err instanceof Error ? err.message : 'No se pudo guardar el método de pago.',
+          text: err instanceof Error ? err.message : tr('No se pudo guardar el método de pago.', 'Could not save payment method.', '无法保存收款方式。'),
         });
       }
     } finally {
@@ -843,12 +936,14 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       syncLocalStoreMethods(nextList);
       setFeedback({
         type: 'success',
-        text: `Método "${method.name}" ${nextActive ? 'activado en el POS y tienda' : 'pausado'}.`,
+        text: nextActive
+          ? tr(`Método "${method.name}" activado en el POS y tienda.`, `Method "${method.name}" enabled in POS and store.`, `收款方式 “${method.name}” 已在 POS 与店铺启用。`)
+          : tr(`Método "${method.name}" pausado.`, `Method "${method.name}" paused.`, `收款方式 “${method.name}” 已暂停。`),
       });
     } catch (err) {
       setFeedback({
         type: 'error',
-        text: err instanceof Error ? err.message : 'No se pudo cambiar el estado del método.',
+        text: err instanceof Error ? err.message : tr('No se pudo cambiar el estado del método.', 'Could not toggle method status.', '无法切换收款方式状态。'),
       });
     } finally {
       setIsSavingMethod(false);
@@ -869,12 +964,12 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       syncLocalStoreMethods(storeMethods.filter((m) => m.id !== method.id));
       setFeedback({
         type: 'success',
-        text: `Método de pago "${method.name}" eliminado.`,
+        text: tr(`Método de pago "${method.name}" eliminado.`, `Payment method "${method.name}" deleted.`, `收款方式 “${method.name}” 已删除。`),
       });
     } catch (err) {
       setFeedback({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Error eliminando método de pago.',
+        text: err instanceof Error ? err.message : tr('Error eliminando método de pago.', 'Error deleting payment method.', '删除收款方式时出错。'),
       });
     } finally {
       setIsSavingMethod(false);
@@ -903,43 +998,43 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       name: 'Zelle',
       currency: 'USD',
       igtf: true,
-      detailsPlaceholder: 'Correo Zelle: cobros@tutienda.com',
-      instructions: 'Colocar el número de factura en el concepto de la transferencia.',
+      detailsPlaceholder: tr('Correo Zelle: cobros@tutienda.com', 'Zelle email: billing@yourstore.com', 'Zelle 邮箱：billing@yourstore.com'),
+      instructions: tr('Colocar el número de factura en el concepto de la transferencia.', 'Include the invoice number in the transfer memo.', '请在转账备注中填写发票编号。'),
     },
     {
       name: 'Pago Móvil',
       currency: 'Bs',
       igtf: false,
-      detailsPlaceholder: 'Banco: Banesco (0134) · C.I/RIF: V-XXXXXXXX · Teléfono: 0414-XXXXXXX',
-      instructions: 'Calcular monto a la tasa BCV vigente y mostrar referencia.',
+      detailsPlaceholder: tr('Banco: Banesco (0134) · C.I/RIF: V-XXXXXXXX · Teléfono: 0414-XXXXXXX', 'Bank: Banesco (0134) · ID/Tax ID: V-XXXXXXXX · Phone: 0414-XXXXXXX', '银行：Banesco (0134) · 证件/税号：V-XXXXXXXX · 电话：0414-XXXXXXX'),
+      instructions: tr('Calcular monto a la tasa BCV vigente y mostrar referencia.', 'Calculate amount at current BCV rate and show reference.', '按当前 BCV 汇率计算金额并出示参考号。'),
     },
     {
-      name: 'Transferencia Bancaria',
+      name: tr('Transferencia Bancaria', 'Bank Transfer', '银行转账'),
       currency: 'Bs',
       igtf: false,
-      detailsPlaceholder: 'Banesco Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X',
-      instructions: 'Transferencia directa en bolívares; verificar acreditación en caja.',
+      detailsPlaceholder: tr('Banesco Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X', 'Banesco Checking Account: 0134-XXXX-XX-XXXXXXXXXX · Tax ID: J-XXXXXXXX-X', 'Banesco 支票账户：0134-XXXX-XX-XXXXXXXXXX · 税号：J-XXXXXXXX-X'),
+      instructions: tr('Transferencia directa en bolívares; verificar acreditación en caja.', 'Direct transfer in bolivares; verify credit at register.', '玻利瓦尔直接转账；请在收银台核实到账。'),
     },
     {
       name: 'Binance Pay',
       currency: 'USDT',
       igtf: false,
-      detailsPlaceholder: 'Binance Pay ID: XXXXXXXXX · Red USDT TRC20/BEP20',
-      instructions: 'Transferencia en USDT sin comisión bancaria.',
+      detailsPlaceholder: tr('Binance Pay ID: XXXXXXXXX · Red USDT TRC20/BEP20', 'Binance Pay ID: XXXXXXXXX · USDT Network TRC20/BEP20', 'Binance Pay ID：XXXXXXXXX · USDT 网络 TRC20/BEP20'),
+      instructions: tr('Transferencia en USDT sin comisión bancaria.', 'USDT transfer with zero bank fees.', 'USDT 转账零银行手续费。'),
     },
     {
-      name: 'Efectivo USD',
+      name: tr('Efectivo USD', 'Cash USD', '美元现金'),
       currency: 'USD',
       igtf: true,
-      detailsPlaceholder: 'Pago en efectivo divisas USD en caja principal',
-      instructions: 'Verificar denominación y estado de billetes al recibir.',
+      detailsPlaceholder: tr('Pago en efectivo divisas USD en caja principal', 'USD foreign currency cash payment at main register', '主收银台美元现金付款'),
+      instructions: tr('Verificar denominación y estado de billetes al recibir.', 'Verify bill denominations and condition upon receipt.', '收款时请核验钞票面额与品相。'),
     },
     {
       name: 'Zinli',
       currency: 'USD',
       igtf: true,
-      detailsPlaceholder: 'Correo Zinli: cobros@tutienda.com',
-      instructions: 'Transferencia instantánea USD desde billetera Zinli.',
+      detailsPlaceholder: tr('Correo Zinli: cobros@tutienda.com', 'Zinli email: billing@yourstore.com', 'Zinli 邮箱：billing@yourstore.com'),
+      instructions: tr('Transferencia instantánea USD desde billetera Zinli.', 'Instant USD transfer from Zinli wallet.', '通过 Zinli 钱包即时转账美元。'),
     },
   ];
 
@@ -950,11 +1045,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         <div>
           <h2 className="text-base sm:text-lg font-bold text-white font-display flex items-center gap-2">
             <Server className="w-5 h-5 text-amber-400 shrink-0" />
-            <span>Configuración de Tienda (Correo, Push y Pagos POS)</span>
+            <span>{tr('Configuración de Tienda (Correo, Push y Pagos POS)', 'Store Settings (Email, Push & POS Payments)', '店铺配置（邮件、推送与 POS 收款）')}</span>
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Administra alertas de stock, reportes SMTP/Resend y los métodos de cobro propios para clientes de{' '}
-            <strong className="text-zinc-200">{storeName || 'tu tienda'}</strong>.
+            {tr('Administra alertas de stock, reportes SMTP/Resend y los métodos de cobro propios para clientes de', 'Manage stock alerts, SMTP/Resend reports, and your own payment methods for customers of', '管理库存预警、SMTP/Resend 报告以及以下店铺的专属客户收款方式：')}{' '}
+            <strong className="text-zinc-200">{storeName || tr('tu tienda', 'your store', '您的店铺')}</strong>.
           </p>
         </div>
 
@@ -968,7 +1063,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Credenciales y Alertas
+            {tr('Credenciales y Alertas', 'Credentials & Alerts', '凭据与预警')}
           </button>
           <button
             type="button"
@@ -980,7 +1075,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             }`}
           >
             <Wallet className="w-3.5 h-3.5" />
-            <span>Métodos de Pago ({storeMethods.length})</span>
+            <span>{tr('Métodos de Pago', 'Payment Methods', '收款方式')} ({storeMethods.length})</span>
           </button>
           <button
             type="button"
@@ -992,7 +1087,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Historial ({logs.length})</span>
+            <span>{tr('Historial', 'History', '记录')} ({logs.length})</span>
           </button>
         </div>
       </div>
@@ -1036,16 +1131,16 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </div>
                 <div className="space-y-0.5">
                   <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
-                    <span>Notificaciones del Navegador (Tiempo Real y Segundo Plano)</span>
+                    <span>{tr('Notificaciones del Navegador (Tiempo Real y Segundo Plano)', 'Browser Notifications (Real-Time & Background)', '浏览器通知（实时与后台）')}</span>
                   </div>
                   <p className="text-xs text-zinc-400">
                     {notifPerm === 'unsupported'
-                      ? 'Este navegador no soporta la API de Notification.'
+                      ? tr('Este navegador no soporta la API de Notification.', 'This browser does not support the Notification API.', '此浏览器不支持 Notification API。')
                       : notifPerm === 'denied'
-                        ? 'Permiso denegado en el navegador. Actívalo manualmente en la configuración del sitio.'
+                        ? tr('Permiso denegado en el navegador. Actívalo manualmente en la configuración del sitio.', 'Permission denied in browser. Enable it manually in site settings.', '浏览器已拒绝权限，请在站点设置中手动开启。')
                         : notifPerm === 'granted'
-                          ? 'Permiso concedido. Los avisos funcionan incluso con la pestaña minimizada o en segundo plano.'
-                          : 'Activa las notificaciones push para enterarte al instante de caídas de stock crítico o cierres de caja Z.'}
+                          ? tr('Permiso concedido. Los avisos funcionan incluso con la pestaña minimizada o en segundo plano.', 'Permission granted. Alerts work even when the tab is minimized or in the background.', '已授予权限。即使标签页最小化或在后台运行，仍可接收通知。')
+                          : tr('Activa las notificaciones push para enterarte al instante de caídas de stock crítico o cierres de caja Z.', 'Enable push notifications for instant alerts on critical low stock or Z cash closings.', '启用推送通知，即时接收严重低库存或 Z 结账提醒。')}
                   </p>
                 </div>
               </div>
@@ -1059,7 +1154,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                       className="px-3.5 py-2 min-h-[40px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-bold flex items-center gap-1.5 whitespace-nowrap"
                     >
                       <Bell className="w-3.5 h-3.5" />
-                      <span>Activar Notificaciones</span>
+                      <span>{tr('Activar Notificaciones', 'Enable Notifications', '开启通知')}</span>
                     </button>
                   ) : (
                     <>
@@ -1070,7 +1165,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                         className="px-3 py-2 min-h-[40px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-amber-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50"
                       >
                         <Send className="w-3.5 h-3.5" />
-                        <span>Probar Push</span>
+                        <span>{tr('Probar Push', 'Test Push', '测试推送')}</span>
                       </button>
                       <button
                         type="button"
@@ -1083,7 +1178,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                             : 'bg-zinc-800 text-zinc-300 border border-white/[0.1]'
                         }`}
                       >
-                        {notifPrefs.enabled ? 'Push Activo' : 'Push Pausado'}
+                        {notifPrefs.enabled ? tr('Push Activo', 'Push Active', '推送已开启') : tr('Push Pausado', 'Push Paused', '推送已暂停')}
                       </button>
                     </>
                   )}
@@ -1094,7 +1189,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             {notifPerm === 'granted' && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-white/[0.06] text-xs">
                 <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
-                  <span className="text-zinc-300">Alertas stock crítico</span>
+                  <span className="text-zinc-300">{tr('Alertas stock crítico', 'Critical stock alerts', '严重低库存预警')}</span>
                   <input
                     type="checkbox"
                     checked={notifPrefs.notifyCriticalStock}
@@ -1106,7 +1201,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </label>
 
                 <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
-                  <span className="text-zinc-300">Cierres de caja Z</span>
+                  <span className="text-zinc-300">{tr('Cierres de caja Z', 'Z Cash Closings', 'Z 结账通知')}</span>
                   <input
                     type="checkbox"
                     checked={notifPrefs.notifyCashClosing}
@@ -1118,7 +1213,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </label>
 
                 <label className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.07] cursor-pointer">
-                  <span className="text-zinc-300">Solo en segundo plano</span>
+                  <span className="text-zinc-300">{tr('Solo en segundo plano', 'Background only', '仅后台运行')}</span>
                   <input
                     type="checkbox"
                     checked={notifPrefs.notifyOnlyWhenBackground}
@@ -1151,17 +1246,17 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
                   <span>
                     {config.isEnabled
-                      ? 'Envío Automático de Correos Activo'
-                      : 'Envío Automático Pausado'}
+                      ? tr('Envío Automático de Correos Activo', 'Automatic Email Dispatch Active', '自动邮件发送已开启')
+                      : tr('Envío Automático Pausado', 'Automatic Dispatch Paused', '自动发送已暂停')}
                   </span>
                   {isLoadingCloud && (
-                    <span className="text-[11px] font-normal text-zinc-400">Sincronizando...</span>
+                    <span className="text-[11px] font-normal text-zinc-400">{tr('Sincronizando...', 'Syncing...', '同步中...')}</span>
                   )}
                 </div>
                 <p className="text-xs text-zinc-400">
                   {config.lastTestStatus
-                    ? `Última verificación: ${config.lastTestStatus} (${config.lastTestAt || ''})`
-                    : 'Activa el interruptor y guarda tus credenciales para despachar correos automáticamente.'}
+                    ? `${tr('Última verificación:', 'Last verification:', '上次验证：')} ${config.lastTestStatus} (${config.lastTestAt || ''})`
+                    : tr('Activa el interruptor y guarda tus credenciales para despachar correos automáticamente.', 'Enable the switch and save your credentials to dispatch emails automatically.', '开启开关并保存凭据即可自动发送邮件。')}
                 </p>
               </div>
             </div>
@@ -1174,7 +1269,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 className="w-5 h-5 accent-amber-500 rounded"
               />
               <span className="text-xs font-semibold text-zinc-200">
-                {config.isEnabled ? 'Activo' : 'Activar'}
+                {config.isEnabled ? tr('Activo', 'Active', '已启用') : tr('Activar', 'Enable', '启用')}
               </span>
             </label>
           </div>
@@ -1182,21 +1277,21 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
           {/* Provider Segmented Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-zinc-300">
-              Proveedor de Envío de Correos
+              {tr('Proveedor de Envío de Correos', 'Email Delivery Provider', '邮件发送服务商')}
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {(
                 [
                   {
                     id: 'resend' as EmailProviderType,
-                    title: 'Resend API (Recomendado)',
-                    desc: 'Entrega rápida vía HTTPS con API Key (re_...). Ideal para la nube.',
+                    title: tr('Resend API (Recomendado)', 'Resend API (Recommended)', 'Resend API（推荐）'),
+                    desc: tr('Entrega rápida vía HTTPS con API Key (re_...). Ideal para la nube.', 'Fast HTTPS delivery with API Key (re_...). Ideal for cloud.', '通过 HTTPS 与 API 密钥快速投递，云端首选。'),
                     icon: Key,
                   },
                   {
                     id: 'smtp' as EmailProviderType,
-                    title: 'Servidor SMTP Personalizado',
-                    desc: 'Conecta Gmail, Zoho, Brevo o tu propio servidor corporativo.',
+                    title: tr('Servidor SMTP Personalizado', 'Custom SMTP Server', '自定义 SMTP 服务器'),
+                    desc: tr('Conecta Gmail, Zoho, Brevo o tu propio servidor corporativo.', 'Connect Gmail, Zoho, Brevo, or your corporate server.', '连接 Gmail、Zoho、Brevo 或企业自建服务器。'),
                     icon: Server,
                   },
                 ] as const
@@ -1235,7 +1330,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <Key className="w-4 h-4" />
-                  <span>Credenciales de Resend API</span>
+                  <span>{tr('Credenciales de Resend API', 'Resend API Credentials', 'Resend API 凭据')}</span>
                 </span>
                 <span className="text-[11px] text-zinc-500 font-mono">HTTPS · api.resend.com</span>
               </div>
@@ -1250,14 +1345,14 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                       type={showSecret ? 'text' : 'password'}
                       value={config.resendApiKey || ''}
                       onChange={(e) => updateField('resendApiKey', e.target.value)}
-                      placeholder="re_123456789_TuClaveSecretaResend"
+                      placeholder="re_123456789_..."
                       className="w-full pl-3.5 pr-11 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
                     />
                     <button
                       type="button"
                       onClick={() => setShowSecret((s) => !s)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-zinc-400 hover:text-white"
-                      aria-label={showSecret ? 'Ocultar clave' : 'Mostrar clave'}
+                      aria-label={showSecret ? tr('Ocultar clave', 'Hide key', '隐藏密钥') : tr('Mostrar clave', 'Show key', '显示密钥')}
                     >
                       {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1266,29 +1361,29 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
                 <div>
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Correo Remitente (From Email)
+                    {tr('Correo Remitente (From Email)', 'Sender Email (From)', '发件人邮箱 (From)')}
                   </label>
                   <input
                     type="email"
                     value={config.fromEmail || ''}
                     onChange={(e) => updateField('fromEmail', e.target.value)}
-                    placeholder="onboarding@resend.dev o alertas@tudominio.com"
+                    placeholder={tr('onboarding@resend.dev o alertas@tudominio.com', 'onboarding@resend.dev or alerts@yourdomain.com', 'onboarding@resend.dev 或 alerts@yourdomain.com')}
                     className="w-full px-3.5 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                   <span className="text-[11px] text-zinc-500 mt-1 block">
-                    Si aún no verificas dominio propio en Resend, déjalo vacío para usar onboarding@resend.dev.
+                    {tr('Si aún no verificas dominio propio en Resend, déjalo vacío para usar onboarding@resend.dev.', 'If you have not verified a custom domain in Resend yet, leave empty to use onboarding@resend.dev.', '如尚未在 Resend 验证自有域名，请留空以使用 onboarding@resend.dev。')}
                   </span>
                 </div>
 
                 <div>
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Nombre Remitente (From Name)
+                    {tr('Nombre Remitente (From Name)', 'Sender Name (From)', '发件人名称 (From Name)')}
                   </label>
                   <input
                     type="text"
                     value={config.fromName || ''}
                     onChange={(e) => updateField('fromName', e.target.value)}
-                    placeholder={storeName || 'Smith Solutions Alertas'}
+                    placeholder={storeName || tr('Smith Solutions Alertas', 'Smith Solutions Alerts', 'Smith Solutions 预警')}
                     className="w-full px-3.5 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
@@ -1299,7 +1394,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <Server className="w-4 h-4" />
-                  <span>Parámetros de Servidor SMTP</span>
+                  <span>{tr('Parámetros de Servidor SMTP', 'SMTP Server Parameters', 'SMTP 服务器参数')}</span>
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {SMTP_PRESETS.map((preset) => (
@@ -1316,7 +1411,9 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                       }}
                       className="px-2.5 py-1.5 rounded-lg bg-[#111114] hover:bg-zinc-800 border border-white/[0.08] text-[11px] text-zinc-300 transition-colors"
                     >
-                      {preset.label}
+                      {preset.label === 'cPanel / Corporativo SSL'
+                        ? tr('cPanel / Corporativo SSL', 'cPanel / Corporate SSL', 'cPanel / 企业 SSL')
+                        : preset.label}
                     </button>
                   ))}
                 </div>
@@ -1324,7 +1421,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
                 <div className="sm:col-span-6">
-                  <label className="text-xs text-zinc-300 block mb-1">Servidor SMTP (Host) *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Servidor SMTP (Host) *', 'SMTP Server (Host) *', 'SMTP 服务器 (Host) *')}</label>
                   <input
                     type="text"
                     value={config.smtpHost || ''}
@@ -1335,7 +1432,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </div>
 
                 <div className="sm:col-span-3">
-                  <label className="text-xs text-zinc-300 block mb-1">Puerto *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Puerto *', 'Port *', '端口 *')}</label>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -1364,19 +1461,19 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </div>
 
                 <div className="sm:col-span-6">
-                  <label className="text-xs text-zinc-300 block mb-1">Usuario SMTP *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Usuario SMTP *', 'SMTP Username *', 'SMTP 用户名 *')}</label>
                   <input
                     type="text"
                     value={config.smtpUser || ''}
                     onChange={(e) => updateField('smtpUser', e.target.value)}
-                    placeholder="tucorreo@gmail.com"
+                    placeholder={tr('tucorreo@gmail.com', 'youremail@gmail.com', 'youremail@gmail.com')}
                     className="w-full px-3.5 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs font-mono text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
 
                 <div className="sm:col-span-6">
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Contraseña / App Password *
+                    {tr('Contraseña / App Password *', 'Password / App Password *', '密码 / 应用专用密码 *')}
                   </label>
                   <div className="relative">
                     <input
@@ -1390,7 +1487,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                       type="button"
                       onClick={() => setShowSecret((s) => !s)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-zinc-400 hover:text-white"
-                      aria-label={showSecret ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      aria-label={showSecret ? tr('Ocultar contraseña', 'Hide password', '隐藏密码') : tr('Mostrar contraseña', 'Show password', '显示密码')}
                     >
                       {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1399,19 +1496,19 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
                 <div className="sm:col-span-6">
                   <label className="text-xs text-zinc-300 block mb-1">
-                    Correo Remitente (Opcional)
+                    {tr('Correo Remitente (Opcional)', 'Sender Email (Optional)', '发件人邮箱（可选）')}
                   </label>
                   <input
                     type="email"
                     value={config.fromEmail || ''}
                     onChange={(e) => updateField('fromEmail', e.target.value)}
-                    placeholder={config.smtpUser || 'alertas@tutienda.com'}
+                    placeholder={config.smtpUser || tr('alertas@tutienda.com', 'alerts@yourstore.com', 'alerts@yourstore.com')}
                     className="w-full px-3.5 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
 
                 <div className="sm:col-span-6">
-                  <label className="text-xs text-zinc-300 block mb-1">Nombre Remitente</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Nombre Remitente', 'Sender Name', '发件人名称')}</label>
                   <input
                     type="text"
                     value={config.fromName || ''}
@@ -1455,15 +1552,15 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     <div className="text-xs font-bold flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span>
                         {smtpPingState.status === 'checking'
-                          ? 'Validando servidor SMTP en tiempo real'
+                          ? tr('Validando servidor SMTP en tiempo real', 'Validating SMTP server in real time', '正在实时验证 SMTP 服务器')
                           : smtpPingState.status === 'success' &&
                               smtpPingState.signature === currentSmtpSignature
-                            ? 'Conexión SMTP validada'
+                            ? tr('Conexión SMTP validada', 'SMTP connection verified', 'SMTP 连接已验证')
                             : smtpPingState.status === 'error'
-                              ? 'Error en prueba de conexión SMTP'
+                              ? tr('Error en prueba de conexión SMTP', 'SMTP connection test error', 'SMTP 连接测试失败')
                               : smtpPingState.status === 'incomplete'
-                                ? 'Validación en tiempo real'
-                                : 'Validador de conexión SMTP (Ping)'}
+                                ? tr('Validación en tiempo real', 'Real-time validation', '实时验证')
+                                : tr('Validador de conexión SMTP (Ping)', 'SMTP connection validator (Ping)', 'SMTP 连接验证器（Ping）')}
                       </span>
                       {typeof smtpPingState.latencyMs === 'number' &&
                         smtpPingState.status === 'success' && (
@@ -1479,7 +1576,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     </div>
                     <p className="text-[11px] leading-relaxed opacity-90 break-words">
                       {smtpPingState.message ||
-                        'Cada cambio en servidor, puerto o credenciales realiza un ping SMTP automático antes de guardar.'}
+                        tr('Cada cambio en servidor, puerto o credenciales realiza un ping SMTP automático antes de guardar.', 'Every change in host, port, or credentials triggers an automatic SMTP ping before saving.', '每次修改服务器、端口或凭据都会在保存前自动执行 SMTP Ping。')}
                     </p>
                   </div>
                 </div>
@@ -1496,7 +1593,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   className="px-3 py-2 min-h-[38px] rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/40 text-xs font-semibold text-zinc-100 flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap disabled:opacity-45 transition-colors"
                 >
                   <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>Ping SMTP ahora</span>
+                  <span>{tr('Ping SMTP ahora', 'Ping SMTP now', '立即 Ping SMTP')}</span>
                 </button>
               </div>
             </div>
@@ -1506,7 +1603,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="text-xs font-bold text-zinc-200 block mb-1">
-                Correo Principal Receptor *
+                {tr('Correo Principal Receptor *', 'Primary Recipient Email *', '主要收件人邮箱 *')}
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -1515,7 +1612,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   type="email"
                   value={config.recipientEmail}
                   onChange={(e) => updateField('recipientEmail', e.target.value)}
-                  placeholder="dueno@tutienda.com"
+                  placeholder={tr('dueno@tutienda.com', 'owner@yourstore.com', 'owner@yourstore.com')}
                   className="w-full pl-10 pr-3.5 py-2.5 min-h-[44px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -1523,7 +1620,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
             <div>
               <label className="text-xs font-bold text-zinc-200 block mb-1">
-                Copia Opcional (CC)
+                {tr('Copia Opcional (CC)', 'Optional Copy (CC)', '可选抄送 (CC)')}
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -1531,7 +1628,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   type="email"
                   value={config.secondaryEmail || ''}
                   onChange={(e) => updateField('secondaryEmail', e.target.value)}
-                  placeholder="administracion@tutienda.com"
+                  placeholder={tr('administracion@tutienda.com', 'admin@yourstore.com', 'admin@yourstore.com')}
                   className="w-full pl-10 pr-3.5 py-2.5 min-h-[44px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -1545,19 +1642,19 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Bell className="w-4 h-4 text-amber-400" />
-                  <span>Alertas de Stock Crítico</span>
+                  <span>{tr('Alertas de Stock Crítico', 'Critical Stock Alerts', '临界库存预警')}</span>
                 </span>
                 <input
                   type="checkbox"
                   checked={config.alertOnCriticalStock}
                   onChange={(e) => updateField('alertOnCriticalStock', e.target.checked)}
                   className="w-4 h-4 accent-amber-500"
-                  aria-label="Activar alertas de stock crítico"
+                  aria-label={tr('Activar alertas de stock crítico', 'Enable critical stock alerts', '启用临界库存预警')}
                 />
               </div>
 
               <label className="flex items-center justify-between gap-2 text-xs text-zinc-300 cursor-pointer min-h-[36px]">
-                <span>Notificar cuando una venta POS baje del stock mínimo</span>
+                <span>{tr('Notificar cuando una venta POS baje del stock mínimo', 'Notify when a POS sale drops below min stock', '当 POS 销售低于最低库存时通知')}</span>
                 <input
                   type="checkbox"
                   checked={config.notifyOnPOS}
@@ -1567,7 +1664,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               </label>
 
               <label className="flex items-center justify-between gap-2 text-xs text-zinc-300 cursor-pointer min-h-[36px]">
-                <span>Notificar al ajustar stock manualmente en Almacén</span>
+                <span>{tr('Notificar al ajustar stock manualmente en Almacén', 'Notify on manual Warehouse stock adjustment', '仓库手动调整库存时通知')}</span>
                 <input
                   type="checkbox"
                   checked={config.notifyOnManualAdjustment}
@@ -1577,7 +1674,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               </label>
 
               <div className="pt-1">
-                <label className="text-[11px] text-zinc-400 block mb-1">Frecuencia</label>
+                <label className="text-[11px] text-zinc-400 block mb-1">{tr('Frecuencia', 'Frequency', '频率')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -1588,7 +1685,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                         : 'bg-[#111114] border-white/[0.08] text-zinc-400'
                     }`}
                   >
-                    Inmediata
+                    {tr('Inmediata', 'Immediate', '立即')}
                   </button>
                   <button
                     type="button"
@@ -1599,7 +1696,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                         : 'bg-[#111114] border-white/[0.08] text-zinc-400'
                     }`}
                   >
-                    Resumen Diario
+                    {tr('Resumen Diario', 'Daily Summary', '每日汇总')}
                   </button>
                 </div>
               </div>
@@ -1610,29 +1707,33 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <BarChart3 className="w-4 h-4 text-emerald-400" />
-                  <span>Reportes de Ventas y Rentabilidad</span>
+                  <span>{tr('Reportes de Ventas y Rentabilidad', 'Sales & Profitability Reports', '销售与盈利报告')}</span>
                 </span>
                 <input
                   type="checkbox"
                   checked={config.sendSalesReports}
                   onChange={(e) => updateField('sendSalesReports', e.target.checked)}
                   className="w-4 h-4 accent-amber-500"
-                  aria-label="Activar envío de reportes de ventas"
+                  aria-label={tr('Activar envío de reportes de ventas', 'Enable sales report delivery', '启用销售报告发送')}
                 />
               </div>
 
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                Envía automáticamente facturación USD/Bs, desglose de métodos de pago y ganancia estimada a tu correo.
+                {tr(
+                  'Envía automáticamente facturación USD/Bs, desglose de métodos de pago y ganancia estimada a tu correo.',
+                  'Automatically sends USD/Bs revenue, payment method breakdown, and estimated profit to your email.',
+                  '自动将 USD/Bs 营业额、支付方式明细及预估利润发送到您的邮箱。'
+                )}
               </p>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] text-zinc-400 block">Cuándo despachar reportes</label>
+                <label className="text-[11px] text-zinc-400 block">{tr('Cuándo despachar reportes', 'When to send reports', '何时发送报告')}</label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {(
                     [
-                      { id: 'per_sale', label: 'Cada Venta' },
-                      { id: 'daily_closing', label: 'Cierre Caja' },
-                      { id: 'manual', label: 'Solo Manual' },
+                      { id: 'per_sale', label: tr('Cada Venta', 'Every Sale', '每笔销售') },
+                      { id: 'daily_closing', label: tr('Cierre Caja', 'Daily Close', '每日结账') },
+                      { id: 'manual', label: tr('Solo Manual', 'Manual Only', '仅手动') },
                     ] as const
                   ).map((opt) => (
                     <button
@@ -1652,8 +1753,8 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               </div>
 
               <div className="pt-1 flex items-center justify-between text-[11px] text-zinc-400 font-mono tabular-nums">
-                <span>Stock crítico detectado: {lowStockProducts.length}</span>
-                <span>Ventas cargadas: {sales.length || orders.length}</span>
+                <span>{tr('Stock crítico detectado:', 'Critical stock detected:', '检测到临界库存：')} {lowStockProducts.length}</span>
+                <span>{tr('Ventas cargadas:', 'Loaded sales:', '已加载销售：')} {sales.length || orders.length}</span>
               </div>
             </div>
           </div>
@@ -1672,7 +1773,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 ) : (
                   <Send className="w-3.5 h-3.5" />
                 )}
-                <span>Probar Conexión</span>
+                <span>{tr('Probar Conexión', 'Test Connection', '测试连接')}</span>
               </button>
 
               <button
@@ -1686,7 +1787,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 ) : (
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                 )}
-                <span>Enviar Alerta Stock</span>
+                <span>{tr('Enviar Alerta Stock', 'Send Stock Alert', '发送库存预警')}</span>
               </button>
 
               <button
@@ -1700,7 +1801,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 ) : (
                   <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
                 )}
-                <span>Enviar Reporte Ventas</span>
+                <span>{tr('Enviar Reporte Ventas', 'Send Sales Report', '发送销售报告')}</span>
               </button>
             </div>
 
@@ -1712,7 +1813,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   onClick={() => persistEmailConfig(true)}
                   className="px-3 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs text-amber-300 font-semibold disabled:opacity-50"
                 >
-                  Guardar sin verificar ping
+                  {tr('Guardar sin verificar ping', 'Save without ping check', '跳过 Ping 验证并保存')}
                 </button>
               )}
               <button
@@ -1720,7 +1821,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 onClick={handleReset}
                 className="px-3 py-2.5 min-h-[44px] rounded-xl bg-[#09090b] border border-white/[0.08] text-xs text-zinc-400 hover:text-white"
               >
-                Restablecer
+                {tr('Restablecer', 'Reset', '重置')}
               </button>
               <button
                 type="submit"
@@ -1734,12 +1835,12 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 )}
                 <span>
                   {isVerifyingBeforeSave
-                    ? 'Verificando ping SMTP...'
+                    ? tr('Verificando ping SMTP...', 'Verifying SMTP ping...', '正在验证 SMTP Ping...')
                     : isSaving
-                      ? 'Guardando...'
+                      ? tr('Guardando...', 'Saving...', '正在保存...')
                       : config.provider === 'smtp'
-                        ? 'Verificar y Guardar'
-                        : 'Guardar Configuración'}
+                        ? tr('Verificar y Guardar', 'Verify & Save', '验证并保存')
+                        : tr('Guardar Configuración', 'Save Configuration', '保存配置')}
                 </span>
               </button>
             </div>
@@ -1753,16 +1854,20 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Métodos de Pago de la Tienda para Clientes y Caja POS</span>
+                <span>{tr('Métodos de Pago de la Tienda para Clientes y Caja POS', 'Store Payment Methods for Customers & POS', '商店收款方式（供客户与 POS 收银使用）')}</span>
               </h3>
               <p className="text-xs text-zinc-400">
-                Configura y edita tus cuentas receptoras (Zelle, Pago Móvil, Transferencia, Binance Pay). Se guardan en la subcolección <span className="font-mono text-amber-300">store_payment_methods</span> de tu tienda y aparecen al instante en Caja POS.
+                {tr(
+                  'Configura y edita tus cuentas receptoras (Zelle, Pago Móvil, Transferencia, Binance Pay). Se guardan en la subcolección store_payment_methods de tu tienda y aparecen al instante en Caja POS.',
+                  'Configure and edit your receiving accounts (Zelle, Pago Móvil, Bank Transfer, Binance Pay). Saved in your store payment collection and synced immediately to POS.',
+                  '配置并编辑您的收款账户（Zelle、Pago Móvil、银行转账、Binance Pay）。将保存至商店收款集合并即时同步至 POS。'
+                )}
               </p>
             </div>
             <div className="text-xs font-mono tabular-nums text-zinc-300 shrink-0">
-              Activos: <strong className="text-emerald-300">{storeMethods.filter((m) => m.isActive).length}</strong>
+              {tr('Activos:', 'Active:', '启用：')} <strong className="text-emerald-300">{storeMethods.filter((m) => m.isActive).length}</strong>
               <span className="text-zinc-600 mx-1.5">·</span>
-              Total: <strong className="text-white">{storeMethods.length}</strong>
+              {tr('Total:', 'Total:', '总计：')} <strong className="text-white">{storeMethods.length}</strong>
             </div>
           </div>
 
@@ -1771,8 +1876,16 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>
                 {storeId === 'default-warehouse'
-                  ? 'Modo Almacén Individual: tus métodos de pago se guardan localmente para el POS. Selecciona una tienda registrada e inicia sesión con Google para sincronizarlos con store_payment_methods en Firestore.'
-                  : 'Inicia sesión con la cuenta Google dueña de la tienda para sincronizar cambios con Firestore (store_payment_methods).'}
+                  ? tr(
+                      'Modo Almacén Individual: tus métodos de pago se guardan localmente para el POS. Selecciona una tienda registrada e inicia sesión con Google para sincronizarlos en la nube.',
+                      'Standalone Warehouse Mode: your payment methods are saved locally for POS. Select a registered store and sign in with Google to sync them to the cloud.',
+                      '独立仓库模式：您的收款方式保存在本地供 POS 使用。选择已注册商店并使用 Google 登录即可云端同步。'
+                    )
+                  : tr(
+                      'Inicia sesión con la cuenta Google dueña de la tienda para sincronizar cambios en la nube.',
+                      'Sign in with the store owner Google account to sync changes to the cloud.',
+                      '请使用店主 Google 账号登录以将更改同步至云端。'
+                    )}
               </span>
             </div>
           )}
@@ -1789,12 +1902,12 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
                       {editingStoreMethod
-                        ? `Editar: ${editingStoreMethod.name}`
-                        : 'Agregar Método de Cobro'}
+                        ? `${tr('Editar:', 'Edit:', '编辑：')} ${editingStoreMethod.name}`
+                        : tr('Agregar Método de Cobro', 'Add Payment Method', '添加收款方式')}
                     </span>
                   </h4>
                   <p className="text-[11px] text-zinc-400 mt-0.5">
-                    Tus clientes y cajeros verán estos datos al cobrar ventas.
+                    {tr('Tus clientes y cajeros verán estos datos al cobrar ventas.', 'Your customers and cashiers will see these details at checkout.', '您的客户和收银员在结账时将看到这些信息。')}
                   </p>
                 </div>
                 {editingStoreMethod && (
@@ -1803,14 +1916,14 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     onClick={resetStoreMethodForm}
                     className="px-2.5 py-1 rounded-lg bg-[#111114] border border-white/[0.08] text-[11px] text-zinc-300 hover:text-white whitespace-nowrap shrink-0"
                   >
-                    Cancelar
+                    {tr('Cancelar', 'Cancel', '取消')}
                   </button>
                 )}
               </div>
 
               {!editingStoreMethod && (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] text-zinc-400">Plantillas rápidas:</div>
+                  <div className="text-[11px] text-zinc-400">{tr('Plantillas rápidas:', 'Quick templates:', '快速模板：')}</div>
                   <div className="flex flex-wrap gap-1.5">
                     {STORE_PAYMENT_PRESETS.map((preset) => (
                       <button
@@ -1835,19 +1948,19 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div className="sm:col-span-2">
-                  <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Nombre del Método *', 'Method Name *', '方式名称 *')}</label>
                   <input
                     required
                     type="text"
                     maxLength={80}
                     value={pmName}
                     onChange={(e) => setPmName(e.target.value)}
-                    placeholder="Ej: Zelle / Pago Móvil / Transferencia"
+                    placeholder={tr('Ej: Zelle / Pago Móvil / Transferencia', 'Ex: Zelle / Mobile Pay / Bank Transfer', '例：Zelle / 移动支付 / 银行转账')}
                     className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Moneda *', 'Currency *', '货币 *')}</label>
                   <select
                     value={pmCurrency}
                     onChange={(e) => setPmCurrency(e.target.value as PlatformPaymentCurrency)}
@@ -1857,26 +1970,26 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     <option value="Bs">Bs.</option>
                     <option value="USDT">USDT</option>
                     <option value="EUR">EUR</option>
-                    <option value="Otro">Otro</option>
+                    <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-zinc-300 block mb-1">Titular / Beneficiario</label>
+                <label className="text-xs text-zinc-300 block mb-1">{tr('Titular / Beneficiario', 'Account Holder / Beneficiary', '持有人 / 收款人')}</label>
                 <input
                   type="text"
                   maxLength={120}
                   value={pmHolder}
                   onChange={(e) => setPmHolder(e.target.value)}
-                  placeholder={storeName || 'Titular de la cuenta'}
+                  placeholder={storeName || tr('Titular de la cuenta', 'Account holder name', '账户持有人')}
                   className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
 
               <div>
                 <label className="text-xs text-zinc-300 block mb-1">
-                  Datos de Cobro (Correo, Teléfono, Banco, Cuenta o Wallet) *
+                  {tr('Datos de Cobro (Correo, Teléfono, Banco, Cuenta o Wallet) *', 'Payment Details (Email, Phone, Bank, Account or Wallet) *', '收款信息（邮箱、电话、银行、账号或钱包）*') }
                 </label>
                 <textarea
                   required
@@ -1884,21 +1997,21 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   maxLength={300}
                   value={pmDetails}
                   onChange={(e) => setPmDetails(e.target.value)}
-                  placeholder="Ej: 0134 Banesco · V-XXXXXXXX · 0414-XXXXXXX"
+                  placeholder={tr('Ej: 0134 Banesco · V-XXXXXXXX · 0414-XXXXXXX', 'Ex: Bank Account / Email / Wallet ID', '例：银行账号 / 邮箱 / 钱包地址')}
                   className="w-full px-3 py-2 bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-400"
                 />
               </div>
 
               <div>
                 <label className="text-xs text-zinc-300 block mb-1">
-                  Instrucciones para el Cliente (Opcional)
+                  {tr('Instrucciones para el Cliente (Opcional)', 'Customer Instructions (Optional)', '客户付款说明（可选）')}
                 </label>
                 <input
                   type="text"
                   maxLength={400}
                   value={pmInstructions}
                   onChange={(e) => setPmInstructions(e.target.value)}
-                  placeholder="Ej: Indicar número de factura en el concepto"
+                  placeholder={tr('Ej: Indicar número de factura en el concepto', 'Ex: Include invoice number in payment memo', '例：请在转账备注中注明发票号')}
                   className="w-full px-3 py-2 min-h-[42px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -1911,7 +2024,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     onChange={(e) => setPmAppliesIgtf(e.target.checked)}
                     className="accent-amber-400 w-4 h-4"
                   />
-                  <span>Aplica IGTF 3% Divisas (POS SENIAT)</span>
+                  <span>{tr('Aplica IGTF 3% Divisas (POS SENIAT)', 'Applies 3% Foreign Currency IGTF Tax (POS)', '适用 3% 外汇交易税 IGTF（POS）')}</span>
                 </label>
                 <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
                   <input
@@ -1920,7 +2033,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     onChange={(e) => setPmActive(e.target.checked)}
                     className="accent-amber-400 w-4 h-4"
                   />
-                  <span>Activo para clientes y visible en Caja POS</span>
+                  <span>{tr('Activo para clientes y visible en Caja POS', 'Active for customers & visible in POS', '对客户启用并在 POS 收银台显示')}</span>
                 </label>
               </div>
 
@@ -1932,10 +2045,10 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 <Save className="w-4 h-4" />
                 <span>
                   {isSavingMethod
-                    ? 'Guardando...'
+                    ? tr('Guardando...', 'Saving...', '正在保存...')
                     : editingStoreMethod
-                      ? 'Actualizar Método de Pago'
-                      : 'Guardar Método de Pago'}
+                      ? tr('Actualizar Método de Pago', 'Update Payment Method', '更新收款方式')
+                      : tr('Guardar Método de Pago', 'Save Payment Method', '保存收款方式')}
                 </span>
               </button>
             </form>
@@ -1945,10 +2058,10 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h4 className="text-sm font-bold text-white">
-                    Métodos Guardados ({storeMethods.length})
+                    {tr('Métodos Guardados', 'Saved Methods', '已保存方式')} ({storeMethods.length})
                   </h4>
                   <p className="text-[11px] text-zinc-400">
-                    Edita tus datos bancarios o pausa cualquier método cuando lo necesites.
+                    {tr('Edita tus datos bancarios o pausa cualquier método cuando lo necesites.', 'Edit your bank details or pause any method whenever needed.', '可随时编辑银行信息或暂停任一收款方式。')}
                   </p>
                 </div>
 
@@ -1959,7 +2072,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                       type="text"
                       value={pmSearch}
                       onChange={(e) => setPmSearch(e.target.value)}
-                      placeholder="Buscar método o cuenta..."
+                      placeholder={tr('Buscar método o cuenta...', 'Search method or account...', '搜索方式或账户...')}
                       className="w-full pl-8 pr-3 py-1.5 min-h-[36px] bg-[#111114] border border-white/[0.08] rounded-lg text-xs text-white"
                     />
                   </div>
@@ -1971,11 +2084,15 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   <Wallet className="w-7 h-7 text-zinc-600 mx-auto" />
                   <p className="text-xs font-semibold text-zinc-300">
                     {storeMethods.length === 0
-                      ? 'Aún no has configurado métodos de cobro propios para esta tienda'
-                      : 'No hay métodos que coincidan con tu búsqueda'}
+                      ? tr('Aún no has configurado métodos de cobro propios para esta tienda', 'You have not configured store payment methods yet', '您尚未为此商店配置专属收款方式')
+                      : tr('No hay métodos que coincidan con tu búsqueda', 'No methods match your search', '没有符合搜索条件的收款方式')}
                   </p>
                   <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
-                    Usa las plantillas rápidas de Zelle, Pago Móvil o Transferencia para añadir tus datos y verlos al instante en el POS.
+                    {tr(
+                      'Usa las plantillas rápidas de Zelle, Pago Móvil o Transferencia para añadir tus datos y verlos al instante en el POS.',
+                      'Use the quick templates for Zelle, Pago Móvil, or Transfer to add your details and see them instantly in POS.',
+                      '使用 Zelle、Pago Móvil 或转账快速模板添加账户信息，即可立即在 POS 中使用。'
+                    )}
                   </p>
                 </div>
               ) : (
@@ -2009,13 +2126,13 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                             ) : (
                               <XCircle className="w-3.5 h-3.5" />
                             )}
-                            <span>{method.isActive ? 'Activo en POS' : 'Pausado'}</span>
+                            <span>{method.isActive ? tr('Activo en POS', 'Active in POS', 'POS 启用中') : tr('Pausado', 'Paused', '已暂停')}</span>
                           </span>
                         </div>
 
                         {method.accountHolder && (
                           <div className="text-zinc-400 text-[11px]">
-                            Titular: <span className="text-zinc-200">{method.accountHolder}</span>
+                            {tr('Titular:', 'Holder:', '持有人：')} <span className="text-zinc-200">{method.accountHolder}</span>
                           </div>
                         )}
                         <div className="text-zinc-200 font-mono text-[11px] whitespace-pre-line">
@@ -2037,7 +2154,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                               : 'bg-[#09090b] border-white/[0.1] text-zinc-300'
                           }`}
                         >
-                          {method.isActive ? 'Pausar' : 'Activar'}
+                          {method.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Enable', '启用')}
                         </button>
                         <button
                           type="button"
@@ -2052,7 +2169,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                             setPmActive(method.isActive);
                           }}
                           className="p-2 min-h-[36px] min-w-[36px] rounded-lg bg-[#09090b] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                          title="Editar método"
+                          title={tr('Editar método', 'Edit method', '编辑方式')}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -2064,14 +2181,14 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                               onClick={() => handleDeleteStoreMethod(method)}
                               className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
                             >
-                              Confirmar
+                              {tr('Confirmar', 'Confirm', '确认')}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteMethodId(null)}
                               className="px-2 py-1.5 min-h-[36px] rounded-lg bg-[#09090b] border border-white/[0.1] text-zinc-400 hover:text-white text-[11px] whitespace-nowrap"
                             >
-                              No
+                              {tr('No', 'No', '取消')}
                             </button>
                           </div>
                         ) : (
@@ -2079,7 +2196,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                             type="button"
                             onClick={() => setConfirmDeleteMethodId(method.id)}
                             className="p-2 min-h-[36px] min-w-[36px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                            title="Eliminar método"
+                            title={tr('Eliminar método', 'Delete method', '删除方式')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2096,9 +2213,9 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-white">Registro de Envíos Reales por Correo</h3>
+              <h3 className="text-sm font-bold text-white">{tr('Registro de Envíos Reales por Correo', 'Real Email Delivery Log', '真实邮件发送记录')}</h3>
               <p className="text-xs text-zinc-400">
-                Historial de alertas de stock, reportes de ventas y pruebas SMTP/Resend de esta tienda.
+                {tr('Historial de alertas de stock, reportes de ventas y pruebas SMTP/Resend de esta tienda.', 'History of stock alerts, sales reports, and SMTP/Resend tests for this store.', '此商店的库存预警、销售报告及 SMTP/Resend 测试历史记录。')}
               </p>
             </div>
             {logs.length > 0 && (
@@ -2108,7 +2225,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 className="px-3 py-2 min-h-[40px] rounded-lg bg-[#09090b] border border-white/[0.08] text-xs text-zinc-400 hover:text-red-400 flex items-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Limpiar</span>
+                <span>{tr('Limpiar', 'Clear', '清空')}</span>
               </button>
             )}
           </div>
@@ -2116,9 +2233,13 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
           {logs.length === 0 ? (
             <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.08] text-center space-y-2">
               <Mail className="w-8 h-8 text-zinc-500 mx-auto" />
-              <p className="text-sm font-semibold text-zinc-200">Sin envíos registrados todavía</p>
+              <p className="text-sm font-semibold text-zinc-200">{tr('Sin envíos registrados todavía', 'No emails logged yet', '尚无邮件发送记录')}</p>
               <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                Configura tu clave Resend API o servidor SMTP y pulsa "Probar Conexión" para verificar la entrega en tu bandeja.
+                {tr(
+                  'Configura tu clave Resend API o servidor SMTP y pulsa "Probar Conexión" para verificar la entrega en tu bandeja.',
+                  'Configure your Resend API key or SMTP server and click "Test Connection" to verify inbox delivery.',
+                  '配置您的 Resend API 密钥或 SMTP 服务器并点击“测试连接”以验证收件箱投递。'
+                )}
               </p>
             </div>
           ) : (
@@ -2140,7 +2261,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                               : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                           }`}
                         >
-                          {log.status}
+                          {isErr ? tr('Error de Envío', 'Delivery Error', '发送失败') : tr('Enviado', 'Sent', '已发送')}
                         </span>
                       </div>
                       <span className="font-mono text-[11px] text-zinc-500 tabular-nums">

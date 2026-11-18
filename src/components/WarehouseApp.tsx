@@ -127,7 +127,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
   onSyncAllToStore,
   isSyncingToStore = false,
 }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
   const [emailSubTab, setEmailSubTab] = useState<'config' | 'payment_methods' | 'history'>('config');
@@ -219,7 +219,9 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
       setNotifPerm(result);
       setNotifPrefs(getBrowserNotificationPrefs());
       if (result === 'granted') {
-        await sendTestBrowserNotification(activeStore?.storeName || 'Almacén & POS');
+        await sendTestBrowserNotification(
+          activeStore?.storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与 POS')
+        );
       }
       return;
     }
@@ -236,7 +238,8 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
 
   const handleDailyClosingEmail = (closing: CashClosingRecord) => {
     const storeId = activeStore?.id || 'default-warehouse';
-    const storeName = activeStore?.storeName || 'Almacén & POS';
+    const storeName =
+      activeStore?.storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与 POS');
     const cfg = getLocalStoreEmailConfig(storeId, activeStore?.ownerUid || '');
     const hasProvider =
       cfg.isEnabled &&
@@ -306,7 +309,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                 value={activeStore?.id || ''}
                 onChange={(e) => onSelectStore(e.target.value)}
                 className="px-3 py-1.5 min-h-[40px] max-w-full rounded-lg bg-[#09090b] border border-amber-500/35 text-xs text-amber-300 font-semibold"
-                aria-label="Cambiar almacén por tienda"
+                aria-label={tr('Cambiar almacén por tienda', 'Switch warehouse by store', '按店铺切换仓库')}
               >
                 {availableStores.map((st) => (
                   <option key={st.id} value={st.id}>
@@ -329,7 +332,11 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                       ? 'bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/15'
                       : 'bg-amber-400/15 border-amber-400/40 text-amber-300 hover:bg-amber-400/25'
                 }`}
-                title="Notificaciones del navegador para stock crítico y cierres de caja"
+                title={tr(
+                  'Notificaciones del navegador para stock crítico y cierres de caja',
+                  'Browser notifications for critical stock and cash closings',
+                  '用于低库存与日结提醒的浏览器通知'
+                )}
               >
                 {notifPerm === 'granted' && notifPrefs.enabled ? (
                   <Bell className="w-3.5 h-3.5 shrink-0" />
@@ -338,12 +345,12 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                 )}
                 <span>
                   {notifPerm === 'granted' && notifPrefs.enabled
-                    ? 'Push ON'
+                    ? tr('Push ON', 'Push ON', '推送已开')
                     : notifPerm === 'denied'
-                      ? 'Push Bloqueado'
+                      ? tr('Push Bloqueado', 'Push Blocked', '推送已拦截')
                       : notifPerm === 'granted'
-                        ? 'Push Pausado'
-                        : 'Activar Alertas'}
+                        ? tr('Push Pausado', 'Push Paused', '推送已暂停')
+                        : tr('Activar Alertas', 'Enable Alerts', '启用通知')}
                 </span>
               </button>
             )}
@@ -407,7 +414,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
             className={tabClass(showEmailPanel)}
           >
             <Server className="w-4 h-4" />
-            <span>SMTP / Cobros</span>
+            <span>{tr('SMTP / Cobros', 'SMTP / Payments', 'SMTP 与收款')}</span>
           </button>
 
           <button
@@ -426,7 +433,9 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
             <EmailProviderConfigPanel
               storeId={activeStore?.id || 'default-warehouse'}
               ownerUid={activeStore?.ownerUid || ''}
-              storeName={activeStore?.storeName || 'Almacén & POS'}
+              storeName={
+                activeStore?.storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与 POS')
+              }
               exchangeRate={exchangeRate}
               products={products}
               sales={sales}

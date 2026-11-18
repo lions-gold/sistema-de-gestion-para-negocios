@@ -154,7 +154,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   onOpenVectorSellerGuide,
   onActiveBrandContext,
 }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
@@ -331,7 +331,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         if (cancelled || claimed.length === 0) return;
         setSelectedStoreId((prev) => prev || claimed[0].id);
         setStatusMessage(
-          `Tienda vinculada automáticamente: ${claimed.map((s) => s.storeName).join(', ')}`
+          `${tr('Tienda vinculada automáticamente:', 'Store automatically linked:', '店铺已自动关联:')} ${claimed.map((s) => s.storeName).join(', ')}`
         );
       });
     }
@@ -483,9 +483,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     try {
       const dataUrl = await compressImageFileToDataURL(file, 320, 0.78);
       setRegLogoUrl(dataUrl);
-      notify('Logo cargado y optimizado.');
+      notify(tr('Logo cargado y optimizado.', 'Logo uploaded and optimized.', '徽标已上传并优化。'));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error al procesar logo.');
+      notifyError(err instanceof Error ? err.message : tr('Error al procesar logo.', 'Error processing logo.', '处理徽标时出错。'));
     }
   };
 
@@ -496,7 +496,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       const dataUrl = await compressImageFileToDataURL(file, 420, 0.72);
       setProdImage(dataUrl);
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error al procesar imagen.');
+      notifyError(err instanceof Error ? err.message : tr('Error al procesar imagen.', 'Error processing image.', '处理图片时出错。'));
     }
   };
 
@@ -525,9 +525,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setIsCreatingNewStore(false);
       setActiveTab('billing');
       onClearCapturedReferral?.();
-      notify('Tienda registrada. Reporta tu pago mensual de $25 para solicitar activación.');
+      notify(tr('Tienda registrada. Reporta tu pago mensual de $25 para solicitar activación.', 'Store registered. Submit your $25 monthly payment to request activation.', '店铺已注册。请提交 $25 月费付款以申请激活。'));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error registrando tienda.');
+      notifyError(err instanceof Error ? err.message : tr('Error registrando tienda.', 'Error registering store.', '注册店铺时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -553,9 +553,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         localDeliveryZone: regLocalZone,
         pickupEnabled: regPickupEnabled,
       });
-      notify('Datos fiscales, logo y preferencias de envío actualizados.');
+      notify(tr('Datos fiscales, logo y preferencias de envío actualizados.', 'Tax details, logo, and shipping preferences updated.', '税务资料、徽标与配送偏好已更新。'));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error actualizando tienda.');
+      notifyError(err instanceof Error ? err.message : tr('Error actualizando tienda.', 'Error updating store.', '更新店铺资料时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -628,7 +628,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   }> = [
     ...activeStoreSubscriptionMethods.map((pm) => ({
       value: pm.name,
-      label: `${pm.name} (${pm.currency}) · Asignado a tu tienda`,
+      label: `${pm.name} (${pm.currency}) · ${tr('Asignado a tu tienda', 'Assigned to your store', '专属您店铺')}`,
       currency: pm.currency,
       accountHolder: pm.accountHolder,
       accountDetails: pm.accountDetails,
@@ -702,9 +702,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     try {
       const dataUrl = await compressImageFileToDataURL(file, 480, 0.72);
       setPayProofImage(dataUrl);
-      notify('Captura del comprobante cargada y optimizada.');
+      notify(tr('Captura del comprobante cargada y optimizada.', 'Receipt screenshot uploaded and optimized.', '付款截图已上传并优化。'));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'No se pudo procesar la captura del comprobante.');
+      notifyError(err instanceof Error ? err.message : tr('No se pudo procesar la captura del comprobante.', 'Could not process receipt screenshot.', '无法处理付款凭证截图。'));
     } finally {
       setIsUploadingProof(false);
       e.target.value = '';
@@ -746,11 +746,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setSelectedCouponId('');
       notify(
         voucherResult.emailSent
-          ? 'Comprobante registrado y enviado automáticamente por correo al Administrador. Puedes reenviarlo también por WhatsApp abajo.'
-          : 'Comprobante registrado en la nube. Usa los botones directos de WhatsApp y Correo para enviar tu recibo al Administrador.'
+          ? tr('Comprobante registrado y enviado automáticamente por correo al Administrador. Puedes reenviarlo también por WhatsApp abajo.', 'Receipt recorded and automatically emailed to the Administrator. You can also resend it via WhatsApp below.', '付款凭证已登记并自动电邮给管理员。您也可通过下方 WhatsApp 再次发送。')
+          : tr('Comprobante registrado en la nube. Usa los botones directos de WhatsApp y Correo para enviar tu recibo al Administrador.', 'Receipt saved to the cloud. Use the WhatsApp and Email buttons below to send your receipt to the Administrator.', '凭证已保存至云端。请使用下方的 WhatsApp 与邮件按钮将收据发送给管理员。')
       );
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error enviando comprobante.');
+      notifyError(err instanceof Error ? err.message : tr('Error enviando comprobante.', 'Error submitting receipt.', '发送凭证时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -815,7 +815,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       });
       queueOfflineMutation({
         type: 'storefront_product_upsert',
-        label: `Catálogo ${activeStore.storeName}: ${localProd.name}`,
+        label: `${tr('Catálogo', 'Catalog', '目录')} ${activeStore.storeName}: ${localProd.name}`,
         payload: {
           storeId: activeStore.id,
           ownerUid: effectiveUid,
@@ -824,7 +824,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         },
       });
       resetProductForm();
-      notify('Producto guardado localmente en Modo Offline. Se sincronizará automáticamente al volver internet.');
+      notify(tr('Producto guardado localmente en Modo Offline. Se sincronizará automáticamente al volver internet.', 'Product saved locally in Offline Mode. It will sync automatically when back online.', '商品已本地保存（离线模式）。恢复网络后将自动同步。'));
     };
 
     if (isAppEffectivelyOffline() || !user) {
@@ -841,12 +841,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         editingProduct || undefined
       );
       resetProductForm();
-      notify('Producto guardado en el catálogo de tu tienda.');
+      notify(tr('Producto guardado en el catálogo de tu tienda.', 'Product saved to your store catalog.', '商品已保存至您的店铺目录。'));
     } catch (err) {
       if (isNetworkOrOfflineError(err)) {
         saveProductLocally();
       } else {
-        notifyError(err instanceof Error ? err.message : 'Error guardando producto.');
+        notifyError(err instanceof Error ? err.message : tr('Error guardando producto.', 'Error saving product.', '保存商品时出错。'));
       }
     } finally {
       setIsBusy(false);
@@ -886,12 +886,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       );
       notify(
         editingStoreMethod
-          ? `Método de cobro "${stPmName}" actualizado para ${activeStore.storeName}.`
-          : `Método de cobro "${stPmName}" configurado. Ya aparece para tus clientes y en tus ventas.`
+          ? tr(`Método de cobro "${stPmName}" actualizado para ${activeStore.storeName}.`, `Collection method "${stPmName}" updated for ${activeStore.storeName}.`, `已为 ${activeStore.storeName} 更新收款方式“${stPmName}”。`)
+          : tr(`Método de cobro "${stPmName}" configurado. Ya aparece para tus clientes y en tus ventas.`, `Collection method "${stPmName}" configured. Now visible to customers and sales.`, `已配置收款方式“${stPmName}”，现已对顾客和销售模块可见。`)
       );
       resetStoreMethodForm();
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error guardando método de cobro de tu tienda.');
+      notifyError(err instanceof Error ? err.message : tr('Error guardando método de cobro de tu tienda.', 'Error saving your store collection method.', '保存店铺收款方式时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -902,9 +902,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setIsBusy(true);
     try {
       await toggleStorePaymentMethodActive(activeStore.id, method, !method.isActive);
-      notify(`Método de cobro "${method.name}" ${!method.isActive ? 'activado' : 'pausado'}.`);
+      notify(
+        !method.isActive
+          ? tr(`Método de cobro "${method.name}" activado.`, `Collection method "${method.name}" activated.`, `收款方式“${method.name}”已启用。`)
+          : tr(`Método de cobro "${method.name}" pausado.`, `Collection method "${method.name}" paused.`, `收款方式“${method.name}”已暂停。`)
+      );
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error actualizando estado del método de cobro.');
+      notifyError(err instanceof Error ? err.message : tr('Error actualizando estado del método de cobro.', 'Error updating collection method status.', '更新收款方式状态时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -919,9 +923,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       if (editingStoreMethod?.id === method.id) {
         resetStoreMethodForm();
       }
-      notify(`Método de cobro "${method.name}" eliminado.`);
+      notify(tr(`Método de cobro "${method.name}" eliminado.`, `Collection method "${method.name}" deleted.`, `收款方式“${method.name}”已删除。`));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error eliminando método de cobro.');
+      notifyError(err instanceof Error ? err.message : tr('Error eliminando método de cobro.', 'Error deleting collection method.', '删除收款方式时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -934,14 +938,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       const text = await file.text();
       const parsed = parseImportedDatabaseFile(text, file.name);
       if (parsed.length === 0) {
-        notifyError('No se detectaron productos válidos en el archivo CSV/JSON.');
+        notifyError(tr('No se detectaron productos válidos en el archivo CSV/JSON.', 'No valid products detected in the CSV/JSON file.', 'CSV/JSON 文件中未检测到有效商品。'));
         return;
       }
       setImportPreview(parsed);
       setImportFileName(file.name);
-      notify(`Archivo leído: ${parsed.length} productos listos para importar.`);
+      notify(tr(`Archivo leído: ${parsed.length} productos listos para importar.`, `File parsed: ${parsed.length} products ready to import.`, `文件读取成功：${parsed.length} 件商品准备导入。`));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Archivo CSV/JSON inválido.');
+      notifyError(err instanceof Error ? err.message : tr('Archivo CSV/JSON inválido.', 'Invalid CSV/JSON file.', '无效的 CSV/JSON 文件。'));
     }
   };
 
@@ -952,9 +956,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       const count = await importStoreProductsBatch(activeStore.id, user.uid, importPreview);
       setImportPreview([]);
       setImportFileName('');
-      notify(`${count} productos importados exitosamente con foto, descripción, precio y estrellas.`);
+      notify(tr(`${count} productos importados exitosamente con foto, descripción, precio y estrellas.`, `${count} products imported successfully with photo, description, price, and rating.`, `成功导入 ${count} 件商品（含图片、描述、价格和评分）。`));
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error importando base de datos.');
+      notifyError(err instanceof Error ? err.message : tr('Error importando base de datos.', 'Error importing database.', '导入商品数据库时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -984,7 +988,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       const items = await fetchStoreOrderItems(activeStore.id, ord, user.uid);
       exportStoreOrderInvoicePDF(activeStore, ord, items, mode);
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'No se pudo generar la factura PDF.');
+      notifyError(err instanceof Error ? err.message : tr('No se pudo generar la factura PDF.', 'Could not generate PDF invoice.', '无法生成 PDF 发票。'));
     } finally {
       setIsBusy(false);
     }
@@ -1005,11 +1009,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       );
       notify(
         stockDiscountedNow
-          ? `Orden #${ord.invoiceNumber} actualizada a "${nextStatus}" y stock descontado automáticamente.`
-          : `Estado de orden #${ord.invoiceNumber} actualizado a "${nextStatus}".`
+          ? tr(`Orden #${ord.invoiceNumber} actualizada a "${nextStatus}" y stock descontado automáticamente.`, `Order #${ord.invoiceNumber} updated to "${nextStatus}" and stock deducted automatically.`, `订单 #${ord.invoiceNumber} 已更新为“${nextStatus}”并自动扣减库存。`)
+          : tr(`Estado de orden #${ord.invoiceNumber} actualizado a "${nextStatus}".`, `Order #${ord.invoiceNumber} status updated to "${nextStatus}".`, `订单 #${ord.invoiceNumber} 状态已更新为“${nextStatus}”。`)
       );
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'Error actualizando estado de orden.');
+      notifyError(err instanceof Error ? err.message : tr('Error actualizando estado de orden.', 'Error updating order status.', '更新订单状态时出错。'));
     } finally {
       setIsBusy(false);
     }
@@ -1095,15 +1099,15 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         setShowDirectSaleModal(false);
         notify(
           offlineSaved
-            ? `Venta Offline #${order.invoiceNumber} guardada localmente en ${activeStore.storeName} (stock descontado y PDF Dual generado). Se sincronizará al volver la señal.`
-            : `Venta #${order.invoiceNumber} registrada en ${activeStore.storeName}, stock descontado y Factura Dual (Cliente + Dueño) generada.`
+            ? tr(`Venta Offline #${order.invoiceNumber} guardada localmente en ${activeStore.storeName} (stock descontado y PDF Dual generado). Se sincronizará al volver la señal.`, `Offline Sale #${order.invoiceNumber} saved locally in ${activeStore.storeName} (stock deducted & dual PDF generated). Will sync when back online.`, `离线销售 #${order.invoiceNumber} 已在 ${activeStore.storeName} 本地保存（已扣库存并生成双联 PDF）。联网后将自动同步。`)
+            : tr(`Venta #${order.invoiceNumber} registrada en ${activeStore.storeName}, stock descontado y Factura Dual (Cliente + Dueño) generada.`, `Sale #${order.invoiceNumber} recorded in ${activeStore.storeName}, stock deducted & Dual Invoice (Customer + Owner) generated.`, `销售 #${order.invoiceNumber} 已在 ${activeStore.storeName} 登记，库存已扣减并生成双联发票。`)
         );
       };
 
       const saveDirectSaleOffline = () => {
         queueOfflineMutation({
           type: 'marketplace_order',
-          label: `Venta Directa #${invoiceNumber} (${activeStore.storeName})`,
+          label: `${tr('Venta Directa', 'Direct Sale', '店铺直销')} #${invoiceNumber} (${activeStore.storeName})`,
           payload: {
             store: activeStore,
             orderInput: baseOrderInput,
@@ -1156,7 +1160,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         throw cloudErr;
       }
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : 'No se pudo registrar la venta directa.');
+      notifyError(err instanceof Error ? err.message : tr('No se pudo registrar la venta directa.', 'Could not record direct sale.', '无法登记店铺直销订单。'));
     } finally {
       setIsBusy(false);
     }
@@ -1232,7 +1236,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {onOpenVectorSellerGuide && (
               <button
                 type="button"
-                onClick={() => onOpenVectorSellerGuide('Guía para registrar mi tienda paso a paso')}
+                onClick={() => onOpenVectorSellerGuide(tr('Guía para registrar mi tienda paso a paso', 'Step-by-step guide to register my store', '分步注册店铺指南'))}
                 className="px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-xs sm:text-sm font-semibold text-amber-300 flex items-center gap-2 min-h-[44px]"
               >
                 <Compass className="w-4 h-4 text-amber-400" />
@@ -1251,14 +1255,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             <div>
               <h2 className="text-sm font-bold text-white font-display flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Métodos Disponibles para Comprar tu Suscripción</span>
+                <span>{tr('Métodos Disponibles para Comprar tu Suscripción', 'Available Methods to Pay Your Subscription', '可用的订阅付款方式')}</span>
               </h2>
               <p className="text-[11px] text-zinc-400 mt-0.5">
-                Inicia sesión con Google, registra tu tienda y reporta tu pago con cualquiera de estas opciones habilitadas.
+                {tr(
+                  'Inicia sesión con Google, registra tu tienda y reporta tu pago con cualquiera de estas opciones habilitadas.',
+                  'Sign in with Google, register your store, and report your payment using any of these enabled options.',
+                  '使用 Google 登录，注册您的店铺，并使用以下任一已启用方式提交付款凭证。'
+                )}
               </p>
             </div>
             <div className="text-right font-mono tabular-nums text-xs">
-              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/mes</span>
+              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/{tr('mes', 'mo', '月')}</span>
               <span className="text-zinc-500 mx-1.5">·</span>
               <span className="text-zinc-400">
                 ≈ {(baseSubscriptionUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
@@ -1268,7 +1276,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
           {subscriptionCheckoutOptions.length === 0 ? (
             <div className="p-4 rounded-xl bg-[#09090b] border border-amber-500/25 text-xs text-zinc-300">
-              El Administrador está configurando los métodos de cobro de suscripción. Puedes solicitar las cuentas actualizadas por WhatsApp ({billing.supportWhatsapp}).
+              {tr(
+                `El Administrador está configurando los métodos de cobro de suscripción. Puedes solicitar las cuentas actualizadas por WhatsApp (${billing.supportWhatsapp}).`,
+                `The Administrator is configuring subscription payment methods. You can request updated accounts via WhatsApp (${billing.supportWhatsapp}).`,
+                `管理员正在配置订阅收款方式。您可通过 WhatsApp (${billing.supportWhatsapp}) 获取最新收款账户。`
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
@@ -1284,7 +1296,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     </span>
                   </div>
                   {opt.accountHolder && (
-                    <p className="text-[11px] text-zinc-400 truncate">Titular: {opt.accountHolder}</p>
+                    <p className="text-[11px] text-zinc-400 truncate">{tr('Titular:', 'Holder:', '持有人:')} {opt.accountHolder}</p>
                   )}
                   <p className="text-[11px] text-zinc-300 font-mono line-clamp-2 whitespace-pre-line">
                     {opt.accountDetails}
@@ -1314,7 +1326,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             {onOpenVectorSellerGuide && (
               <button
                 type="button"
-                onClick={() => onOpenVectorSellerGuide('Paso 2: Cómo llenar los datos y RIF de mi tienda')}
+                onClick={() => onOpenVectorSellerGuide(tr('Paso 2: Cómo llenar los datos y RIF de mi tienda', 'Step 2: How to fill in my store details and RIF tax ID', '第2步：如何填写店铺信息及税号'))}
                 className="text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1.5"
               >
                 <Compass className="w-3.5 h-3.5" />
@@ -1488,7 +1500,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={regLogoUrl.startsWith('data:') ? 'Image loaded' : regLogoUrl}
+                  value={regLogoUrl.startsWith('data:') ? tr('Imagen cargada', 'Image loaded', '图片已加载') : regLogoUrl}
                   onChange={(e) => setRegLogoUrl(e.target.value)}
                   placeholder="https://..."
                   className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
@@ -1595,14 +1607,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             <div>
               <h2 className="text-sm font-bold text-white font-display flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Métodos Habilitados para Pagar tu Suscripción (Paso 3)</span>
+                <span>{tr('Métodos Habilitados para Pagar tu Suscripción (Paso 3)', 'Enabled Methods to Pay Your Subscription (Step 3)', '可用的订阅付款方式（第3步）')}</span>
               </h2>
               <p className="text-[11px] text-zinc-400 mt-0.5">
-                Al registrar tu tienda pasarás al checkout para reportar tu pago con cualquiera de estas cuentas configuradas por el Administrador.
+                {tr(
+                  'Al registrar tu tienda pasarás al checkout para reportar tu pago con cualquiera de estas cuentas configuradas por el Administrador.',
+                  'After registering your store, proceed to checkout to report your payment using any of these Administrator-configured accounts.',
+                  '注册店铺后，您将进入结账页，可使用管理员配置的以下任一账户提交付款凭证。'
+                )}
               </p>
             </div>
             <div className="text-right font-mono tabular-nums text-xs">
-              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/mes</span>
+              <span className="font-bold text-amber-300">${baseSubscriptionUSD} USD/{tr('mes', 'mo', '月')}</span>
               <span className="text-zinc-500 mx-1.5">·</span>
               <span className="text-zinc-400">
                 ≈ {(baseSubscriptionUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.
@@ -1612,7 +1628,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
           {subscriptionCheckoutOptions.length === 0 ? (
             <div className="p-3.5 rounded-xl bg-[#09090b] border border-amber-500/25 text-xs text-zinc-300">
-              Aún no hay cuentas de pago publicadas por el Administrador. Al finalizar el registro podrás coordinar directamente vía WhatsApp ({billing.supportWhatsapp}).
+              {tr(
+                `Aún no hay cuentas de pago publicadas por el Administrador. Al finalizar el registro podrás coordinar directamente vía WhatsApp (${billing.supportWhatsapp}).`,
+                `No payment accounts have been published by the Administrator yet. After registering you can coordinate directly via WhatsApp (${billing.supportWhatsapp}).`,
+                `管理员尚未公布收款账户。完成注册后，您可直接通过 WhatsApp (${billing.supportWhatsapp}) 联系处理。`
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
@@ -1628,7 +1648,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     </span>
                   </div>
                   {opt.accountHolder && (
-                    <p className="text-[11px] text-zinc-400 truncate">Titular: {opt.accountHolder}</p>
+                    <p className="text-[11px] text-zinc-400 truncate">{tr('Titular:', 'Holder:', '持有人:')} {opt.accountHolder}</p>
                   )}
                   <p className="text-[11px] text-zinc-300 font-mono line-clamp-2 whitespace-pre-line">
                     {opt.accountDetails}
@@ -1699,7 +1719,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             >
               {stores.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.storeName} ({s.status})
+                  {s.storeName} ({s.status === 'active' ? t.merchant.statusActive : s.status === 'pending' ? t.merchant.statusPending : t.merchant.statusSuspended})
                 </option>
               ))}
             </select>
@@ -1756,7 +1776,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           { id: 'billing', label: t.merchant.tabBilling, icon: CreditCard },
           {
             id: 'payment_methods',
-            label: `Cobros de Mi Tienda (${storePaymentMethods.filter((m) => m.isActive).length})`,
+            label: `${tr('Cobros de Mi Tienda', 'My Store Collections', '店铺收款方式')} (${storePaymentMethods.filter((m) => m.isActive).length})`,
             icon: Wallet,
           },
           { id: 'catalog', label: `${t.merchant.tabCatalog} (${products.length})`, icon: Package },
@@ -1771,8 +1791,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             label: `${t.merchant.tabInbox} (${inboxMessages.filter((m) => !m.isRead).length})`,
             icon: Mail,
           },
-          { id: 'vector', label: 'Asistente Vector', icon: Compass },
-          { id: 'email_smtp', label: 'SMTP / Alertas', icon: Server },
+          { id: 'vector', label: tr('Asistente Vector', 'Vector Assistant', 'Vector 助手'), icon: Compass },
+          { id: 'email_smtp', label: tr('SMTP / Alertas', 'SMTP / Alerts', 'SMTP / 提醒'), icon: Server },
           { id: 'settings', label: t.merchant.tabSettings, icon: Truck },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1802,12 +1822,20 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-white font-display">
-                    {t.merchant.paymentMethodsTitle} ${netSubscriptionUSD.toFixed(2)}/mes
+                    {t.merchant.paymentMethodsTitle} ${netSubscriptionUSD.toFixed(2)}/{tr('mes', 'mo', '月')}
                   </h2>
                   <p className="text-[11px] text-zinc-400 mt-0.5">
                     {activeStoreSubscriptionMethods.length > 0
-                      ? `Incluye ${activeStoreSubscriptionMethods.length} método${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} asignado${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} específicamente a ${activeStore?.storeName || 'tu tienda'}.`
-                      : 'Métodos configurados por el Administrador. Haz clic en uno para seleccionarlo automáticamente en el formulario.'}
+                      ? tr(
+                          `Incluye ${activeStoreSubscriptionMethods.length} método${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} asignado${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} específicamente a ${activeStore?.storeName || 'tu tienda'}.`,
+                          `Includes ${activeStoreSubscriptionMethods.length} method${activeStoreSubscriptionMethods.length === 1 ? '' : 's'} specifically assigned to ${activeStore?.storeName || 'your store'}.`,
+                          `包含 ${activeStoreSubscriptionMethods.length} 项专属分配给 ${activeStore?.storeName || '您店铺'} 的收款方式。`
+                        )
+                      : tr(
+                          'Métodos configurados por el Administrador. Haz clic en uno para seleccionarlo automáticamente en el formulario.',
+                          'Methods configured by the Administrator. Click one to select it automatically in the form.',
+                          '管理员配置的收款方式。点击任意一项即可自动选入下方表单。'
+                        )}
                   </p>
                 </div>
                 <span className="font-mono text-xs text-amber-300 tabular-nums shrink-0">
@@ -1820,10 +1848,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   <div className="p-5 rounded-xl bg-[#09090b] border border-amber-500/30 space-y-2.5 text-center">
                     <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
                     <div className="text-xs font-bold text-white">
-                      El Administrador aún no ha cargado métodos de pago manuales
+                      {tr('El Administrador aún no ha cargado métodos de pago manuales', 'The Administrator has not added manual payment methods yet', '管理员尚未添加手动收款方式')}
                     </div>
                     <p className="text-[11px] text-zinc-400">
-                      Cuando el Administrador configure Pago Móvil, Zelle, Binance Pay o cuentas bancarias en el Panel Admin, aparecerán aquí automáticamente.
+                      {tr(
+                        'Cuando el Administrador configure Pago Móvil, Zelle, Binance Pay o cuentas bancarias en el Panel Admin, aparecerán aquí automáticamente.',
+                        'Once the Administrator configures Pago Móvil, Zelle, Binance Pay, or bank accounts in the Admin Panel, they will appear here automatically.',
+                        '当管理员在管理面板中配置 Pago Móvil、Zelle、Binance Pay 或银行账户后，它们将自动显示在此处。'
+                      )}
                     </p>
                     <a
                       href={`https://wa.me/${(normalizeVenezuelanPhone(billing.supportWhatsapp) || '584220273766')}?text=${encodeURIComponent(
@@ -1834,7 +1866,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
-                      <span>Solicitar Datos de Pago por WhatsApp</span>
+                      <span>{tr('Solicitar Datos de Pago por WhatsApp', 'Request Payment Details via WhatsApp', '通过 WhatsApp 获取付款信息')}</span>
                     </a>
                   </div>
                 ) : (
@@ -1845,10 +1877,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     netSubscriptionUSD
                   );
                   const fullCopyText = [
-                    `${opt.value} (${opt.currency}) · Monto: ${exactPayAmount}`,
-                    opt.accountHolder ? `Titular: ${opt.accountHolder}` : '',
+                    `${opt.value} (${opt.currency}) · ${tr('Monto:', 'Amount:', '金额:')} ${exactPayAmount}`,
+                    opt.accountHolder ? `${tr('Titular:', 'Holder:', '持有人:')} ${opt.accountHolder}` : '',
                     opt.accountDetails,
-                    opt.instructions ? `Instrucciones: ${opt.instructions}` : '',
+                    opt.instructions ? `${tr('Instrucciones:', 'Instructions:', '说明:')} ${opt.instructions}` : '',
                   ]
                     .filter(Boolean)
                     .join('\n');
@@ -1887,14 +1919,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           </span>
                           {opt.isStoreSpecific && (
                             <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 border border-indigo-400/35 text-indigo-200 text-[10px] font-semibold shrink-0">
-                              Asignado a tu tienda
+                              {tr('Asignado a tu tienda', 'Assigned to your store', '专属您店铺')}
                             </span>
                           )}
                           {isSelected && (
                             <>
                               <span className="text-zinc-500" aria-hidden="true">·</span>
                               <span className="text-[11px] font-semibold text-amber-300 shrink-0">
-                                Seleccionado
+                                {tr('Seleccionado', 'Selected', '已选择')}
                               </span>
                             </>
                           )}
@@ -1916,7 +1948,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       </div>
                       {opt.accountHolder && (
                         <p className="text-zinc-400 text-[11px]">
-                          Titular: <span className="text-zinc-200">{opt.accountHolder}</span>
+                          {tr('Titular:', 'Holder:', '持有人:')} <span className="text-zinc-200">{opt.accountHolder}</span>
                         </p>
                       )}
                       <p className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">

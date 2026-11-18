@@ -108,7 +108,7 @@ import {
 } from './services/browserNotificationService';
 
 export default function App() {
-  const { lang, t } = useLanguage();
+  const { lang, t, tr } = useLanguage();
   const initialRoute = resolvePathToRoute(
     typeof window !== 'undefined' ? window.location.pathname : '/'
   );
@@ -131,8 +131,8 @@ export default function App() {
     initialCachedBcv || {
       bcv: INITIAL_EXCHANGE_RATE,
       paralelo: 1072.46,
-      lastUpdated: 'Conectando...',
-      source: 'BCV Oficial',
+      lastUpdated: tr('Conectando...', 'Connecting...', '连接中...'),
+      source: tr('BCV Oficial', 'Official BCV', 'BCV 官方汇率'),
       isLive: true,
       activeRateType: 'bcv',
     }
@@ -1398,7 +1398,7 @@ export default function App() {
               type="button"
               onClick={() => setRedirectAuthError(null)}
               className="p-1.5 rounded-lg hover:bg-red-900/50 text-red-200 shrink-0"
-              aria-label="Cerrar alerta de sesión"
+              aria-label={tr('Cerrar alerta de sesión', 'Close session alert', '关闭登录提示')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -1490,7 +1490,15 @@ export default function App() {
             }}
             onNavigateMarketplace={() => navigateTo('marketplace')}
             onOpenVectorSellerGuide={(autoPrompt) =>
-              openVectorGuide('seller', autoPrompt || 'Guía paso a paso para registrar mi tienda')
+              openVectorGuide(
+                'seller',
+                autoPrompt ||
+                  tr(
+                    'Guía paso a paso para registrar mi tienda',
+                    'Step-by-step guide to register my store',
+                    '逐步指导我如何注册我的店铺'
+                  )
+              )
             }
             onActiveBrandContext={handleMerchantVectorContext}
           />
@@ -1508,7 +1516,14 @@ export default function App() {
               onOpenMerchant={() => navigateTo('merchant')}
               onOpenMarketplace={() => navigateTo('marketplace')}
               onAskVectorSellerGuide={() =>
-                openVectorGuide('seller', 'Guía paso a paso para registrar mi tienda')
+                openVectorGuide(
+                  'seller',
+                  tr(
+                    'Guía paso a paso para registrar mi tienda',
+                    'Step-by-step guide to register my store',
+                    '逐步指导我如何注册我的店铺'
+                  )
+                )
               }
               userRole={userRole}
               showWarehousePos={canAccessWarehousePos}

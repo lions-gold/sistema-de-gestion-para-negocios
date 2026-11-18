@@ -83,13 +83,32 @@ interface VectorAssistantWidgetProps {
   onOpenCartDrawer?: () => void;
 }
 
-const VOICE_OPTIONS: Array<{ id: VectorVoicePreset; label: string }> = [
-  { id: 'Charon', label: 'Charon · Ejecutiva' },
-  { id: 'Fenrir', label: 'Fenrir · Profunda' },
-  { id: 'Kore', label: 'Kore · Serena' },
-  { id: 'Puck', label: 'Puck · Dinámica' },
-  { id: 'Zephyr', label: 'Zephyr · Clara' },
-];
+const VOICE_OPTIONS_BY_LANG: Record<
+  VectorLanguage,
+  Array<{ id: VectorVoicePreset; label: string }>
+> = {
+  es: [
+    { id: 'Charon', label: 'Charon · Ejecutiva' },
+    { id: 'Fenrir', label: 'Fenrir · Profunda' },
+    { id: 'Kore', label: 'Kore · Serena' },
+    { id: 'Puck', label: 'Puck · Dinámica' },
+    { id: 'Zephyr', label: 'Zephyr · Clara' },
+  ],
+  en: [
+    { id: 'Charon', label: 'Charon · Executive' },
+    { id: 'Fenrir', label: 'Fenrir · Deep' },
+    { id: 'Kore', label: 'Kore · Serene' },
+    { id: 'Puck', label: 'Puck · Dynamic' },
+    { id: 'Zephyr', label: 'Zephyr · Clear' },
+  ],
+  zh: [
+    { id: 'Charon', label: 'Charon · 商务稳重' },
+    { id: 'Fenrir', label: 'Fenrir · 低沉磁性' },
+    { id: 'Kore', label: 'Kore · 温和沉静' },
+    { id: 'Puck', label: 'Puck · 活力明快' },
+    { id: 'Zephyr', label: 'Zephyr · 清晰流畅' },
+  ],
+};
 
 export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
   user,
@@ -692,6 +711,12 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickBecomeSeller: 'Quiero vender',
       quickGuidePdf: 'Guía PDF (ES/EN/中文)',
       downloadGuideTitle: 'Descargar Guía Actualizada PDF (Español · English · 中文)',
+      hdVoiceTitle: 'Voz HD Vector',
+      closeAriaLabel: 'Cerrar asistente',
+      stockLabel: 'Stock:',
+      realEvidencePrefix: 'Respaldo real:',
+      handoffRecorded: (num: string) => `Traspaso ${num} registrado`,
+      stopActive: 'STOP activo',
     },
     en: {
       assistantTitle: 'Vector · Commercial Assistant',
@@ -725,6 +750,12 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickBecomeSeller: 'I want to sell',
       quickGuidePdf: 'PDF Guide (ES/EN/中文)',
       downloadGuideTitle: 'Download Updated Guide PDF (Español · English · 中文)',
+      hdVoiceTitle: 'Vector HD Voice',
+      closeAriaLabel: 'Close assistant',
+      stockLabel: 'Stock:',
+      realEvidencePrefix: 'Verified basis:',
+      handoffRecorded: (num: string) => `Handoff ${num} logged`,
+      stopActive: 'STOP active',
     },
     zh: {
       assistantTitle: '维克托（Vector）· 商务助手',
@@ -758,6 +789,12 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickBecomeSeller: '我想开店卖货',
       quickGuidePdf: '下载三语指南 PDF',
       downloadGuideTitle: '下载最新三语使用指南 PDF（西班牙语 · 英语 · 简体中文）',
+      hdVoiceTitle: 'Vector 高清语音',
+      closeAriaLabel: '关闭助手',
+      stockLabel: '库存：',
+      realEvidencePrefix: '真实依据：',
+      handoffRecorded: (num: string) => `交接工单 ${num} 已登记`,
+      stopActive: 'STOP 退订已生效',
     },
   }[vectorLang];
 
@@ -838,7 +875,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                   setVoiceEnabled(next);
                   if (!next) stopVectorAudio();
                 }}
-                title="Voz HD Vector"
+                title={uiCopy.hdVoiceTitle}
                 className="min-w-[36px] min-h-[36px] p-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-zinc-400 hover:text-amber-400 flex items-center justify-center"
               >
                 {voiceEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4" />}
@@ -847,7 +884,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="min-w-[36px] min-h-[36px] p-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center"
-                aria-label="Cerrar asistente"
+                aria-label={uiCopy.closeAriaLabel}
               >
                 <Minus className="w-4 h-4" />
               </button>
@@ -905,7 +942,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                   }}
                   className="bg-zinc-900 border border-white/[0.1] rounded px-1.5 py-0.5 text-[10px] text-amber-300 font-mono focus:outline-none"
                 >
-                  {VOICE_OPTIONS.map((v) => (
+                  {VOICE_OPTIONS_BY_LANG[vectorLang].map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.label}
                     </option>
@@ -1009,7 +1046,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                               {prod.name}
                             </div>
                             <div className="text-[10px] font-mono text-amber-400 tabular-nums">
-                              ${prod.priceUSD.toFixed(2)} · {(prod.priceUSD * exchangeRate).toFixed(2)} Bs · Stock: {prod.stock}
+                              ${prod.priceUSD.toFixed(2)} · {(prod.priceUSD * exchangeRate).toFixed(2)} Bs · {uiCopy.stockLabel} {prod.stock}
                             </div>
                           </div>
                           {onAddProductToCart && prod.stock > 0 && (
@@ -1043,7 +1080,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                     <div className="mt-1 flex flex-wrap gap-1 max-w-[88%]">
                       <span className="inline-flex items-center gap-1 text-[9px] font-mono text-zinc-500">
                         <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-                        Respaldo real: {msg.leverEvidence[0]}
+                        {uiCopy.realEvidencePrefix} {msg.leverEvidence[0]}
                       </span>
                     </div>
                   )}
@@ -1053,7 +1090,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                     <div className="mt-1.5 w-[88%] p-2 rounded-lg bg-zinc-950 border border-amber-400/30 text-[10px] text-zinc-300 space-y-1">
                       <div className="font-mono font-bold text-amber-400 flex items-center gap-1">
                         <ShieldAlert className="w-3 h-3" />
-                        <span>Traspaso {msg.escalationTicketNumber} registrado</span>
+                        <span>{uiCopy.handoffRecorded(msg.escalationTicketNumber)}</span>
                       </div>
                       {msg.handoffPacketText && (
                         <p className="text-[9px] text-zinc-400 break-words">{msg.handoffPacketText}</p>
@@ -1100,7 +1137,7 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
             <div className="flex items-center gap-1 shrink-0">
               {currentConsent === 'no' ? (
                 <span className="flex items-center gap-1 text-zinc-400 font-mono">
-                  <BellOff className="w-3 h-3 text-rose-400" /> STOP activo
+                  <BellOff className="w-3 h-3 text-rose-400" /> {uiCopy.stopActive}
                 </span>
               ) : (
                 <>

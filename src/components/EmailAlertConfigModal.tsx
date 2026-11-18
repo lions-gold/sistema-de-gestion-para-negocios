@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { Mail, X } from 'lucide-react';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface EmailAlertConfigModalProps {
   isOpen: boolean;
@@ -35,11 +36,13 @@ export const EmailAlertConfigModal: React.FC<EmailAlertConfigModalProps> = ({
   activeStore = null,
   onLogsUpdated,
 }) => {
+  const { tr } = useLanguage();
   if (!isOpen) return null;
 
   const storeId = activeStore?.id || 'default-warehouse';
   const ownerUid = activeStore?.ownerUid || '';
-  const storeName = activeStore?.storeName || 'Almacén & POS';
+  const storeName =
+    activeStore?.storeName || tr('Almacén & POS', 'Warehouse & POS', '仓库与 POS');
 
   const handleSyncedSave = (storeCfg: StoreEmailConfig) => {
     onSaveConfig({
@@ -71,10 +74,19 @@ export const EmailAlertConfigModal: React.FC<EmailAlertConfigModalProps> = ({
                 id="modal-email-title"
                 className="font-bold text-white text-base sm:text-lg font-display truncate"
               >
-                Configuración de Correo (SMTP / Resend)
+                {tr(
+                  'Configuración de Correo (SMTP / Resend)',
+                  'Email Configuration (SMTP / Resend)',
+                  '邮件配置 (SMTP / Resend)'
+                )}
               </h2>
               <p className="text-xs text-zinc-400 truncate">
-                Alertas de stock crítico y reportes de ventas · {storeName}
+                {tr(
+                  'Alertas de stock crítico y reportes de ventas',
+                  'Critical stock alerts and sales reports',
+                  '低库存预警与销售报告'
+                )}{' '}
+                · {storeName}
               </p>
             </div>
           </div>
@@ -82,7 +94,8 @@ export const EmailAlertConfigModal: React.FC<EmailAlertConfigModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800/80 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0"
-            title="Cerrar ventana"
+            title={tr('Cerrar ventana', 'Close window', '关闭窗口')}
+            aria-label={tr('Cerrar ventana', 'Close window', '关闭窗口')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -106,14 +119,18 @@ export const EmailAlertConfigModal: React.FC<EmailAlertConfigModalProps> = ({
         {/* Footer */}
         <div className="bg-[#09090b] px-4 sm:px-6 py-3 border-t border-white/[0.08] flex items-center justify-between text-xs text-zinc-400 shrink-0">
           <span className="truncate pr-2">
-            Smith Solutions E-Commerce · Envío seguro vía servidor
+            {tr(
+              'Smith Solutions E-Commerce · Envío seguro vía servidor',
+              'Smith Solutions E-Commerce · Secure server delivery',
+              'Smith Solutions E-Commerce · 安全服务端投递'
+            )}
           </span>
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 rounded-lg font-medium transition-colors min-h-[44px]"
           >
-            Cerrar
+            {tr('Cerrar', 'Close', '关闭')}
           </button>
         </div>
       </div>
