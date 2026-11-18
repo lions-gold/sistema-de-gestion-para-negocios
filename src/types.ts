@@ -742,7 +742,8 @@ export type UserPlatformRole = 'buyer' | 'seller';
 export type VectorSuggestedActionType =
   | 'navigate_merchant'
   | 'navigate_marketplace'
-  | 'prompt_google_auth';
+  | 'prompt_google_auth'
+  | 'download_guide';
 
 export interface VectorSuggestedAction {
   type: VectorSuggestedActionType;

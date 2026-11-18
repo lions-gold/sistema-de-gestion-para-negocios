@@ -1,11 +1,12 @@
 import React from 'react';
-import { Mail, Phone, ShieldCheck, Cookie, Lock } from 'lucide-react';
+import { Mail, Phone, ShieldCheck, Cookie, Lock, FileDown } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
 import { useLanguage } from '../i18n/LanguageContext';
 import { LanguageSwitcher } from '../i18n/LanguageSwitcher';
 
 import { PWAInstallButton } from './PWAInstallButton';
+import { downloadTrilingualPlatformGuidePDF } from '../utils/platformGuideExport';
 
 interface FooterProps {
   onOpenApp: (tab?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales') => void;
@@ -129,6 +130,16 @@ export const Footer: React.FC<FooterProps> = ({
                   </li>
                 </>
               )}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => downloadTrilingualPlatformGuidePDF('all')}
+                  className="hover:text-emerald-300 text-emerald-400 transition-colors font-medium inline-flex items-center gap-1.5 text-left"
+                >
+                  <FileDown className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t.footer.downloadGuide}</span>
+                </button>
+              </li>
               <li className="pt-2 flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-500">
                 <a
                   href={`${import.meta.env.BASE_URL}sitemap.xml`}

@@ -74,17 +74,29 @@ Cada conversación pertenece a una sola marca. Nunca mezcles catálogo, precios,
 15: Tema sensible: salud, legal, seguridad (N4, Crítica, 15 min)
 16: Baja o queja de spam en campañas (N4, Alta, 4 h)
 
-# DIFERENCIACIÓN COMPRADOR VS. VENDEDOR Y GUÍA DE REGISTRO DE TIENDA
-La plataforma diferencia claramente dos perfiles:
-1. COMPRADORES (Espacio «Comprar · Tiendas» / Directorio Público):
-   - No pagan suscripción. Exploran tiendas activas verificadas, comparan precios en dólares y bolívares a tasa oficial BCV en vivo, agregan al carrito por tienda, eligen retiro en tienda, delivery local o envío nacional, emiten factura dual PDF y envían su pedido por WhatsApp directo al dueño.
-2. VENDEDORES / COMERCIOS (Espacio «Vender · Mi Tienda» / SaaS 25 dólares al mes):
-   - Guías a cualquier interesado paso a paso para abrir y activar su tienda propia:
+# GUÍA OFICIAL ACTUALIZADA EN MEMORIA (ESPAÑOL · ENGLISH · 简体中文)
+La plataforma diferencia claramente dos perfiles y ofrece una guía descargable en PDF en 3 idiomas (ES, EN, 中文) que el usuario puede bajar en cualquier momento:
+
+1. CÓMO UN USUARIO COMPRA PRODUCTOS (Espacio «Comprar · Tiendas» / Directorio Público):
+   - Acceso gratuito sin suscripción: explora tiendas verificadas en «Comprar · Tiendas» o por enlace directo de tienda.
+   - Precios en dólares y bolívares sincronizados en vivo con la Tasa Oficial BCV en la barra superior; el usuario puede cambiar idioma (Español, English, 中文) en el menú desplegable o instalar la app PWA en iPhone, Mac o Android.
+   - Carrito aislado por tienda (sin mezclar mercancía de distintas tiendas), con stock real, fotos y estrellas.
+   - Elige entre los métodos de pago propios habilitados por esa tienda (Pago Móvil, Zelle, Transferencia Bancaria, Efectivo USD o Bs, Binance Pay, con cálculo transparente de IGTF 3 por ciento donde aplique) y modalidad de entrega: Retiro en Tienda, Delivery Local o Envío Nacional (MRW, Zoom, Tealca, Domesa).
+   - Al confirmar compra inicia sesión con su cuenta Google verificada, descarga la Factura Dual PDF (Original Cliente y Copia Tienda) y envía su orden con un clic al WhatsApp del comercio. Funciona incluso con respaldo en Modo Offline.
+
+2. CÓMO UNA PERSONA REGISTRA Y OPERA SU TIENDA (Espacio «Vender · Mi Tienda» · 25 dólares al mes):
    - Paso 1 (Identidad): Iniciar sesión con una cuenta Google verificada en «Vender · Mi Tienda».
-   - Paso 2 (Registro de Tienda): Completar nombre de la tienda, titular o razón social, WhatsApp comercial de Venezuela (+58), RIF (opcional si aún no posee), categoría, logotipo (archivo o enlace), descripción, modalidades de envío (Nacional MRW, Zoom o Tealca, Delivery Local o Retiro) y código de referido opcional.
-   - Paso 3 (Suscripción 25 dólares al mes): En la pestaña de suscripción mensual, realizar el pago por transferencia bancaria nacional, Pago Móvil, Binance Pay o Bybit (o aplicar cupón de referido) y enviar número de referencia y comprobante.
-   - Paso 4 (Activación y Catálogo): El Administrador aprueba el pago y activa la tienda en el Directorio Público con tienda propia en la plataforma. El vendedor carga productos manualmente o mediante importación masiva CSV o JSON con fotos y calificación.
-Si el usuario pregunta por registro de tienda, cómo vender, costos, requisitos o diferencias entre comprador y vendedor, respóndele con pasos claros adaptados a su estado real en sessionState (isAuthenticated, hasOwnedStore, ownedStoreStatus, userRole) y asigna suggestedActionType adecuado.
+   - Paso 2 (Registro de Tienda): Completar nombre comercial, titular o razón social, WhatsApp comercial de Venezuela (+58), RIF (opcional si aún no posee), categoría, logotipo (archivo o enlace), descripción, modalidades de envío (Nacional, Delivery Local o Retiro) y código de referido opcional.
+   - Paso 3 (Suscripción 25 dólares al mes): En «Suscripción $25/mes», revisar los métodos de pago configurados manualmente por el Admin (globales o específicos asignados a su tienda: transferencia bancaria, Pago Móvil, Binance Pay, Bybit u otros habilitados) o aplicar un cupón de referido, y reportar referencia o hash de pago.
+   - Paso 4 (Activación, Catálogo, POS y Correo): Cuando el Admin aprueba el pago, la tienda queda activa en el directorio con enlace propio. El dueño carga productos manualmente o mediante importación masiva CSV o JSON, configura sus métodos de pago propios para clientes, gestiona alertas de stock y ventas por Resend o servidor SMTP propio (con validador Ping en tiempo real antes de guardar), revisa su Bandeja Admin y Referidos, y opera Almacén & POS (POS multidivisa, cámara lector de barras, Fiados y cierre de caja) si está habilitado.
+
+3. CÓMO CONSULTAR DUDAS Y RECIBIR SOPORTE:
+   - Consultar con Vector (维克托) las 24 horas en Español, English o 中文 (por chat escrito o Voz HD neuronal). Puede alternar perfil Comprador/Vendedor o pedir la guía descargable en PDF trilingüe.
+   - Escalamiento a humano inmediato (16 disparadores N1-N4 con SLA de 15 minutos a 4 horas) si pide hablar con una persona o reporta cobros, envíos o incidencias.
+   - Gestión de consentimiento de notificaciones («Sí», «Solo importante» o «STOP»).
+   - Canales directos: Bandeja Admin de la tienda, formulario de contacto en la web, correo empresaalhadiqainvest@gmail.com o WhatsApp +58 422 027 3766.
+
+Si el usuario pregunta cómo comprar productos, cómo registrar u operar una tienda, cómo consultar dudas o pide la guía descargable, respóndele con pasos precisos adaptados a su sessionState y asigna suggestedActionType adecuado (usa «download_guide» cuando pida guía, manual, tutorial completo o ayuda general para descargar).
 
 # REFERENCIAS DE ESTILO CONSULTIVO (FEW-SHOT)
 - Ejemplo 1 (emprendedor consulta para qué sirve el sistema en su tienda de ropa): "¡Qué gusto saludarle! Para una tienda de ropa este sistema le ahorrará muchísimo tiempo, porque controla tallas y modelos en inventario, registra ventas en segundos y calcula su ganancia diaria en dólares y bolívares sin cuentas manuales. ¿Le gustaría que le explique cómo registrar su tienda en menos de dos minutos?"
@@ -201,7 +213,12 @@ export interface VectorChatAIResponse {
   leversUsed?: string[];
   leverEvidence?: string[];
   recommendedProductIds?: string[];
-  suggestedActionType?: 'none' | 'navigate_merchant' | 'navigate_marketplace' | 'prompt_google_auth';
+  suggestedActionType?:
+    | 'none'
+    | 'navigate_merchant'
+    | 'navigate_marketplace'
+    | 'prompt_google_auth'
+    | 'download_guide';
   consentIntent?: 'si' | 'no' | 'solo_importante' | 'none';
   triggerId?: number;
   error?: string;
@@ -354,9 +371,15 @@ export async function handleVectorChat(
             },
             suggestedActionType: {
               type: Type.STRING,
-              enum: ['none', 'navigate_merchant', 'navigate_marketplace', 'prompt_google_auth'],
+              enum: [
+                'none',
+                'navigate_merchant',
+                'navigate_marketplace',
+                'prompt_google_auth',
+                'download_guide',
+              ],
               description:
-                'Acción de navegación recomendada: navigate_merchant para registro/gestión de tienda, navigate_marketplace para explorar tiendas y comprar, prompt_google_auth si necesita iniciar con Google primero, o none.',
+                'Acción de navegación recomendada: navigate_merchant para registro/gestión de tienda, navigate_marketplace para explorar tiendas y comprar, prompt_google_auth si necesita iniciar con Google primero, download_guide cuando solicite la guía o ayuda general en ES/EN/ZH, o none.',
             },
             consentIntent: {
               type: Type.STRING,
@@ -383,7 +406,12 @@ export async function handleVectorChat(
       leversUsed: string[];
       leverEvidence: string[];
       recommendedProductIds: string[];
-      suggestedActionType?: 'none' | 'navigate_merchant' | 'navigate_marketplace' | 'prompt_google_auth';
+      suggestedActionType?:
+        | 'none'
+        | 'navigate_merchant'
+        | 'navigate_marketplace'
+        | 'prompt_google_auth'
+        | 'download_guide';
       consentIntent: 'si' | 'no' | 'solo_importante' | 'none';
       triggerId: number;
     };

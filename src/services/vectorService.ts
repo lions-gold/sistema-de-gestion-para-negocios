@@ -42,6 +42,9 @@ import {
   VectorTicket,
   VectorTriggerDefinition,
 } from '../types';
+import { VECTOR_GUIDE_MEMORY_SUMMARY } from '../utils/platformGuideExport';
+
+export { VECTOR_GUIDE_MEMORY_SUMMARY };
 
 export const VECTOR_IDENTITY = {
   nameEs: 'Vector',
@@ -914,6 +917,19 @@ export function buildVectorSuggestedAction(
       },
     ];
   }
+  if (actionType === 'download_guide') {
+    return [
+      {
+        type: 'download_guide',
+        label:
+          lang === 'zh'
+            ? '下载三语指南 PDF (西/英/中)'
+            : lang === 'en'
+              ? 'Download Guide PDF (ES / EN / 中文)'
+              : 'Descargar Guía PDF (ES / EN / 中文)',
+      },
+    ];
+  }
   return [
     {
       type: 'navigate_marketplace',
@@ -939,8 +955,18 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
   const { text, lang, userRole, isAuthenticated, hasOwnedStore, ownedStoreStatus, ownedStoreName } =
     params;
 
+  const asksFullGuideOrDoubts =
+    /(gu[ií]a|manual|descargar.*gu[ií]a|consultar.*duda|tengo.*duda|soporte|ayuda|preguntas|guide|handbook|download.*guide|support|faq|help me|ask.*question|指南|手册|下载指南|教程|咨询|疑问)/i.test(
+      text
+    );
+
+  const asksHowToBuy =
+    /(c[oó]mo\s*comprar|como\s*comprar|comprar\s*productos|proceso\s*de\s*compra|carrito|factura\s*dual|m[eé]todos?\s*de\s*pago|how\s*to\s*buy|how\s*do\s*i\s*buy|checkout|payment\s*methods?|怎么买|如何购买|怎么下单|购物流程)/i.test(
+      text
+    );
+
   const asksRoleDifference =
-    /(comprador.*vendedor|vendedor.*comprador|diferencia|como funciona|cómo funciona|soy comprador|modo comprador|como comprar|cómo comprar|ver tiendas|buyer.*seller|seller.*buyer|how to buy|how does it work|difference|买家.*卖家|区别|怎么买)/i.test(
+    /(comprador.*vendedor|vendedor.*comprador|diferencia|como funciona|cómo funciona|soy comprador|modo comprador|ver tiendas|buyer.*seller|seller.*buyer|how does it work|difference|买家.*卖家|区别)/i.test(
       text
     );
 
@@ -956,7 +982,7 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
       text
     );
   const asksStep4 =
-    /(paso\s*4|step\s*4|activar tienda|activaci[oó]n|subir productos|importar csv|csv|json|cat[aá]logo|第\s*4\s*步)/i.test(
+    /(paso\s*4|step\s*4|activar tienda|activaci[oó]n|subir productos|importar csv|csv|json|cat[aá]logo|smtp|almac[eé]n|第\s*4\s*步)/i.test(
       text
     );
 
@@ -965,13 +991,60 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
       text
     );
 
+  if (asksHowToBuy && !asksStoreRegistration && !asksStep1 && !asksStep2 && !asksStep3 && !asksStep4) {
+    const reply =
+      lang === 'zh'
+        ? '买家购物仅需 4 步（全程免订阅费）：\n1. 在「买家 · 店铺目录」选择已认证店铺，查看实时 BCV 汇率折算的美元与玻利瓦尔价格。\n2. 将商品加入该店铺独立购物车，并选择到店自提、同城配送或全国快递（MRW/Zoom/Tealca）。\n3. 选择该店铺配置的付款方式（如 Pago Móvil、Zelle、银行转账、Binance Pay 等）。\n4. 使用已验证 Google 账号确认订单，立即下载双联 PDF 发票（客户联 + 店主联）并通过 WhatsApp 一键发送给店主。\n您现在想逛店铺下单，还是下载三语完整指南？'
+        : lang === 'en'
+          ? 'Buying products as a customer takes 4 easy steps (zero subscription fee):\n1. Open Buy · Stores to browse verified storefronts with live USD and Bolivar prices at the Official BCV rate.\n2. Add items to that store’s isolated cart and pick Store Pickup, Local Delivery, or National Courier (MRW, Zoom, Tealca).\n3. Choose any payment method enabled by the store (Pago Móvil, Zelle, Bank Transfer, Cash, Binance Pay, etc.).\n4. Sign in with verified Google at checkout to issue your Dual PDF Invoice (Customer + Store copy) and dispatch your order via WhatsApp in 1 tap.\nWould you like to browse active stores now or download the trilingual PDF guide?'
+          : 'Comprar productos en la plataforma es gratuito y toma 4 pasos:\n1. Entre a «Comprar · Tiendas» o al enlace directo de la tienda para ver precios reales en USD y Bolívares a Tasa Oficial BCV en vivo.\n2. Agregue productos al carrito independiente de esa tienda y elija Retiro en Tienda, Delivery Local o Envío Nacional (MRW, Zoom, Tealca).\n3. Seleccione uno de los métodos de pago habilitados por esa tienda (Pago Móvil, Zelle, Transferencia, Efectivo o Binance Pay).\n4. Inicie sesión con Google verificado al finalizar para descargar su Factura Dual PDF (Cliente + Tienda) y enviar la orden por WhatsApp al dueño.\n¿Desea explorar las tiendas activas ahora o descargar la guía trilingüe en PDF?';
+
+    return {
+      reply,
+      detectedLanguage: lang,
+      leversUsed: ['reciprocidad'],
+      leverEvidence: ['Guía actualizada de compra verificada en memoria de Vector'],
+      recommendedProductIds: [],
+      suggestedActions: [
+        ...buildVectorSuggestedAction(lang, 'navigate_marketplace'),
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
+      ],
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
+  if (asksFullGuideOrDoubts && !asksStoreRegistration && !asksStep1 && !asksStep2 && !asksStep3 && !asksStep4) {
+    const reply =
+      lang === 'zh'
+        ? '维克托已完整收录最新平台指南，您可以通过以下方式随时咨询或查阅：\n• 即时答疑：直接输入关于购物（BCV 汇率/发票）、开店注册（$25/月/SMTP/POS）或订单的问题，支持 简体中文、西班牙语与英语语音及文字。\n• 人工转接：输入「转接人工客服」即可按 SLA 时效升级给专员或总管理员。\n• 官方直连：WhatsApp +58 422 027 3766 或邮箱 empresaalhadiqainvest@gmail.com。\n点击下方按钮可立即下载 西/英/中 三语离线 PDF 指南，请问您想先了解哪部分？'
+        : lang === 'en'
+          ? 'I have the full updated guide loaded in memory, and you have three ways to resolve any doubt:\n• Ask Vector 24/7: Ask in Español, English, or 简体中文 about buying products, store registration ($25/mo, manual payment methods, SMTP ping, POS), or switch Buyer/Seller modes above.\n• Human Support: Type "I want to talk to a human agent" anytime to trigger an escalation ticket with SLA tracking.\n• Direct Official Support: WhatsApp +58 422 027 3766 or email empresaalhadiqainvest@gmail.com.\nUse the button below to download the trilingual PDF guide (ES / EN / 中文). Which topic can I clarify first?'
+          : 'Tengo toda la guía actualizada en memoria y cuentas con 3 vías rápidas para resolver dudas:\n• Consultar a Vector 24/7: Pregunte por texto o Voz HD en Español, English o 中文 sobre cómo comprar, registrar su tienda ($25/mes, métodos manuales, SMTP con ping, POS) o cambie su perfil Comprador/Vendedor.\n• Escalamiento Humano: Escriba «Quiero hablar con humano» para abrir un ticket formal con SLA de respuesta.\n• Soporte Oficial Directo: Bandeja Admin, WhatsApp +58 422 027 3766 y correo empresaalhadiqainvest@gmail.com.\nPulsa el botón de abajo para descargar la Guía Completa PDF (ES / EN / 中文). ¿Qué tema deseas consultar primero?';
+
+    return {
+      reply,
+      detectedLanguage: lang,
+      leversUsed: ['reciprocidad'],
+      leverEvidence: ['Guía trilingüe actualizada en memoria de Vector (ES/EN/ZH)'],
+      recommendedProductIds: [],
+      suggestedActions: [
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
+        ...buildVectorSuggestedAction(lang, 'navigate_marketplace'),
+        ...buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      ],
+      consentIntent: 'none',
+      triggerId: 0,
+    };
+  }
+
   if (asksRoleDifference && !asksStoreRegistration) {
     const reply =
       lang === 'zh'
-        ? '平台明确区分两种角色：\n• 买家模式（免费）：无需订阅，直接浏览已认证店铺，按 BCV 汇率以美元或玻利瓦尔下单，获取双联 PDF 发票。\n• 卖家模式（$25/月）：在「卖家 · 我的店铺」用 Google 账号注册品牌、RIF、Logo 与商品库，自主收款接单。\n下一步：选择您要进入的空间即可开始。'
+        ? '平台明确区分两种角色：\n• 买家模式（免费）：无需订阅，直接浏览已认证店铺，按 BCV 汇率以美元或玻利瓦尔下单，获取双联 PDF 发票。\n• 卖家模式（$25/月）：在「卖家 · 我的店铺」用 Google 账号注册品牌、RIF、Logo 与商品库，支持自定义收款方式、POS 与邮件通知。\n下一步：选择您要进入的空间或下载完整三语指南。'
         : lang === 'en'
-          ? 'The platform clearly separates both roles:\n• Buyer Mode (Free): Browse verified stores, pay with live BCV dual-currency totals, download dual PDF invoices, and order via WhatsApp with zero subscription fee.\n• Seller Mode ($25/mo): Register your own store with tax ID (RIF), logo, CSV/JSON catalog, and independent cart inside Sell · My Store.\nNext step: choose whether you want to browse stores to buy or register your own store.'
-          : 'La plataforma separa ambos perfiles con claridad:\n• Compradores (Sin costo): Exploran tiendas activas en «Comprar · Tiendas», calculan USD/Bs a tasa BCV, descargan factura dual PDF y envían su pedido por WhatsApp.\n• Vendedores / Comercios ($25/mes): Crean su tienda propia en «Vender · Mi Tienda» con RIF (opcional), logo, envíos y catálogo importable.\nSiguiente paso: elija si desea explorar tiendas para comprar o iniciar el registro de su tienda.';
+          ? 'The platform clearly separates both roles:\n• Buyer Mode (Free): Browse verified stores, pay with live BCV dual-currency totals, download dual PDF invoices, and order via WhatsApp with zero subscription fee.\n• Seller Mode ($25/mo): Register your own store with tax ID (RIF), logo, CSV/JSON catalog, store payment methods, POS & SMTP alerts inside Sell · My Store.\nNext step: choose whether to browse stores, register your store, or download the trilingual guide.'
+          : 'La plataforma separa ambos perfiles con claridad:\n• Compradores (Sin costo): Exploran tiendas activas en «Comprar · Tiendas», calculan USD/Bs a tasa BCV, eligen métodos de pago de la tienda, descargan factura dual PDF y envían su pedido por WhatsApp.\n• Vendedores / Comercios ($25/mes): Crean su tienda propia en «Vender · Mi Tienda» con RIF (opcional), logo, envíos, métodos de cobro propios, alertas SMTP con prueba Ping y catálogo importable.\nSiguiente paso: elija su espacio o descargue la guía trilingüe en PDF.';
 
     return {
       reply,
@@ -982,6 +1055,7 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
       suggestedActions: [
         ...buildVectorSuggestedAction(lang, 'navigate_marketplace'),
         ...buildVectorSuggestedAction(lang, 'navigate_merchant'),
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
       ],
       consentIntent: 'none',
       triggerId: 0,
@@ -1042,15 +1116,18 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
     return {
       reply:
         lang === 'zh'
-          ? '第 3 步（$25/月 订阅付款与凭证提交）：\n• 在店铺控制台「月度订阅 $25/月」查看委内瑞拉银行转账、Pago Móvil、Binance Pay 或 Bybit 官方账号。\n• 如有推荐优惠券可勾选抵扣；付款后填写流水号或交易哈希（TxHash）并提交凭证。\n下一步：前往订阅页核对收款信息并提交付款报告。'
+          ? '第 3 步（$25/月 订阅付款与凭证提交）：\n• 在店铺控制台「月度订阅 $25/月」查看管理员手动配置的官方及专属收款账号（委内瑞拉银行转账、Pago Móvil、Binance Pay、Bybit 等）。\n• 如有推荐优惠券可勾选抵扣；付款后填写流水号或交易哈希（TxHash）并提交凭证。\n下一步：前往订阅页核对收款信息并提交付款报告。'
           : lang === 'en'
-            ? 'Step 3 ($25/mo Subscription & Payment Report):\n• Open the "Subscription $25/mo" tab in Sell · My Store to view verified Bank Transfers, Pago Móvil, Binance Pay, or Bybit accounts.\n• Apply a referral coupon if available, complete the transfer, and submit your Reference / TxHash.\nNext step: report your receipt in Sell · My Store.'
-            : 'Paso 3 (Suscripción $25/mes y Reporte de Pago):\n• En la pestaña «Suscripción $25/mes» verá los datos oficiales de Bancos VE, Pago Móvil, Binance Pay y Bybit (con conversión exacta a Bs. a tasa BCV).\n• Si tiene un cupón de referido puede aplicarlo; tras transferir, registre el número de referencia / TxHash.\nSiguiente paso: entre a «Vender · Mi Tienda» para reportar su comprobante.',
+            ? 'Step 3 ($25/mo Subscription & Payment Report):\n• Open the "Subscription $25/mo" tab in Sell · My Store to view manual payment methods configured by Admin (global or store-specific: Bank Transfers, Pago Móvil, Binance Pay, Bybit, etc.).\n• Apply a referral coupon if available, complete the transfer, and submit your Reference / TxHash.\nNext step: report your receipt in Sell · My Store.'
+            : 'Paso 3 (Suscripción $25/mes y Reporte de Pago):\n• En la pestaña «Suscripción $25/mes» verá los métodos de pago configurados manualmente por el Admin (globales y específicos para su tienda: Bancos VE, Pago Móvil, Binance Pay, Bybit, etc., con conversión Bs. a tasa BCV).\n• Si tiene un cupón de referido puede aplicarlo; tras pagar, registre el número de referencia / TxHash.\nSiguiente paso: entre a «Vender · Mi Tienda» para reportar su comprobante.',
       detectedLanguage: lang,
       leversUsed: [],
       leverEvidence: [],
       recommendedProductIds: [],
-      suggestedActions: buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      suggestedActions: [
+        ...buildVectorSuggestedAction(lang, 'navigate_merchant'),
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
+      ],
       consentIntent: 'none',
       triggerId: 0,
     };
@@ -1060,15 +1137,18 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
     return {
       reply:
         lang === 'zh'
-          ? '第 4 步（店铺激活与上架商品）：\n• 管理员核实付款后，店铺即自动展示在公共目录，并拥有独立链接 /tienda/店铺标识。\n• 在「商品与数据库导入导出」可逐个添加商品，或一键导入含图片、美元价格和星级评分的 CSV/JSON 文件。\n下一步：打开您的店铺控制台上传商品并测试公开链接。'
+          ? '第 4 步（店铺激活、商品目录、POS 与 SMTP 警报）：\n• 管理员核实付款后，店铺即自动展示在公共目录，并拥有独立链接 /tienda/店铺标识。\n• 在「商品与数据库导入导出」添加商品或批量导入 CSV/JSON；还可自定义买家收款方式、配置支持实时 Ping 校验的 SMTP/Resend 邮件预警，或使用已开启的仓库与 POS 模块。\n下一步：打开您的店铺控制台上传商品并配置工具。'
           : lang === 'en'
-            ? 'Step 4 (Activation & Catalog Upload):\n• Once Admin approves your payment, your storefront goes live in the Active Stores Directory with your own /tienda/slug link.\n• Use "Products & Export/Import" to add items manually or bulk-import a CSV/JSON file with photos and prices.\nNext step: open Sell · My Store to upload or import your catalog.'
-            : 'Paso 4 (Activación y Carga de Catálogo):\n• Al aprobar el pago, el Administrador activa su tienda en el Directorio Público con enlace propio (/tienda/su-slug).\n• En «Productos y Export/Import» puede agregar artículos uno a uno o importar masivamente un CSV/JSON con fotos, precios USD y calificación.\nSiguiente paso: ingrese a «Vender · Mi Tienda» para revisar su estado o cargar productos.',
+            ? 'Step 4 (Activation, Catalog, POS & SMTP Alerts):\n• Once Admin approves your payment, your storefront goes live in the Active Stores Directory with your own /tienda/slug link.\n• Upload products manually or import CSV/JSON, configure store payment methods for buyers, enable stock/sales alerts via Resend or custom SMTP (with real-time Ping validator), and run Warehouse & POS if enabled.\nNext step: open Sell · My Store to manage your catalog or download the guide.'
+            : 'Paso 4 (Activación, Catálogo, POS y Correo SMTP):\n• Al aprobar el pago, el Admin activa su tienda con enlace propio (/tienda/su-slug). Cargue productos manualmente o vía CSV/JSON.\n• Configure sus métodos de pago propios para compradores, active alertas de stock/ventas por Resend o SMTP (con validador Ping en tiempo real antes de guardar) y use Almacén & POS si está habilitado.\nSiguiente paso: abra «Vender · Mi Tienda» o descargue la guía trilingüe en PDF.',
       detectedLanguage: lang,
       leversUsed: [],
       leverEvidence: [],
       recommendedProductIds: [],
-      suggestedActions: buildVectorSuggestedAction(lang, 'navigate_merchant'),
+      suggestedActions: [
+        ...buildVectorSuggestedAction(lang, 'navigate_merchant'),
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
+      ],
       consentIntent: 'none',
       triggerId: 0,
     };
@@ -1118,10 +1198,13 @@ function resolveStoreOnboardingOrRoleGuidance(params: {
       leversUsed: [],
       leverEvidence: [],
       recommendedProductIds: [],
-      suggestedActions: buildVectorSuggestedAction(
-        lang,
-        !isAuthenticated ? 'prompt_google_auth' : 'navigate_merchant'
-      ),
+      suggestedActions: [
+        ...buildVectorSuggestedAction(
+          lang,
+          !isAuthenticated ? 'prompt_google_auth' : 'navigate_merchant'
+        ),
+        ...buildVectorSuggestedAction(lang, 'download_guide'),
+      ],
       consentIntent: 'none',
       triggerId: 0,
     };
@@ -1365,7 +1448,7 @@ export function runVectorDeterministicFallback(params: {
     };
   }
 
-  // Rule 7.5: Guided Store Registration & Buyer vs. Seller Differentiation
+  // Rule 7.5: Guided Store Registration, How to Buy, Guide & Doubt Resolution
   const onboardingOrRoleHit = resolveStoreOnboardingOrRoleGuidance({
     text,
     lang: detectedLang,
@@ -1375,7 +1458,13 @@ export function runVectorDeterministicFallback(params: {
     ownedStoreStatus: params.ownedStoreStatus,
     ownedStoreName: params.ownedStoreName,
   });
-  if (onboardingOrRoleHit && (isGeneralPlatformScope || /registrar|crear.*tienda|abrir.*tienda|comprador.*vendedor|paso\s*[1-4]|register.*store|step\s*[1-4]|注册|开店|第\s*[1-4]\s*步/i.test(text))) {
+  if (
+    onboardingOrRoleHit &&
+    (isGeneralPlatformScope ||
+      /registrar|crear.*tienda|abrir.*tienda|comprador.*vendedor|paso\s*[1-4]|c[oó]mo\s*comprar|como\s*comprar|gu[ií]a|manual|ayuda|duda|register.*store|how\s*to\s*buy|guide|help|step\s*[1-4]|注册|开店|怎么买|指南|手册|第\s*[1-4]\s*步/i.test(
+        text
+      ))
+  ) {
     return onboardingOrRoleHit;
   }
 

@@ -16,6 +16,7 @@ import {
   BarChart3,
   MessageCircle,
   ChevronRight,
+  FileDown,
 } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
@@ -25,6 +26,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { GoogleAuthButton } from './GoogleAuthButton';
 import { useOnlineStatus } from '../hooks/usePWAInstall';
 import { getOfflineQueue, subscribeOfflineQueue } from '../services/offlineSyncService';
+import { downloadTrilingualPlatformGuidePDF } from '../utils/platformGuideExport';
 
 interface HeaderProps {
   currentView: AppMainView;
@@ -370,6 +372,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
               </button>
 
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  downloadTrilingualPlatformGuidePDF('all');
+                }}
+                className={menuItemClass(false)}
+              >
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <FileDown className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="truncate">{t.header.downloadGuide}</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+              </button>
+
               {onOpenScanner && (
                 <button
                   type="button"
@@ -546,6 +563,20 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="flex items-center gap-3 min-w-0">
               <MessageCircle className="w-5 h-5 text-amber-400 shrink-0" />
               <span className="truncate">{t.header.serviceContact}</span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              downloadTrilingualPlatformGuidePDF('all');
+            }}
+            className={menuItemClass(false)}
+          >
+            <span className="flex items-center gap-3 min-w-0">
+              <FileDown className="w-5 h-5 text-emerald-400 shrink-0" />
+              <span className="truncate">{t.header.downloadGuide}</span>
             </span>
           </button>
 

@@ -54,6 +54,7 @@ export const translations = {
       serviceModules: 'Módulos (Inventario, POS y Caja)',
       serviceComparison: 'Comparativa y Planes SaaS',
       serviceContact: 'Soporte y Contacto Directo',
+      downloadGuide: 'Guía PDF (ES / EN / 中文)',
     },
     mobileNav: {
       stores: 'Comprar',
@@ -246,6 +247,7 @@ export const translations = {
       linkDebtors: 'Libreta de Fiados con WhatsApp',
       linkCashier: 'Caja Dual, Cierre & Fiscalidad',
       devCardTitle: 'Firma y Desarrollo de Software',
+      downloadGuide: 'Descargar Guía PDF (ES / EN / 中文)',
       rights: '© 2026 Smith Solutions E-Commerce · Material Assemble. Todos los derechos reservados.',
       designedBy: 'Programado y diseñado por',
       languageTitle: 'Idioma de la plataforma:',
@@ -660,6 +662,7 @@ export const translations = {
       serviceModules: 'Modules (Inventory, POS & Cash)',
       serviceComparison: 'Plans & Comparison',
       serviceContact: 'Support & Direct Contact',
+      downloadGuide: 'Guide PDF (ES / EN / 中文)',
     },
     mobileNav: {
       stores: 'Buy',
@@ -852,6 +855,7 @@ export const translations = {
       linkDebtors: 'WhatsApp Credit Ledger',
       linkCashier: 'Dual Cash Register & Tax',
       devCardTitle: 'Software Engineering & Brand',
+      downloadGuide: 'Download Guide PDF (ES / EN / 中文)',
       rights: '© 2026 Smith Solutions E-Commerce · Material Assemble. All rights reserved.',
       designedBy: 'Engineered and designed by',
       languageTitle: 'Platform language:',
@@ -1266,6 +1270,7 @@ export const translations = {
       serviceModules: '核心模块 (库存、收银与账目)',
       serviceComparison: '方案对比与订阅',
       serviceContact: '联系支持与咨询',
+      downloadGuide: '下载三语指南 PDF (西/英/中)',
     },
     mobileNav: {
       stores: '买商品',
@@ -1456,6 +1461,7 @@ export const translations = {
       linkDebtors: 'WhatsApp 赊账客户本',
       linkCashier: '双币钱箱、日结与税务',
       devCardTitle: '软件开发与品牌归属',
+      downloadGuide: '下载三语指南 PDF (ES / EN / 中文)',
       rights: '© 2026 Smith Solutions E-Commerce · Material Assemble. 保留所有权利。',
       designedBy: '程序设计与开发：',
       languageTitle: '选择平台语言：',

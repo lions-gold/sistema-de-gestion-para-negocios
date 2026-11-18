@@ -4,6 +4,7 @@ import {
   BellOff,
   Compass,
   ExternalLink,
+  FileDown,
   Globe2,
   Loader2,
   LogIn,
@@ -58,6 +59,7 @@ import {
   saveVectorVoicePreset,
   VectorVoicePreset,
 } from '../services/offlineSyncService';
+import { downloadTrilingualPlatformGuidePDF } from '../utils/platformGuideExport';
 
 export interface VectorOpenSignal {
   nonce: number;
@@ -650,6 +652,10 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       } catch {
         // user dismissed popup or redirect initiated
       }
+      return;
+    }
+    if (action.type === 'download_guide') {
+      downloadTrilingualPlatformGuidePDF('all');
     }
   };
 
@@ -684,6 +690,8 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickHowBuy: '¿Cómo comprar?',
       quickBrowseStores: 'Ver tiendas activas',
       quickBecomeSeller: 'Quiero vender',
+      quickGuidePdf: 'Guía PDF (ES/EN/中文)',
+      downloadGuideTitle: 'Descargar Guía Actualizada PDF (Español · English · 中文)',
     },
     en: {
       assistantTitle: 'Vector · Commercial Assistant',
@@ -715,6 +723,8 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickHowBuy: 'How to buy?',
       quickBrowseStores: 'Browse active stores',
       quickBecomeSeller: 'I want to sell',
+      quickGuidePdf: 'PDF Guide (ES/EN/中文)',
+      downloadGuideTitle: 'Download Updated Guide PDF (Español · English · 中文)',
     },
     zh: {
       assistantTitle: '维克托（Vector）· 商务助手',
@@ -746,6 +756,8 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       quickHowBuy: '如何下单购买？',
       quickBrowseStores: '查看已激活店铺',
       quickBecomeSeller: '我想开店卖货',
+      quickGuidePdf: '下载三语指南 PDF',
+      downloadGuideTitle: '下载最新三语使用指南 PDF（西班牙语 · 英语 · 简体中文）',
     },
   }[vectorLang];
 
@@ -810,6 +822,15 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                   {code === 'zh' ? '中文' : code}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => downloadTrilingualPlatformGuidePDF('all')}
+                title={uiCopy.downloadGuideTitle}
+                aria-label={uiCopy.downloadGuideTitle}
+                className="min-w-[36px] min-h-[36px] p-1.5 rounded-lg bg-zinc-900 border border-white/[0.08] text-amber-400 hover:bg-zinc-800 flex items-center justify-center"
+              >
+                <FileDown className="w-4 h-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -953,7 +974,9 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                           type="button"
                           onClick={() => handleSuggestedAction(act)}
                           className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-                            act.type === 'navigate_merchant' || act.type === 'prompt_google_auth'
+                            act.type === 'navigate_merchant' ||
+                            act.type === 'prompt_google_auth' ||
+                            act.type === 'download_guide'
                               ? 'bg-amber-400 hover:bg-amber-300 text-zinc-950'
                               : 'bg-[#111114] hover:bg-zinc-800 border border-white/[0.12] text-zinc-100'
                           }`}
@@ -962,6 +985,8 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                             <LogIn className="w-3 h-3 shrink-0" />
                           ) : act.type === 'navigate_merchant' ? (
                             <Store className="w-3 h-3 shrink-0" />
+                          ) : act.type === 'download_guide' ? (
+                            <FileDown className="w-3 h-3 shrink-0" />
                           ) : (
                             <ExternalLink className="w-3 h-3 shrink-0 text-amber-400" />
                           )}
@@ -1185,6 +1210,14 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => downloadTrilingualPlatformGuidePDF('all')}
+              className="px-2.5 py-1.5 min-h-[34px] rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-[11px] sm:text-[10px] text-emerald-300 font-semibold whitespace-nowrap flex items-center gap-1"
+            >
+              <FileDown className="w-3 h-3 shrink-0" />
+              <span>{uiCopy.quickGuidePdf}</span>
+            </button>
             <button
               type="button"
               onClick={() =>
