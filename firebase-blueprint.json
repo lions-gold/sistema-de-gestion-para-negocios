@@ -176,6 +176,8 @@
         "localDeliveryZone": { "type": "string", "maxLength": 150 },
         "pickupEnabled": { "type": "boolean" },
         "warehousePosEnabled": { "type": "boolean" },
+        "clothingSizesEnabled": { "type": "boolean" },
+        "defaultClothingSizes": { "type": "array", "maxItems": 40, "items": { "type": "string", "maxLength": 24 } },
         "referralCode": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
         "referredByCode": { "type": "string", "maxLength": 32, "pattern": "^[A-Z0-9\\-]+$" },
         "referredByStoreId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
@@ -319,6 +321,8 @@
         "stock": { "type": "number" },
         "minStock": { "type": "number" },
         "unit": { "type": "string", "maxLength": 30 },
+        "availableSizes": { "type": "array", "maxItems": 40, "items": { "type": "string", "maxLength": 24 } },
+        "sizeGuide": { "type": "string", "maxLength": 300 },
         "isActive": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -413,6 +417,7 @@
         "productName": { "type": "string", "minLength": 1, "maxLength": 140 },
         "sku": { "type": "string", "maxLength": 60 },
         "unit": { "type": "string", "maxLength": 30 },
+        "selectedSize": { "type": "string", "maxLength": 40 },
         "quantity": { "type": "number" },
         "unitPriceUSD": { "type": "number" },
         "unitCostUSD": { "type": "number" },
@@ -757,6 +762,26 @@
       },
       "required": ["uid", "language", "updatedAt"]
     },
+    "PlatformGuideVideo": {
+      "title": "PlatformGuideVideo",
+      "description": "Admin-curated YouTube tutorial video helping buyers, merchants, and operators learn how to use the platform.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 400 },
+        "youtubeUrl": { "type": "string", "minLength": 8, "maxLength": 300 },
+        "youtubeId": { "type": "string", "minLength": 11, "maxLength": 11, "pattern": "^[a-zA-Z0-9_\\-]{11}$" },
+        "audience": { "type": "string", "enum": ["all", "buyers", "sellers", "warehouse"] },
+        "language": { "type": "string", "enum": ["es", "en", "zh", "all"] },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdByEmail": { "type": "string", "format": "email", "maxLength": 160 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "youtubeUrl", "youtubeId", "audience", "language", "sortOrder", "isActive", "createdByEmail", "createdAt", "updatedAt"]
+    },
     "WarehouseProduct": {
       "title": "WarehouseProduct",
       "description": "Private per-store Warehouse & POS inventory item isolated per StoreTenant with optional link to storefront catalog.",
@@ -783,6 +808,8 @@
         "location": { "type": "string", "maxLength": 60 },
         "expirationDate": { "type": "string", "maxLength": 30 },
         "storefrontProductId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "availableSizes": { "type": "array", "maxItems": 40, "items": { "type": "string", "maxLength": 24 } },
+        "sizeGuide": { "type": "string", "maxLength": 300 },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -918,6 +945,10 @@
     "/userPreferences/{uid}": {
       "schema": { "$ref": "#/entities/UserLanguagePreference" },
       "description": "Private per-user isolated language preferences (ES / EN / ZH)."
+    },
+    "/platformGuideVideos/{videoId}": {
+      "schema": { "$ref": "#/entities/PlatformGuideVideo" },
+      "description": "Admin-managed YouTube tutorial video guides for platform users."
     }
   }
 }

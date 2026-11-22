@@ -16,7 +16,8 @@ import {
   Search,
 } from 'lucide-react';
 import { VENEZUELA_LOCALE, VENEZUELA_TIMEZONE } from '../utils/venezuelaTime';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
+import { translateUnitLabel } from '../utils/platformLabelsI18n';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -107,7 +108,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onUpdateStock,
   onSelectProduct,
 }) => {
-  const { tr } = useLanguage();
+  const { lang, tr } = useSubsectionTranslation('warehouse');
   const [scannerActive, setScannerActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
@@ -605,7 +606,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                         : 'text-white'
                     }
                   >
-                    {liveMatchedProduct.stock} {liveMatchedProduct.unit}s
+                    {liveMatchedProduct.stock} {translateUnitLabel(liveMatchedProduct.unit, lang, liveMatchedProduct.stock !== 1)}
                   </strong>
                 </span>
 
@@ -720,7 +721,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                               currentStock <= currentMinStock ? 'text-amber-400' : 'text-zinc-300'
                             }
                           >
-                            {currentStock} {entry.unit}s
+                            {currentStock} {translateUnitLabel(entry.unit, lang, currentStock !== 1)}
                           </span>
                         </div>
                       </button>

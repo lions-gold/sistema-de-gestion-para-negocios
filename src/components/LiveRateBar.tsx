@@ -37,7 +37,25 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
   onSelectRateType,
 }) => {
   const { t, tr } = useLanguage();
-  const displayLastUpdated = lastUpdated || tr('Hoy', 'Today', '今天');
+  const displayLastUpdated = (() => {
+    const raw = (lastUpdated || '').trim();
+    if (!raw || raw === 'Hoy') return tr('Hoy', 'Today', '今天');
+    if (raw === 'Conectando...') return tr('Conectando...', 'Connecting...', '连接中...');
+    return raw;
+  })();
+  const displaySource = (() => {
+    const raw = (source || '').trim();
+    if (!raw || raw === 'BCV Oficial') {
+      return tr('BCV Oficial', 'Official BCV', 'BCV 官方汇率');
+    }
+    if (raw === 'Paralelo') {
+      return tr('Paralelo', 'Parallel Rate', '平行市场汇率');
+    }
+    if (raw.includes('Offline') || raw.includes('offline') || raw.includes('Respaldo')) {
+      return tr('Modo Offline / Respaldo Local', 'Offline Mode / Local Backup', '离线模式 / 本地缓存');
+    }
+    return raw;
+  })();
   const [isEditing, setIsEditing] = useState(false);
   const [tempRate, setTempRate] = useState(rate.toString());
   const [calcUSD, setCalcUSD] = useState<number>(20);
@@ -73,7 +91,7 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
           <div
             className="flex items-center gap-1.5 text-[11px] font-medium shrink-0 h-8 sm:h-9 px-0.5"
             title={
-              source ||
+              displaySource ||
               tr('Banco Central de Venezuela', 'Central Bank of Venezuela (BCV)', '委内瑞拉中央银行 (BCV)')
             }
           >
@@ -171,7 +189,7 @@ export const LiveRateBar: React.FC<LiveRateBarProps> = ({
           </div>
 
           <span className="text-zinc-500 text-[11px] hidden xl:inline tabular-nums whitespace-nowrap">
-            {source ? `${source} · ` : ''}
+            {displaySource ? `${displaySource} · ` : ''}
             {t.liveRate.updated}: {displayLastUpdated}
           </span>
         </div>

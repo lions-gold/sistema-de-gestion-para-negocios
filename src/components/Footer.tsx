@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, Phone, ShieldCheck, Cookie, Lock, FileDown } from 'lucide-react';
+import { Mail, Phone, ShieldCheck, Cookie, Lock, FileDown, Video } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
 import { useLanguage } from '../i18n/LanguageContext';
@@ -13,6 +13,7 @@ interface FooterProps {
   onNavigateView?: (view: AppMainView) => void;
   onTrigger404?: () => void;
   showWarehousePos?: boolean;
+  onOpenVideoGuides?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -20,12 +21,14 @@ export const Footer: React.FC<FooterProps> = ({
   onNavigateView,
   onTrigger404,
   showWarehousePos = false,
+  onOpenVideoGuides,
 }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
 
   const handleOpenCookieSettings = () => {
-    localStorage.removeItem('smith_solutions_cookie_consent');
-    window.location.reload();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('smith_open_cookie_settings'));
+    }
   };
 
   return (
@@ -140,6 +143,18 @@ export const Footer: React.FC<FooterProps> = ({
                   <span>{t.footer.downloadGuide}</span>
                 </button>
               </li>
+              {onOpenVideoGuides && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={onOpenVideoGuides}
+                    className="hover:text-amber-300 text-amber-400 transition-colors font-medium inline-flex items-center gap-1.5 text-left"
+                  >
+                    <Video className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tr('Video Guías de Uso', 'Video Tutorials', '视频使用教程')}</span>
+                  </button>
+                </li>
+              )}
               <li className="pt-2 flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-500">
                 <a
                   href={`${import.meta.env.BASE_URL}sitemap.xml`}

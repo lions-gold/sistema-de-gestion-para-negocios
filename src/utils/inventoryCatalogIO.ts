@@ -18,6 +18,8 @@ export interface PortableInventoryItem {
   rotacion?: 'Alta' | 'Media' | 'Baja';
   ubicacion?: string;
   proveedor?: string;
+  tallas?: string[];
+  guiaTallas?: string;
 }
 
 function escapeCsvCell(value: string | number | undefined): string {
@@ -45,6 +47,8 @@ export function exportInventoryCatalogCSV(products: Product[]): void {
     'rotacion',
     'ubicacion',
     'proveedor',
+    'tallas',
+    'guiaTallas',
   ];
 
   const rows = products.map((p) =>
@@ -62,8 +66,10 @@ export function exportInventoryCatalogCSV(products: Product[]): void {
       escapeCsvCell(p.unit),
       escapeCsvCell(p.barcode),
       escapeCsvCell(p.turnoverRate || 'Media'),
-      escapeCsvCell(p.location || 'Cava Principal'),
+      escapeCsvCell(p.location || 'Depósito Principal'),
       escapeCsvCell(p.supplier || ''),
+      escapeCsvCell((p.availableSizes || []).join(' | ')),
+      escapeCsvCell(p.sizeGuide || ''),
     ].join(',')
   );
 
@@ -95,8 +101,10 @@ export function exportInventoryCatalogJSON(products: Product[]): void {
       unidad: p.unit,
       codigoBarras: p.barcode,
       rotacion: p.turnoverRate || 'Media',
-      ubicacion: p.location || 'Cava Principal',
+      ubicacion: p.location || 'Depósito Principal',
       proveedor: p.supplier || '',
+      tallas: p.availableSizes || [],
+      guiaTallas: p.sizeGuide || '',
     })),
   };
 
@@ -112,11 +120,11 @@ export function exportInventoryCatalogJSON(products: Product[]): void {
 
 export function downloadInventoryCSVTemplate(): void {
   const headers =
-    'nombre,descripcion,foto,precioUSD,costoUSD,stock,minStock,calificacion,categoria,sku,unidad,codigoBarras,rotacion,ubicacion,proveedor';
+    'nombre,descripcion,foto,precioUSD,costoUSD,stock,minStock,calificacion,categoria,sku,unidad,codigoBarras,rotacion,ubicacion,proveedor,tallas,guiaTallas';
   const sample1 =
-    '"Ron Santa Teresa 1796 (750ml)","Ron solera premium añejado en barricas de roble","https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400",48.00,32.00,18,5,5.0,"Licores","RON-1796","Botella","7591234567890","Alta","Cava Principal","C.A. Ron Santa Teresa"';
+    '"Franela Oversize Algodón Peinado","Franela premium 240gsm corte streetwear","",24.00,13.50,30,6,5.0,"Moda y Ropa","FRN-OV24","Prenda","7591234567890","Alta","Exhibición Tienda","Textil Caracas","S | M | L | XL","Corte holgado unisex"';
   const sample2 =
-    '"Cerveza Artesanal IPA Pack 6","Pack de 6 cervezas IPA con lúpulo cítrico","",14.50,9.20,24,6,4.7,"Cervezas","CER-IPA6","Caja","7591234567891","Alta","Barra Central","Cervecería Artesanal"';
+    '"Jean Straight Denim Índigo","Jean clásico mezclilla resistente 12oz","",38.00,21.00,20,5,4.8,"Pantalones","JEA-320","Prenda","7591234567891","Alta","Depósito Principal","Moda Urbana","28 | 30 | 32 | 34 | 36","Hormado clásico"';
 
   const csv = '\uFEFF' + [headers, sample1, sample2].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -170,13 +178,28 @@ function parseCsvMatrix(text: string): string[][] {
 
 function normalizeLocation(val: string): Product['location'] {
   const valid: NonNullable<Product['location']>[] = [
+    'Depósito Principal',
+    'Exhibición Tienda',
+    'Cava Refrigerada',
     'Cava Principal',
     'Barra Central',
     'Estantería Premium',
     'Depósito Seco',
   ];
   const found = valid.find((v) => v.toLowerCase() === val.trim().toLowerCase());
-  return found || 'Cava Principal';
+  return found || 'Depósito Principal';
+}
+
+function parsePortableSizes(raw: unknown): string[] | undefined {
+  const arr = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string'
+      ? raw.split(/[,;|/\n]+/)
+      : [];
+  const clean = Array.from(
+    new Set(arr.map((v) => String(v || '').trim().slice(0, 24)).filter(Boolean))
+  ).slice(0, 40);
+  return clean.length > 0 ? clean : undefined;
 }
 
 function normalizeTurnover(val: string): 'Alta' | 'Media' | 'Baja' {
@@ -243,8 +266,10 @@ export function parseInventoryImportFile(
             String(item.codigoBarras || item.barcode || '').trim() ||
             `759${Math.floor(1000000000 + Math.random() * 9000000000)}`,
           turnoverRate: normalizeTurnover(String(item.rotacion || item.turnoverRate || 'Media')),
-          location: normalizeLocation(String(item.ubicacion || item.location || 'Cava Principal')),
+          location: normalizeLocation(String(item.ubicacion || item.location || 'Depósito Principal')),
           supplier: String(item.proveedor || item.supplier || '').trim() || undefined,
+          availableSizes: parsePortableSizes(item.tallas ?? item.availableSizes ?? item.sizes),
+          sizeGuide: String(item.guiaTallas || item.sizeGuide || '').trim() || undefined,
         };
       })
       .filter((p) => p.name.length > 0);
@@ -272,6 +297,8 @@ export function parseInventoryImportFile(
   const cRot = findCol(['rotacion', 'turnover']);
   const cLoc = findCol(['ubicacion', 'location']);
   const cSup = findCol(['proveedor', 'supplier']);
+  const cSizes = findCol(['tallas', 'talla', 'availablesizes', 'sizes', 'size']);
+  const cGuide = findCol(['guiatallas', 'sizeguide', 'guia']);
 
   return matrix
     .slice(1)
@@ -305,6 +332,8 @@ export function parseInventoryImportFile(
         turnoverRate: normalizeTurnover(val(cRot)),
         location: normalizeLocation(val(cLoc)),
         supplier: val(cSup) || undefined,
+        availableSizes: parsePortableSizes(val(cSizes)),
+        sizeGuide: val(cGuide) || undefined,
       };
     })
     .filter((p) => p.name.length > 0);

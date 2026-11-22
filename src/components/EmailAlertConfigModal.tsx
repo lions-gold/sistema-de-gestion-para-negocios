@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Product,
   Sale,
@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { Mail, X } from 'lucide-react';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
 
 interface EmailAlertConfigModalProps {
   isOpen: boolean;
@@ -36,7 +36,19 @@ export const EmailAlertConfigModal: React.FC<EmailAlertConfigModalProps> = ({
   activeStore = null,
   onLogsUpdated,
 }) => {
-  const { tr } = useLanguage();
+  const { tr } = useSubsectionTranslation('warehouse');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const storeId = activeStore?.id || 'default-warehouse';

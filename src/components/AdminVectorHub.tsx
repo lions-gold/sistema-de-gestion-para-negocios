@@ -43,6 +43,10 @@ import {
   VECTOR_TRIGGERS,
 } from '../services/vectorService';
 import { useLanguage } from '../i18n/LanguageContext';
+import {
+  translateCampaignStatusLabel,
+  translateTicketPriorityLabel,
+} from '../utils/platformLabelsI18n';
 
 const VECTOR_METRIC_I18N: Record<
   string,
@@ -358,7 +362,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                 {tr('Centro de Gobernanza Vector (N0–N4)', 'Vector Governance Center (N0–N4)', 'Vector 治理中心（N0–N4）')}
               </h2>
               <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> Carlos Smith Zambrano Gonzalez
+                <ShieldCheck className="w-3.5 h-3.5" /> {tr('Administrador General', 'Platform Admin', '平台总管理员')}
               </span>
             </div>
             <p className="text-xs text-zinc-400">
@@ -474,7 +478,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                       <span className="font-mono font-bold text-amber-400">{tkt.ticketNumber}</span>
                       <span className="font-semibold text-zinc-100">{tkt.storeName}</span>
                       <span className="px-2 py-0.5 rounded bg-zinc-900 border border-white/[0.08] font-mono text-[10px] text-zinc-200">
-                        {tkt.level} · {tkt.priority.toUpperCase()} · SLA {tkt.slaMinutes}m
+                        {tkt.level} · {translateTicketPriorityLabel(tkt.priority, lang).toUpperCase()} · SLA {tkt.slaMinutes}m
                       </span>
                     </div>
                     <select
@@ -692,7 +696,7 @@ export const AdminVectorHub: React.FC<AdminVectorHubProps> = ({
                     <div>
                       <span className="font-semibold text-zinc-100">{c.title}</span>
                       <span className="ml-2 text-[10px] font-mono text-zinc-400">
-                        {c.status.toUpperCase()} · {tr('Enviados', 'Sent', '已发')}: {c.sentCount} · {tr('Excluidos', 'Excluded', '排除')}: {c.excludedCount} · {tr('Bajas', 'Opt-outs', '退订')}: {c.optOutCount}
+                        {translateCampaignStatusLabel(c.status, lang).toUpperCase()} · {tr('Enviados', 'Sent', '已发')}: {c.sentCount} · {tr('Excluidos', 'Excluded', '排除')}: {c.excludedCount} · {tr('Bajas', 'Opt-outs', '退订')}: {c.optOutCount}
                       </span>
                     </div>
                     {c.status === 'draft' && (

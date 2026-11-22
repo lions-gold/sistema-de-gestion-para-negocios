@@ -76,6 +76,15 @@ export const CookieBanner: React.FC = () => {
     setShowConfigModal(true);
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onOpenSettings = () => {
+      handleOpenPreferences();
+    };
+    window.addEventListener('smith_open_cookie_settings', onOpenSettings);
+    return () => window.removeEventListener('smith_open_cookie_settings', onOpenSettings);
+  }, []);
+
   return (
     <>
       {!isVisible && (

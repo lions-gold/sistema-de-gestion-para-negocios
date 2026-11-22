@@ -783,11 +783,13 @@ export function applyOfflineOrderStockToCache(
   if (current.length === 0) return current;
 
   const updated = current.map((p) => {
-    const sold = items.find((i) => i.product.id === p.id);
-    if (!sold) return p;
+    const soldQty = items
+      .filter((i) => i.product.id === p.id)
+      .reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+    if (soldQty <= 0) return p;
     return {
       ...p,
-      stock: Math.max(0, (Number(p.stock) || 0) - sold.quantity),
+      stock: Math.max(0, (Number(p.stock) || 0) - soldQty),
       updatedAt: new Date().toISOString(),
     };
   });

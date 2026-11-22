@@ -20,10 +20,18 @@ import {
   Package,
   Copy,
   Check,
+  Ruler,
+  Eye,
+  X,
+  Tag,
+  Wallet,
+  Globe,
+  Video,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
 import {
+  GuideVideoAudience,
   ShippingType,
   StoreCartItem,
   StoreOrder,
@@ -45,6 +53,22 @@ import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 import {
+  buildCartLineKey,
+  isFashionOrApparelCategory,
+  normalizeSizeList,
+} from '../utils/clothingSizes';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import {
+  translateCommonPaymentInstruction,
+  translateDeliveryZoneLabel,
+  translatePaymentMethodLabel,
+  translateShippingTypeLabel,
+  translateSizeTokenLabel,
+  translateUnitLabel,
+} from '../utils/platformLabelsI18n';
+import fashionBoutiqueImg from '../assets/images/fashion_boutique_showcase_1795218110948.jpg';
+import editorialStorefrontImg from '../assets/images/editorial_storefront_showcase_1795218110469.jpg';
+import {
   applyOfflineOrderStockToCache,
   createLocalOfflineOrderSnapshot,
   isAppEffectivelyOffline,
@@ -62,6 +86,7 @@ interface MarketplaceDirectoryProps {
   exchangeRate: number;
   initialStoreSlug?: string;
   onNavigateMerchant: () => void;
+  onOpenVideoGuides?: (audience?: GuideVideoAudience) => void;
   onVectorContextChange?: (ctx: {
     store: StoreTenant | null;
     products: StoreProduct[];
@@ -77,16 +102,23 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   exchangeRate,
   initialStoreSlug,
   onNavigateMerchant,
+  onOpenVideoGuides,
   onVectorContextChange,
 }) => {
-  const { t, tr } = useLanguage();
+  const { lang, t, tr } = useLanguage();
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [selectedStore, setSelectedStore] = useState<StoreTenant | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [storePaymentMethods, setStorePaymentMethods] = useState<StorePaymentMethod[]>([]);
   const [copiedPaymentDetails, setCopiedPaymentDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [storeCategoryFilter, setStoreCategoryFilter] = useState<string>('all');
   const [productQuery, setProductQuery] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
+  const [productSizeFilter, setProductSizeFilter] = useState<string>('all');
+  const [selectedSizesByProduct, setSelectedSizesByProduct] = useState<Record<string, string>>({});
+  const [quickViewProduct, setQuickViewProduct] = useState<StoreProduct | null>(null);
+  const [failedImageKeys, setFailedImageKeys] = useState<Record<string, boolean>>({});
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [copiedSlug, setCopiedSlug] = useState(false);
 
@@ -212,27 +244,89 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     };
   }, [selectedStore]);
 
+  // Reset product-level filters when switching stores
+  useEffect(() => {
+    setProductQuery('');
+    setProductCategoryFilter('all');
+    setProductSizeFilter('all');
+    setSelectedSizesByProduct({});
+    setQuickViewProduct(null);
+  }, [selectedStore?.id]);
+
+  const storeCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    stores.forEach((s) => {
+      const cat = (s.category || '').trim();
+      if (cat && !map.has(cat.toLowerCase())) {
+        map.set(cat.toLowerCase(), cat);
+      }
+    });
+    return Array.from(map.values());
+  }, [stores]);
+
   const filteredStores = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return stores;
-    return stores.filter(
-      (s) =>
+    return stores.filter((s) => {
+      if (storeCategoryFilter !== 'all') {
+        const sc = (s.category || '').trim().toLowerCase();
+        if (sc !== storeCategoryFilter.toLowerCase()) return false;
+      }
+      if (!q) return true;
+      const localizedCat = translateCategoryLabel(s.category, lang).toLowerCase();
+      return (
         s.storeName.toLowerCase().includes(q) ||
         (s.category || '').toLowerCase().includes(q) ||
+        localizedCat.includes(q) ||
+        (s.description || '').toLowerCase().includes(q) ||
         s.registeredOwnerName.toLowerCase().includes(q)
-    );
-  }, [stores, searchQuery]);
+      );
+    });
+  }, [stores, searchQuery, storeCategoryFilter, lang]);
+
+  const productCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    products.forEach((p) => {
+      const cat = (p.category || '').trim();
+      if (cat && !map.has(cat.toLowerCase())) {
+        map.set(cat.toLowerCase(), cat);
+      }
+    });
+    return Array.from(map.values());
+  }, [products]);
+
+  const availableStoreSizes = useMemo(() => {
+    const allSizes: string[] = [];
+    products.forEach((p) => {
+      normalizeSizeList(p.availableSizes).forEach((sz) => allSizes.push(sz));
+    });
+    return normalizeSizeList(allSizes);
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
+    return products.filter((p) => {
+      if (productCategoryFilter !== 'all') {
+        if ((p.category || '').trim().toLowerCase() !== productCategoryFilter.toLowerCase()) {
+          return false;
+        }
+      }
+      if (productSizeFilter !== 'all') {
+        const pSizes = normalizeSizeList(p.availableSizes).map((s) => s.toLowerCase());
+        if (!pSizes.includes(productSizeFilter.toLowerCase())) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      const localizedCat = translateCategoryLabel(p.category, lang).toLowerCase();
+      return (
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
-        (p.category || '').toLowerCase().includes(q)
-    );
-  }, [products, productQuery]);
+        (p.category || '').toLowerCase().includes(q) ||
+        localizedCat.includes(q) ||
+        normalizeSizeList(p.availableSizes).some((s) => s.toLowerCase().includes(q))
+      );
+    });
+  }, [products, productQuery, productCategoryFilter, productSizeFilter, lang]);
 
   const activeCart = useMemo(() => {
     if (!selectedStore) return [];
@@ -256,39 +350,118 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   const totalUSD = cartSubtotalUSD + shippingFeeUSD;
   const totalBs = totalUSD * exchangeRate;
 
-  const addToCart = (product: StoreProduct) => {
+  const getProductQtyInCart = (productId: string, cart: StoreCartItem[]) =>
+    cart.reduce((sum, item) => (item.product.id === productId ? sum + item.quantity : sum), 0);
+
+  const resolveChosenSize = (product: StoreProduct, explicitSize?: string): string | undefined => {
+    const sizes = normalizeSizeList(product.availableSizes);
+    if (sizes.length === 0) return undefined;
+    if (explicitSize && sizes.some((s) => s.toLowerCase() === explicitSize.toLowerCase())) {
+      return sizes.find((s) => s.toLowerCase() === explicitSize.toLowerCase()) || sizes[0];
+    }
+    const picked = selectedSizesByProduct[product.id];
+    if (picked && sizes.some((s) => s.toLowerCase() === picked.toLowerCase())) {
+      return sizes.find((s) => s.toLowerCase() === picked.toLowerCase()) || sizes[0];
+    }
+    return sizes[0];
+  };
+
+  const addToCart = (product: StoreProduct, explicitSize?: string) => {
     if (!selectedStore) return;
+    const chosenSize = resolveChosenSize(product, explicitSize);
+    const targetKey = buildCartLineKey(product.id, chosenSize);
+
     setCartsByStore((prev) => {
       const current = prev[selectedStore.id] || [];
-      const existing = current.find((i) => i.product.id === product.id);
+      const totalForProduct = getProductQtyInCart(product.id, current);
+      const maxStock = product.stock > 0 ? product.stock : 999;
+      if (totalForProduct >= maxStock) return prev;
+
+      const existing = current.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === targetKey
+      );
       if (existing) {
         return {
           ...prev,
           [selectedStore.id]: current.map((i) =>
-            i.product.id === product.id
-              ? { ...i, quantity: Math.min(product.stock || 999, i.quantity + 1) }
+            buildCartLineKey(i.product.id, i.selectedSize) === targetKey
+              ? { ...i, quantity: i.quantity + 1 }
               : i
           ),
         };
       }
       return {
         ...prev,
-        [selectedStore.id]: [...current, { product, quantity: 1 }],
+        [selectedStore.id]: [
+          ...current,
+          { product, quantity: 1, ...(chosenSize ? { selectedSize: chosenSize } : {}) },
+        ],
       };
     });
   };
 
-  const updateCartQty = (productId: string, delta: number) => {
+  const updateCartQty = (productId: string, delta: number, selectedSize?: string) => {
     if (!selectedStore) return;
+    const targetKey = buildCartLineKey(productId, selectedSize);
     setCartsByStore((prev) => {
       const current = prev[selectedStore.id] || [];
+      const line = current.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === targetKey
+      );
+      if (!line) return prev;
+
+      const totalOtherLines = current.reduce(
+        (sum, i) =>
+          i.product.id === productId &&
+          buildCartLineKey(i.product.id, i.selectedSize) !== targetKey
+            ? sum + i.quantity
+            : sum,
+        0
+      );
+      const maxAllowedForLine =
+        line.product.stock > 0 ? Math.max(0, line.product.stock - totalOtherLines) : 999;
+
       const next = current
         .map((i) => {
-          if (i.product.id !== productId) return i;
-          const maxAllowed = i.product.stock > 0 ? i.product.stock : 999;
-          return { ...i, quantity: Math.min(maxAllowed, i.quantity + delta) };
+          if (buildCartLineKey(i.product.id, i.selectedSize) !== targetKey) return i;
+          return { ...i, quantity: Math.min(maxAllowedForLine, i.quantity + delta) };
         })
         .filter((i) => i.quantity > 0);
+      return { ...prev, [selectedStore.id]: next };
+    });
+  };
+
+  const changeCartItemSize = (productId: string, oldSize: string | undefined, newSize: string) => {
+    if (!selectedStore) return;
+    const oldKey = buildCartLineKey(productId, oldSize);
+    const newKey = buildCartLineKey(productId, newSize);
+    if (oldKey === newKey) return;
+
+    setCartsByStore((prev) => {
+      const current = prev[selectedStore.id] || [];
+      const source = current.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === oldKey
+      );
+      if (!source) return prev;
+      const targetExists = current.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === newKey
+      );
+      let next: StoreCartItem[];
+      if (targetExists) {
+        next = current
+          .filter((i) => buildCartLineKey(i.product.id, i.selectedSize) !== oldKey)
+          .map((i) =>
+            buildCartLineKey(i.product.id, i.selectedSize) === newKey
+              ? { ...i, quantity: i.quantity + source.quantity }
+              : i
+          );
+      } else {
+        next = current.map((i) =>
+          buildCartLineKey(i.product.id, i.selectedSize) === oldKey
+            ? { ...i, selectedSize: newSize }
+            : i
+        );
+      }
       return { ...prev, [selectedStore.id]: next };
     });
   };
@@ -318,26 +491,26 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   ) => {
     const cleanPhone = normalizeVenezuelanPhone(store.businessWhatsapp);
     const lines = [
-      `*NUEVO PEDIDO #${order.invoiceNumber}*`,
-      `*Tienda:* ${store.storeName}`,
-      `*Titular:* ${store.registeredOwnerName}${store.rif ? ` (RIF: ${store.rif})` : ''}`,
+      `*${tr('NUEVO PEDIDO', 'NEW ORDER', '新订单')} #${order.invoiceNumber}*`,
+      `*${tr('Tienda:', 'Store:', '店铺：')}* ${store.storeName}`,
+      `*${tr('Titular:', 'Owner:', '店主：')}* ${store.registeredOwnerName}${store.rif ? ` (${tr('RIF', 'Tax ID', '税号')}: ${store.rif})` : ''}`,
       ``,
-      `*Cliente:* ${order.customerName}`,
-      `*C.I./RIF:* ${order.customerRif || 'N/A'}`,
-      `*Teléfono:* ${order.customerPhone}`,
+      `*${tr('Cliente:', 'Customer:', '买家：')}* ${order.customerName}`,
+      `*${tr('C.I./RIF:', 'ID/Tax ID:', '证件/税号：')}* ${order.customerRif || 'N/A'}`,
+      `*${tr('Teléfono:', 'Phone:', '电话：')}* ${order.customerPhone}`,
       ``,
-      `*Productos:*`,
+      `*${tr('Productos:', 'Items:', '商品清单：')}*`,
       ...items.map(
         (i) =>
-          `• ${i.quantity}x ${i.product.name} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
+          `• ${i.quantity}x ${i.product.name}${i.selectedSize ? ` [${tr('Talla:', 'Size:', '尺码：')} ${translateSizeTokenLabel(i.selectedSize, lang)}]` : ''} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
       ),
       ``,
-      `*Entrega:* ${order.shippingType}${order.shippingDetails ? ` (${order.shippingDetails})` : ''}`,
-      `*Envío:* $${order.shippingFeeUSD.toFixed(2)} USD`,
-      `*Método de Pago:* ${order.paymentMethod}`,
-      `*TOTAL:* $${order.totalUSD.toFixed(2)} USD (${order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.)`,
+      `*${tr('Entrega:', 'Delivery:', '配送方式：')}* ${translateShippingTypeLabel(order.shippingType, lang)}${order.shippingDetails ? ` (${order.shippingDetails})` : ''}`,
+      `*${tr('Envío:', 'Shipping:', '运费：')}* $${order.shippingFeeUSD.toFixed(2)} USD`,
+      `*${tr('Método de Pago:', 'Payment Method:', '付款方式：')}* ${translatePaymentMethodLabel(order.paymentMethod, lang)}`,
+      `*${tr('TOTAL:', 'TOTAL:', '总计：')}* $${order.totalUSD.toFixed(2)} USD (${order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.)`,
       ``,
-      `_Pedido generado desde Smith Solutions E-Commerce_`,
+      `_${tr('Pedido generado desde Smith Solutions E-Commerce', 'Order generated via Smith Solutions E-Commerce', '订单生成自 Smith Solutions E-Commerce')}_`,
     ].join('\n');
 
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(lines)}`;
@@ -355,7 +528,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
       const itemsSummary = activeCart
         .map(
           (i) =>
-            `${i.quantity}x ${i.product.name} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
+            `${i.quantity}x ${i.product.name}${i.selectedSize ? ` [Talla: ${i.selectedSize}]` : ''} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
         )
         .join(' | ')
         .slice(0, 1950);
@@ -405,7 +578,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           store: selectedStore,
           registeredInCloud: false,
         });
-        exportStoreOrderInvoicePDF(selectedStore, localOrder, snapshotItems, 'dual');
+        exportStoreOrderInvoicePDF(selectedStore, localOrder, snapshotItems, 'dual', lang);
         clearStoreCart();
         setIsCartOpen(false);
       };
@@ -458,7 +631,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
         });
 
         // Genera el PDF Dual: Página 1 Factura Original Cliente + Página 2 Factura Copia Dueño de Tienda
-        exportStoreOrderInvoicePDF(selectedStore, savedOrder, snapshotItems, 'dual');
+        exportStoreOrderInvoicePDF(selectedStore, savedOrder, snapshotItems, 'dual', lang);
         clearStoreCart();
         setIsCartOpen(false);
       } catch (cloudErr) {
@@ -564,73 +737,184 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </div>
         </div>
 
-        {/* Store Banner Header */}
-        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6 min-w-0">
-          <div className="flex items-start sm:items-center gap-3.5 sm:gap-4 min-w-0 flex-1">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-[#09090b] border border-amber-500/30 overflow-hidden shrink-0 flex items-center justify-center">
-              {selectedStore.logoUrl ? (
-                <img
-                  src={selectedStore.logoUrl}
-                  alt={selectedStore.storeName}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Store className="w-8 h-8 text-amber-400" />
-              )}
+        {/* Store Editorial Cover Hero Header */}
+        {(() => {
+          const isApparelStore =
+            Boolean(selectedStore.clothingSizesEnabled) ||
+            isFashionOrApparelCategory(selectedStore.category) ||
+            availableStoreSizes.length > 0;
+          const heroBackdrop = isApparelStore ? fashionBoutiqueImg : editorialStorefrontImg;
+          return (
+            <div className="relative overflow-hidden bg-[#111114] border border-white/[0.08] rounded-2xl min-w-0 shadow-2xl shadow-black/60">
+              <div className="relative h-36 sm:h-44 w-full overflow-hidden bg-[#09090b]">
+                {!failedImageKeys[`store-hero-${selectedStore.id}`] ? (
+                  <img
+                    src={heroBackdrop}
+                    alt={selectedStore.storeName}
+                    referrerPolicy="no-referrer"
+                    onError={() =>
+                      setFailedImageKeys((prev) => ({
+                        ...prev,
+                        [`store-hero-${selectedStore.id}`]: true,
+                      }))
+                    }
+                    className="w-full h-full object-cover object-center opacity-55"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-zinc-900 via-[#111114] to-[#09090b]" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-[#111114]/65 to-transparent" />
+                <div className="absolute top-3.5 left-4 right-4 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+                  <span className="text-amber-400 font-semibold uppercase tracking-wider">
+                    {translateCategoryLabel(selectedStore.category, lang) || tr('Tienda Verificada', 'Verified Store', '认证店铺')}
+                    {isApparelStore && availableStoreSizes.length > 0 && (
+                      <span className="text-zinc-300">
+                        {' '}· {tr(`${availableStoreSizes.length} tallas disponibles`, `${availableStoreSizes.length} sizes available`, `${availableStoreSizes.length} 种尺码可选`)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-zinc-300 tabular-nums">
+                    {products.length} {tr('productos en catálogo', 'products in catalog', '件在售商品')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative px-4 sm:px-6 pb-5 sm:pb-6 -mt-10 sm:-mt-12 flex flex-col md:flex-row md:items-end justify-between gap-5 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-4 min-w-0 flex-1">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#09090b] border-2 border-[#111114] ring-1 ring-amber-400/40 overflow-hidden shrink-0 flex items-center justify-center shadow-xl">
+                    {selectedStore.logoUrl && !failedImageKeys[`store-logo-${selectedStore.id}`] ? (
+                      <img
+                        src={selectedStore.logoUrl}
+                        alt={selectedStore.storeName}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setFailedImageKeys((prev) => ({
+                            ...prev,
+                            [`store-logo-${selectedStore.id}`]: true,
+                          }))
+                        }
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Store className="w-9 h-9 text-amber-400" />
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 min-w-0 flex-1 pt-1">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h1 className="text-2xl sm:text-3xl font-bold text-zinc-50 font-display tracking-tight break-words">
+                        {selectedStore.storeName}
+                      </h1>
+                      <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        <span>{t.marketplace.verifiedBadge}</span>
+                      </span>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-zinc-300">
+                      {t.marketplace.registeredTo}{' '}
+                      <strong className="text-white">{selectedStore.registeredOwnerName}</strong>
+                      {selectedStore.rif && (
+                        <span className="ml-2 font-mono text-amber-300">· RIF {selectedStore.rif}</span>
+                      )}
+                    </p>
+
+                    {selectedStore.description && (
+                      <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
+                        {selectedStore.description}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-zinc-400">
+                      {selectedStore.nationalShippingEnabled && (
+                        <span className="inline-flex items-center gap-1.5 text-zinc-300">
+                          <Truck className="w-3.5 h-3.5 text-amber-400" />
+                          {t.marketplace.nationalShipping} ({selectedStore.nationalCouriers || 'MRW / Zoom / Tealca'})
+                        </span>
+                      )}
+                      {selectedStore.localDeliveryEnabled && (
+                        <span className="inline-flex items-center gap-1.5 text-zinc-300 tabular-nums">
+                          {selectedStore.nationalShippingEnabled && (
+                            <span className="text-zinc-600" aria-hidden="true">·</span>
+                          )}
+                          <Bike className="w-3.5 h-3.5 text-emerald-400" />
+                          {t.marketplace.localDelivery} (${(selectedStore.localDeliveryFeeUSD || 0).toFixed(2)} USD)
+                        </span>
+                      )}
+                      {selectedStore.pickupEnabled && (
+                        <span className="inline-flex items-center gap-1.5 text-zinc-300">
+                          {(selectedStore.nationalShippingEnabled || selectedStore.localDeliveryEnabled) && (
+                            <span className="text-zinc-600" aria-hidden="true">·</span>
+                          )}
+                          <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                          {t.marketplace.localPickup}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <a
+                  href={`https://wa.me/${normalizeVenezuelanPhone(selectedStore.businessWhatsapp)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shrink-0 min-h-[44px] transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>{t.marketplace.storeWhatsapp}</span>
+                </a>
+              </div>
             </div>
-            <div className="space-y-1 min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-extrabold text-white font-display break-words">
-                  {selectedStore.storeName}
-                </h1>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold">
-                  {t.marketplace.verifiedBadge}
-                </span>
+          );
+        })()}
+
+        {/* Storefront Buyer Clarity Bar (Payment Accounts + Rate + Quick How-To) */}
+        <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs min-w-0">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <Wallet className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="font-semibold text-zinc-100">
+                {tr('Métodos de pago aceptados', 'Accepted payment methods', '本店支持的付款方式')}
               </div>
-              <p className="text-xs sm:text-sm text-zinc-300">
-                {t.marketplace.registeredTo}{' '}
-                <strong className="text-white">{selectedStore.registeredOwnerName}</strong>
-                {selectedStore.rif && (
-                  <span className="ml-2 font-mono text-amber-300">· RIF {selectedStore.rif}</span>
-                )}
+              <p className="text-[11px] text-zinc-400 truncate">
+                {storePaymentMethods.length > 0
+                  ? storePaymentMethods.map((m) => `${translatePaymentMethodLabel(m.name, lang)} (${m.currency})`).join(' · ')
+                  : tr('Pago Móvil, Transferencia, Binance Pay, Zelle, Efectivo', 'Pago Móvil, Bank Transfer, Binance Pay, Zelle, Cash', 'Pago Móvil、银行转账、Binance Pay、Zelle、现金')}
               </p>
-              {selectedStore.description && (
-                <p className="text-xs text-zinc-400 max-w-2xl">{selectedStore.description}</p>
-              )}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1.5 text-xs text-zinc-400">
-                {selectedStore.nationalShippingEnabled && (
-                  <span className="inline-flex items-center gap-1.5 text-zinc-300">
-                    <Truck className="w-3.5 h-3.5 text-amber-400" />
-                    {t.marketplace.nationalShipping} ({selectedStore.nationalCouriers || 'MRW / Zoom / Tealca'})
-                  </span>
-                )}
-                {selectedStore.localDeliveryEnabled && (
-                  <span className="inline-flex items-center gap-1.5 text-zinc-300 tabular-nums">
-                    <span className="text-zinc-600" aria-hidden="true">·</span>
-                    <Bike className="w-3.5 h-3.5 text-emerald-400" />
-                    {t.marketplace.localDelivery} (${(selectedStore.localDeliveryFeeUSD || 0).toFixed(2)} USD)
-                  </span>
-                )}
-                {selectedStore.pickupEnabled && (
-                  <span className="inline-flex items-center gap-1.5 text-zinc-300">
-                    <span className="text-zinc-600" aria-hidden="true">·</span>
-                    <MapPin className="w-3.5 h-3.5 text-sky-400" />
-                    {t.marketplace.localPickup}
-                  </span>
-                )}
-              </div>
             </div>
           </div>
 
-          <a
-            href={`https://wa.me/${normalizeVenezuelanPhone(selectedStore.businessWhatsapp)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 shrink-0 min-h-[44px]"
-          >
-            <MessageCircle className="w-4 h-4" />
-            <span>{t.marketplace.storeWhatsapp}</span>
-          </a>
+          <div className="flex items-start gap-2.5 min-w-0">
+            <ShoppingCart className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="font-semibold text-zinc-100">
+                {tr('Cómo comprar aquí', 'How to buy here', '如何在此店下单购买')}
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                {tr(
+                  'Elige artículo y talla, abre tu Carrito, selecciona entrega y descarga tu factura PDF.',
+                  'Pick item & size, open Cart, choose delivery & payment, and get your PDF receipt.',
+                  '挑选商品与尺码 → 打开购物车选择配送与付款方式 → 生成双联 PDF 发票并用 WhatsApp 确认。'
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5 min-w-0">
+            <Globe className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <div className="font-semibold text-zinc-100 tabular-nums">
+                {tr('Tasa BCV:', 'Live BCV Rate:', 'BCV 实时汇率：')} {exchangeRate.toFixed(2)} Bs./USD
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-snug">
+                {tr(
+                  'Navegas esta tienda en tu idioma elegido sin alterar la vista de otros compradores.',
+                  'Browsing in your personal language without affecting other customers.',
+                  '您正以个人选定的语言浏览本店，不会影响其他用户的界面语言。'
+                )}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Completed Order Banner (Dual Invoice + Store Sales System Confirmation) */}
@@ -648,7 +932,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                   {t.common.total}: ${completedOrder.order.totalUSD.toFixed(2)} USD (
                   {completedOrder.order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}{' '}
                   Bs.) · {getShippingTypeLabel(completedOrder.order.shippingType)} ·{' '}
-                  {completedOrder.order.paymentMethod}
+                  {translatePaymentMethodLabel(completedOrder.order.paymentMethod, lang)}
                 </p>
                 {!completedOrder.registeredInCloud && (
                   <p className="text-[11px] font-mono text-amber-300">
@@ -667,7 +951,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                       completedOrder.store,
                       completedOrder.order,
                       completedOrder.items,
-                      'cliente'
+                      'cliente',
+                      lang
                     )
                   }
                   className="px-3.5 py-2 rounded-lg bg-[#111114] border border-amber-500/40 hover:border-amber-400 text-xs font-semibold text-amber-300 flex items-center gap-1.5 min-h-[40px]"
@@ -681,7 +966,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                       completedOrder.store,
                       completedOrder.order,
                       completedOrder.items,
-                      'dueno'
+                      'dueno',
+                      lang
                     )
                   }
                   className="px-3.5 py-2 rounded-lg bg-[#111114] border border-emerald-500/40 hover:border-emerald-400 text-xs font-semibold text-emerald-300 flex items-center gap-1.5 min-h-[40px]"
@@ -695,7 +981,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                       completedOrder.store,
                       completedOrder.order,
                       completedOrder.items,
-                      'dual'
+                      'dual',
+                      lang
                     )
                   }
                   className="px-3.5 py-2 rounded-lg bg-zinc-900 border border-white/[0.1] hover:border-white text-xs font-semibold text-white flex items-center gap-1.5 min-h-[40px]"
@@ -721,16 +1008,97 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </div>
         )}
 
-        {/* Product Search */}
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={productQuery}
-            onChange={(e) => setProductQuery(e.target.value)}
-            placeholder={t.marketplace.searchProductsPlaceholder}
-            className="w-full pl-10 pr-4 py-2.5 bg-[#111114] border border-white/[0.08] rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500"
-          />
+        {/* Product Search, Category Tabs & Size Filters */}
+        <div className="space-y-3 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 min-w-0">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={productQuery}
+                onChange={(e) => setProductQuery(e.target.value)}
+                placeholder={t.marketplace.searchProductsPlaceholder}
+                className="w-full pl-10 pr-4 py-2.5 bg-[#09090b] border border-white/[0.08] rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div className="text-xs font-mono text-zinc-400 tabular-nums">
+              {filteredProducts.length}{' '}
+              {tr(
+                filteredProducts.length === 1 ? 'producto encontrado' : 'productos encontrados',
+                filteredProducts.length === 1 ? 'product found' : 'products found',
+                '件商品'
+              )}
+            </div>
+          </div>
+
+          {productCategories.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] font-medium text-zinc-500 mr-1 inline-flex items-center gap-1">
+                <Tag className="w-3 h-3" />
+                {tr('Categoría:', 'Category:', '分类:')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setProductCategoryFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[34px] ${
+                  productCategoryFilter === 'all'
+                    ? 'bg-amber-400 text-zinc-950'
+                    : 'bg-[#09090b] border border-white/[0.08] text-zinc-300 hover:border-white/[0.2]'
+                }`}
+              >
+                {t.common.all}
+              </button>
+              {productCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setProductCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors min-h-[34px] ${
+                    productCategoryFilter.toLowerCase() === cat.toLowerCase()
+                      ? 'bg-amber-400 text-zinc-950 font-semibold'
+                      : 'bg-[#09090b] border border-white/[0.08] text-zinc-300 hover:border-white/[0.2]'
+                  }`}
+                >
+                  {translateCategoryLabel(cat, lang)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {availableStoreSizes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-white/[0.06]">
+              <span className="text-[11px] font-medium text-amber-400 mr-1 inline-flex items-center gap-1">
+                <Ruler className="w-3.5 h-3.5" />
+                {tr('Filtrar por Talla:', 'Filter by Size:', '按尺码筛选:')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setProductSizeFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold transition-colors min-h-[32px] ${
+                  productSizeFilter === 'all'
+                    ? 'bg-amber-400 text-zinc-950'
+                    : 'bg-[#09090b] border border-white/[0.08] text-zinc-300 hover:border-amber-400/40'
+                }`}
+              >
+                {t.common.all}
+              </button>
+              {availableStoreSizes.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => setProductSizeFilter(size)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold transition-colors min-h-[32px] min-w-[36px] ${
+                    productSizeFilter.toLowerCase() === size.toLowerCase()
+                      ? 'bg-amber-400 text-zinc-950'
+                      : 'bg-[#09090b] border border-white/[0.08] text-zinc-200 hover:border-amber-400/50'
+                  }`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Store Product Grid */}
@@ -746,70 +1114,330 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 rounded-2xl overflow-hidden flex flex-col transition-all"
-              >
-                <div className="aspect-[4/3] bg-[#09090b] relative overflow-hidden flex items-center justify-center">
-                  {product.imageUrl ? (
+            {filteredProducts.map((product) => {
+              const pSizes = normalizeSizeList(product.availableSizes);
+              const activeSize =
+                pSizes.length > 0 ? resolveChosenSize(product) : undefined;
+              const qtyInCart = getProductQtyInCart(product.id, activeCart);
+              const remainingStock =
+                product.stock > 0 ? Math.max(0, product.stock - qtyInCart) : 0;
+
+              return (
+                <div
+                  key={product.id}
+                  className="bg-[#111114] border border-white/[0.08] hover:border-amber-400/45 rounded-2xl overflow-hidden flex flex-col transition-all duration-200 group"
+                >
+                  <div
+                    onClick={() => setQuickViewProduct(product)}
+                    className="aspect-[4/3] bg-[#09090b] relative overflow-hidden flex items-center justify-center cursor-pointer"
+                  >
+                    {product.imageUrl && !failedImageKeys[`prod-${product.id}`] ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setFailedImageKeys((prev) => ({
+                            ...prev,
+                            [`prod-${product.id}`]: true,
+                          }))
+                        }
+                        className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-1.5 text-zinc-600">
+                        <Package className="w-11 h-11 text-amber-400/40" />
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                          {translateCategoryLabel(product.category, lang) || tr('Artículo', 'Item', '商品')}
+                        </span>
+                      </div>
+                    )}
+                    {product.category && (
+                      <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-[#09090b]/85 border border-white/[0.12] text-[10px] font-semibold text-amber-300">
+                        {translateCategoryLabel(product.category, lang)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setQuickViewProduct(product);
+                      }}
+                      className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg bg-[#09090b]/85 border border-white/[0.12] hover:border-amber-400/60 text-zinc-200 hover:text-amber-300 flex items-center justify-center transition-colors"
+                      title={tr('Vista rápida y tallas', 'Quick view & sizes', '快速查看与尺码')}
+                      aria-label={tr('Vista rápida y tallas', 'Quick view & sizes', '快速查看与尺码')}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      {renderStars(product.rating)}
+                      <h3
+                        onClick={() => setQuickViewProduct(product)}
+                        className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors line-clamp-2 font-display cursor-pointer"
+                      >
+                        {product.name}
+                      </h3>
+                      <p className="text-xs text-zinc-400 line-clamp-2">{product.description}</p>
+                    </div>
+
+                    {pSizes.length > 0 && (
+                      <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-400 font-medium inline-flex items-center gap-1">
+                            <Ruler className="w-3 h-3 text-amber-400" />
+                            {tr('Talla:', 'Size:', '尺码:')}{' '}
+                            <strong className="text-amber-300 font-mono">{activeSize}</strong>
+                          </span>
+                          {product.sizeGuide && (
+                            <button
+                              type="button"
+                              onClick={() => setQuickViewProduct(product)}
+                              className="text-[10px] text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                            >
+                              {tr('Guía de tallas', 'Size guide', '尺码表')}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {pSizes.map((sz) => {
+                            const isSelected = activeSize?.toLowerCase() === sz.toLowerCase();
+                            return (
+                              <button
+                                key={sz}
+                                type="button"
+                                onClick={() =>
+                                  setSelectedSizesByProduct((prev) => ({
+                                    ...prev,
+                                    [product.id]: sz,
+                                  }))
+                                }
+                                className={`min-w-[34px] min-h-[30px] px-2 rounded-md text-[11px] font-mono font-semibold transition-all ${
+                                  isSelected
+                                    ? 'bg-amber-400 text-zinc-950 shadow-sm'
+                                    : 'bg-[#09090b] border border-white/[0.1] text-zinc-200 hover:border-amber-400/50'
+                                }`}
+                              >
+                                {translateSizeTokenLabel(sz, lang)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-white/[0.08] space-y-2.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-lg font-extrabold text-amber-400 font-mono tabular-nums">
+                            ${product.priceUSD.toFixed(2)}
+                          </span>
+                          <span className="block text-[11px] text-zinc-400 font-mono tabular-nums">
+                            {(product.priceUSD * exchangeRate).toLocaleString('es-VE', {
+                              minimumFractionDigits: 2,
+                            })}{' '}
+                            Bs.
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono text-zinc-400 tabular-nums shrink-0">
+                          {t.common.stock}: {product.stock} {translateUnitLabel(product.unit || 'und', lang, product.stock !== 1)}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          addToCart(product, activeSize);
+                          setIsCartOpen(true);
+                        }}
+                        disabled={product.stock <= 0 || remainingStock <= 0}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] disabled:bg-zinc-900 disabled:text-zinc-500 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all min-h-[44px]"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <span>
+                          {product.stock <= 0
+                            ? t.marketplace.outOfStock
+                            : remainingStock <= 0
+                              ? tr('Máximo en carrito', 'Max in cart', '已达库存上限')
+                              : activeSize
+                                ? `${t.marketplace.addToCart} · ${translateSizeTokenLabel(activeSize, lang)}`
+                                : t.marketplace.addToCart}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Quick View PDP Modal */}
+        {quickViewProduct && (
+          <div
+            className="fixed inset-0 z-[75] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+            onClick={() => setQuickViewProduct(null)}
+          >
+            <div
+              className="w-full max-w-3xl bg-[#111114] border border-white/[0.12] rounded-2xl overflow-hidden shadow-2xl my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-12">
+                <div className="md:col-span-5 bg-[#09090b] relative aspect-[4/3] md:aspect-auto md:min-h-[340px] flex items-center justify-center">
+                  {quickViewProduct.imageUrl && !failedImageKeys[`prod-${quickViewProduct.id}`] ? (
                     <img
-                      src={product.imageUrl}
-                      alt={product.name}
+                      src={quickViewProduct.imageUrl}
+                      alt={quickViewProduct.name}
+                      referrerPolicy="no-referrer"
+                      onError={() =>
+                        setFailedImageKeys((prev) => ({
+                          ...prev,
+                          [`prod-${quickViewProduct.id}`]: true,
+                        }))
+                      }
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <Package className="w-12 h-12 text-slate-700" />
-                  )}
-                  {product.category && (
-                    <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-[#09090b]/85 border border-white/[0.1] text-[10px] font-semibold text-amber-300">
-                      {product.category}
-                    </span>
+                    <Package className="w-14 h-14 text-amber-400/40" />
                   )}
                 </div>
 
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div className="space-y-1.5">
-                    {renderStars(product.rating)}
-                    <h3 className="text-sm font-bold text-white line-clamp-2 font-display">
-                      {product.name}
-                    </h3>
-                    <p className="text-xs text-zinc-400 line-clamp-2">{product.description}</p>
-                  </div>
-
-                  <div className="pt-2 border-t border-white/[0.08] space-y-2.5">
-                    <div className="flex items-baseline justify-between">
-                      <div>
-                        <span className="text-lg font-extrabold text-amber-400 font-mono tabular-nums">
-                          ${product.priceUSD.toFixed(2)}
-                        </span>
-                        <span className="block text-[11px] text-zinc-400 font-mono tabular-nums">
-                          {(product.priceUSD * exchangeRate).toLocaleString('es-VE', {
-                            minimumFractionDigits: 2,
-                          })}{' '}
-                          Bs.
-                        </span>
+                <div className="md:col-span-7 p-5 sm:p-6 flex flex-col justify-between space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-amber-400">
+                          <span>{translateCategoryLabel(quickViewProduct.category, lang) || tr('Catálogo', 'Catalog', '目录')}</span>
+                          {quickViewProduct.sku && (
+                            <span className="text-zinc-500">· SKU: {quickViewProduct.sku}</span>
+                          )}
+                        </div>
+                        <h2 className="text-xl sm:text-2xl font-bold text-white font-display">
+                          {quickViewProduct.name}
+                        </h2>
                       </div>
-                      <span className="text-[11px] font-mono text-zinc-400">
-                        {t.common.stock}: {product.stock} {product.unit || 'und'}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setQuickViewProduct(null)}
+                        className="w-9 h-9 rounded-lg bg-[#09090b] border border-white/[0.1] text-zinc-400 hover:text-white flex items-center justify-center shrink-0"
+                        aria-label={t.common.close}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        addToCart(product);
-                        setIsCartOpen(true);
-                      }}
-                      disabled={product.stock <= 0}
-                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] disabled:bg-zinc-900 disabled:text-zinc-500 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all min-h-[44px]"
-                    >
-                      <ShoppingCart className="w-3.5 h-3.5" />
-                      <span>{product.stock > 0 ? t.marketplace.addToCart : t.marketplace.outOfStock}</span>
-                    </button>
+                    {renderStars(quickViewProduct.rating)}
+
+                    <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+                      {quickViewProduct.description}
+                    </p>
+
+                    <div className="p-3.5 rounded-xl bg-[#09090b] border border-white/[0.08] flex flex-wrap items-baseline justify-between gap-3">
+                      <div>
+                        <span className="text-2xl font-extrabold text-amber-400 font-mono tabular-nums">
+                          ${quickViewProduct.priceUSD.toFixed(2)} USD
+                        </span>
+                        <span className="block text-xs text-zinc-400 font-mono tabular-nums">
+                          {(quickViewProduct.priceUSD * exchangeRate).toLocaleString('es-VE', {
+                            minimumFractionDigits: 2,
+                          })}{' '}
+                          Bs. BCV
+                        </span>
+                      </div>
+                      <div className="text-right text-xs font-mono text-zinc-300 tabular-nums">
+                        {t.common.stock}: {quickViewProduct.stock} {translateUnitLabel(quickViewProduct.unit || 'und', lang, quickViewProduct.stock !== 1)}
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const qSizes = normalizeSizeList(quickViewProduct.availableSizes);
+                      if (qSizes.length === 0) return null;
+                      const picked = resolveChosenSize(quickViewProduct);
+                      return (
+                        <div className="space-y-2 pt-1">
+                          <div className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                            <Ruler className="w-3.5 h-3.5 text-amber-400" />
+                            <span>
+                              {tr('Selecciona tu talla:', 'Select your size:', '选择尺码:')}{' '}
+                              <span className="text-amber-400 font-mono">{translateSizeTokenLabel(picked, lang)}</span>
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {qSizes.map((sz) => {
+                              const active = picked?.toLowerCase() === sz.toLowerCase();
+                              return (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedSizesByProduct((prev) => ({
+                                      ...prev,
+                                      [quickViewProduct.id]: sz,
+                                    }))
+                                  }
+                                  className={`min-w-[44px] min-h-[38px] px-3 rounded-lg text-xs font-mono font-bold transition-all ${
+                                    active
+                                      ? 'bg-amber-400 text-zinc-950 shadow-md shadow-amber-500/20'
+                                      : 'bg-[#09090b] border border-white/[0.12] text-zinc-200 hover:border-amber-400/50'
+                                  }`}
+                                >
+                                  {translateSizeTokenLabel(sz, lang)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {quickViewProduct.sizeGuide && (
+                      <div className="p-3 rounded-xl bg-amber-500/[0.06] border border-amber-400/25 text-xs text-zinc-200 space-y-1">
+                        <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                          <Ruler className="w-3.5 h-3.5" />
+                          <span>{tr('Guía de tallas / Medidas', 'Size guide / Fit notes', '尺码对照与版型说明')}</span>
+                        </div>
+                        <p className="text-zinc-300 leading-relaxed whitespace-pre-line">
+                          {quickViewProduct.sizeGuide}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                    {(() => {
+                      const qSizes = normalizeSizeList(quickViewProduct.availableSizes);
+                      const picked = qSizes.length > 0 ? resolveChosenSize(quickViewProduct) : undefined;
+                      const inCart = getProductQtyInCart(quickViewProduct.id, activeCart);
+                      const canAdd = quickViewProduct.stock > 0 && inCart < quickViewProduct.stock;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!canAdd}
+                          onClick={() => {
+                            addToCart(quickViewProduct, picked);
+                            setQuickViewProduct(null);
+                            setIsCartOpen(true);
+                          }}
+                          className="flex-1 py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:bg-zinc-900 disabled:text-zinc-500 text-zinc-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 min-h-[46px]"
+                        >
+                          <ShoppingCart className="w-4 h-4" />
+                          <span>
+                            {quickViewProduct.stock <= 0
+                              ? t.marketplace.outOfStock
+                              : !canAdd
+                                ? tr('Máximo en carrito', 'Max in cart', '已达库存上限')
+                                : picked
+                                  ? `${t.marketplace.addToCart} (${tr('Talla', 'Size', '尺码')} ${picked})`
+                                  : t.marketplace.addToCart}
+                          </span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         )}
 
@@ -844,50 +1472,78 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                 <>
                   {/* Items List */}
                   <div className="space-y-3">
-                    {activeCart.map((item) => (
-                      <div
-                        key={item.product.id}
-                        className="bg-[#111114] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-2.5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-bold text-white truncate">
-                            {item.product.name}
+                    {activeCart.map((item) => {
+                      const lineKey = buildCartLineKey(item.product.id, item.selectedSize);
+                      const itemSizes = normalizeSizeList(item.product.availableSizes);
+                      return (
+                        <div
+                          key={lineKey}
+                          className="bg-[#111114] border border-white/[0.08] rounded-xl p-3 flex items-center justify-between gap-2.5"
+                        >
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="text-xs font-bold text-white truncate">
+                              {item.product.name}
+                            </div>
+                            {itemSizes.length > 0 ? (
+                              <div className="flex items-center gap-1.5 text-[11px] text-zinc-300">
+                                <span className="text-zinc-400">{tr('Talla:', 'Size:', '尺码:')}</span>
+                                <select
+                                  value={item.selectedSize || itemSizes[0]}
+                                  onChange={(e) =>
+                                    changeCartItemSize(item.product.id, item.selectedSize, e.target.value)
+                                  }
+                                  className="px-1.5 py-0.5 rounded bg-[#09090b] border border-amber-400/35 text-[11px] font-mono text-amber-300"
+                                >
+                                  {itemSizes.map((sz) => (
+                                    <option key={sz} value={sz}>
+                                      {translateSizeTokenLabel(sz, lang)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : item.selectedSize ? (
+                              <div className="text-[11px] font-mono text-amber-300">
+                                {tr('Talla:', 'Size:', '尺码:')} {translateSizeTokenLabel(item.selectedSize, lang)}
+                              </div>
+                            ) : null}
+                            <div className="text-[11px] text-amber-400 font-mono tabular-nums">
+                              ${item.product.priceUSD.toFixed(2)} {t.marketplace.eachUnit} · {t.common.subtotal}: $
+                              {(item.product.priceUSD * item.quantity).toFixed(2)}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-amber-400 font-mono tabular-nums">
-                            ${item.product.priceUSD.toFixed(2)} {t.marketplace.eachUnit} · {t.common.subtotal}: $
-                            {(item.product.priceUSD * item.quantity).toFixed(2)}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.product.id, -1, item.selectedSize)}
+                              className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-7 text-center text-xs font-mono font-bold text-white tabular-nums">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.product.id, 1, item.selectedSize)}
+                              className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateCartQty(item.product.id, -item.quantity, item.selectedSize)
+                              }
+                              className="w-10 h-10 rounded-lg bg-red-950/50 hover:bg-red-900/60 active:scale-95 flex items-center justify-center text-red-400 ml-0.5"
+                              title={tr('Quitar', 'Remove', '移除')}
+                              aria-label={tr('Quitar', 'Remove', '移除')}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.product.id, -1)}
-                            className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="w-7 text-center text-xs font-mono font-bold text-white tabular-nums">
-                            {item.quantity}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.product.id, 1)}
-                            className="w-10 h-10 rounded-lg bg-zinc-900 hover:bg-zinc-800 active:scale-95 flex items-center justify-center text-white"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.product.id, -item.quantity)}
-                            className="w-10 h-10 rounded-lg bg-red-950/50 hover:bg-red-900/60 active:scale-95 flex items-center justify-center text-red-400 ml-0.5"
-                            title={tr('Quitar', 'Remove', '移除')}
-                            aria-label={tr('Quitar', 'Remove', '移除')}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Google sign-in option for cloud persistence */}
@@ -974,22 +1630,22 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                           {storePaymentMethods.length > 0 ? (
                             storePaymentMethods.map((m) => (
                               <option key={m.id} value={m.name}>
-                                {m.name} ({m.currency})
+                                {translatePaymentMethodLabel(m.name, lang)} ({m.currency})
                               </option>
                             ))
                           ) : (
                             <>
                               <option value="Pago Móvil">
-                                {tr('Pago Móvil (Bs.)', 'Pago Móvil (Bs.)', 'Pago Móvil 移动支付 (Bs.)')}
+                                {translatePaymentMethodLabel('Pago Móvil (Bs.)', lang)}
                               </option>
                               <option value="Transferencia Bancaria">
-                                {tr('Transferencia Bancaria', 'Bank Transfer', '银行转账')}
+                                {translatePaymentMethodLabel('Transferencia Bancaria', lang)}
                               </option>
-                              <option value="Binance Pay">Binance Pay (USDT)</option>
-                              <option value="Bybit">Bybit Pay</option>
-                              <option value="Zelle">Zelle</option>
+                              <option value="Binance Pay">{translatePaymentMethodLabel('Binance Pay', lang)} (USDT)</option>
+                              <option value="Bybit">{translatePaymentMethodLabel('Bybit Pay', lang)}</option>
+                              <option value="Zelle">{translatePaymentMethodLabel('Zelle', lang)}</option>
                               <option value="Efectivo USD">
-                                {tr('Efectivo USD', 'Cash USD', '美元现金')}
+                                {translatePaymentMethodLabel('Efectivo USD', lang)}
                               </option>
                             </>
                           )}
@@ -1003,8 +1659,9 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                       );
                       if (!activeMethodInfo) return null;
                       const holderPrefix = tr('Titular:', 'Holder:', '户名：');
+                      const translatedName = translatePaymentMethodLabel(activeMethodInfo.name, lang);
                       const fullCopyText = [
-                        `${activeMethodInfo.name} (${activeMethodInfo.currency})`,
+                        `${translatedName} (${activeMethodInfo.currency})`,
                         activeMethodInfo.accountHolder
                           ? `${holderPrefix} ${activeMethodInfo.accountHolder}`
                           : '',
@@ -1016,7 +1673,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         <div className="p-3 rounded-xl bg-[#111114] border border-emerald-500/30 space-y-1.5 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-emerald-300">
-                              {tr('Datos de Cobro', 'Payment Details', '收款账户信息')} · {activeMethodInfo.name} ({activeMethodInfo.currency})
+                              {tr('Datos de Cobro', 'Payment Details', '收款账户信息')} · {translatedName} ({activeMethodInfo.currency})
                             </span>
                             <button
                               type="button"
@@ -1052,7 +1709,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                           </div>
                           {activeMethodInfo.instructions && (
                             <div className="text-[11px] text-amber-200/90">
-                              {activeMethodInfo.instructions}
+                              {translateCommonPaymentInstruction(activeMethodInfo.instructions, lang)}
                             </div>
                           )}
                         </div>
@@ -1111,7 +1768,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         <label className="text-[11px] text-zinc-400 block mb-1">
                           {shippingType === 'Envío Nacional'
                             ? `${t.marketplace.deliveryDetailNational} (${selectedStore.nationalCouriers || 'MRW, Zoom, Tealca'})`
-                            : `${t.marketplace.deliveryDetailLocal} (${selectedStore.localDeliveryZone || 'Local'})`}
+                            : `${t.marketplace.deliveryDetailLocal} (${translateDeliveryZoneLabel(selectedStore.localDeliveryZone || 'Local', lang)})`}
                         </label>
                         <input
                           type="text"
@@ -1183,48 +1840,184 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   // ---------------------------------------------------------------------------
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8 w-full min-w-0">
-      {/* Header Banner */}
-      <div className="obsidian-surface rounded-2xl p-5 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6 min-w-0">
-        <div className="space-y-2 max-w-2xl min-w-0">
-          <div className="inline-flex items-center gap-2 text-amber-400 text-xs font-semibold">
-            <ShieldCheck className="w-4 h-4" />
-            <span>{t.marketplace.badge}</span>
+      {/* Editorial Directory Hero Banner */}
+      <div className="obsidian-surface rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-w-0 shadow-2xl shadow-black/60">
+        <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between gap-6 min-w-0">
+          <div className="space-y-3 min-w-0">
+            <div className="inline-flex items-center gap-2 text-amber-400 text-xs font-semibold">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>{t.marketplace.badge}</span>
+            </div>
+            <h1 className="text-2xl sm:text-4xl font-bold text-zinc-50 font-display tracking-tight text-balance">
+              {t.marketplace.title}
+            </h1>
+            <p className="text-sm sm:text-base text-zinc-400 leading-relaxed max-w-2xl">
+              {t.marketplace.subtitle}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-mono text-zinc-400 pt-1">
+              <span className="text-amber-400 font-semibold">
+                {tr('Moda y Tallas', 'Apparel & Sizes', '服饰尺码支持')}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{tr('Tasa BCV Oficial', 'Live BCV Rate', 'BCV 官方汇率')}</span>
+              <span aria-hidden="true">·</span>
+              <span>{tr('Factura Dual PDF', 'Dual PDF Invoice', '双联 PDF 发票')}</span>
+            </div>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-zinc-50 font-display text-balance">
-            {t.marketplace.title}
-          </h1>
-          <p className="text-sm text-zinc-400">
-            {t.marketplace.subtitle}
-          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={onNavigateMerchant}
+              className="px-5 py-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold text-sm flex items-center justify-center gap-2 shadow-[0_6px_24px_-6px_rgba(245,158,11,0.4)] transition-colors shrink-0 min-h-[44px]"
+            >
+              <Store className="w-4 h-4" />
+              <span>{t.marketplace.registerBtn}</span>
+            </button>
+            {onOpenVideoGuides && (
+              <button
+                type="button"
+                onClick={() => onOpenVideoGuides('buyers')}
+                className="px-4 py-3 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/40 text-zinc-100 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors shrink-0 min-h-[44px]"
+              >
+                <Video className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{tr('Ver Video Guías', 'Watch Video Guides', '观看视频指南')}</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        <button
-          onClick={onNavigateMerchant}
-          className="px-5 py-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold text-sm flex items-center justify-center gap-2 shadow-[0_6px_24px_-6px_rgba(245,158,11,0.4)] transition-colors shrink-0 min-h-[44px]"
-        >
-          <Store className="w-4 h-4" />
-          <span>{t.marketplace.registerBtn}</span>
-        </button>
+        <div className="lg:col-span-5 relative min-h-[200px] lg:min-h-[260px] bg-[#09090b] overflow-hidden border-t lg:border-t-0 lg:border-l border-white/[0.08]">
+          {!failedImageKeys['dir-hero'] ? (
+            <img
+              src={editorialStorefrontImg}
+              alt={t.marketplace.title}
+              referrerPolicy="no-referrer"
+              onError={() => setFailedImageKeys((prev) => ({ ...prev, 'dir-hero': true }))}
+              className="w-full h-full object-cover object-center opacity-80"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-zinc-900 to-[#09090b]" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/45 to-transparent flex items-end p-5">
+            <div className="w-full flex items-center justify-between gap-3 text-xs">
+              <span className="text-zinc-200 font-semibold">
+                {tr('Boutiques, Bodegones & Comercios', 'Boutiques, Retail & Multi-Store', '精品服饰店、百货与多商户商城')}
+              </span>
+              <span className="font-mono text-amber-400 font-bold tabular-nums shrink-0">
+                {stores.length} {stores.length === 1 ? t.marketplace.activeStoreSingular : t.marketplace.activeStorePlural}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Directory Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t.marketplace.searchStoresPlaceholder}
-            className="w-full pl-10 pr-4 py-2.5 bg-[#111114] border border-white/[0.08] rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500"
-          />
+      {/* Buyer 3-Step Purchase Clarity Strip (Personal Language View) */}
+      <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs min-w-0">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="w-6 h-6 rounded-lg bg-amber-400/15 border border-amber-400/35 text-amber-300 font-mono font-bold flex items-center justify-center shrink-0">
+            1
+          </span>
+          <div className="min-w-0">
+            <div className="font-bold text-zinc-100">
+              {tr('Elige tienda, rubro o talla', 'Choose store, category or size', '1. 按品类或尺码挑选认证店铺')}
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-snug">
+              {tr(
+                'Explora tiendas verificadas por categoría, ropa con selector de tallas o buscador.',
+                'Browse verified stores by localized category, apparel sizing, or product search.',
+                '浏览按您的语言自动分类的认证商铺，支持服装尺码筛选与关键词搜索。'
+              )}
+            </p>
+          </div>
         </div>
-        <div className="text-xs text-zinc-400 font-mono">
-          {filteredStores.length}{' '}
-          {filteredStores.length === 1
-            ? t.marketplace.activeStoreSingular
-            : t.marketplace.activeStorePlural}
+
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 font-mono font-bold flex items-center justify-center shrink-0">
+            2
+          </span>
+          <div className="min-w-0">
+            <div className="font-bold text-zinc-100">
+              {tr('Precios claros USD + Bs. BCV', 'Clear USD + Live BCV Bs. Pricing', '2. 美元与 BCV 玻利瓦尔透明标价')}
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-snug tabular-nums">
+              {tr(
+                `Tasa del día ${exchangeRate.toFixed(2)} Bs./USD. Verás métodos de cobro y envío antes de confirmar.`,
+                `Live rate ${exchangeRate.toFixed(2)} Bs./USD. See store payment accounts & delivery fees upfront.`,
+                `实时参考汇率 ${exchangeRate.toFixed(2)} Bs./USD。下单前即可查看商家收款账户与配送费用。`
+              )}
+            </p>
+          </div>
         </div>
+
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="w-6 h-6 rounded-lg bg-sky-500/15 border border-sky-500/35 text-sky-300 font-mono font-bold flex items-center justify-center shrink-0">
+            3
+          </span>
+          <div className="min-w-0">
+            <div className="font-bold text-zinc-100">
+              {tr('Pedido seguro + Factura PDF', 'Order + Instant Dual PDF Receipt', '3. 一键下单生成双联发票')}
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-snug">
+              {tr(
+                'Descarga tu recibo PDF al instante y coordina el despacho directo por WhatsApp en tu idioma.',
+                'Download your PDF invoice instantly and confirm delivery directly on WhatsApp.',
+                '下单后立即可下载 PDF 电子发票，并通过 WhatsApp 直接联系商家安排发货。'
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Directory Search & Category Strip */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t.marketplace.searchStoresPlaceholder}
+              className="w-full pl-10 pr-4 py-2.5 bg-[#111114] border border-white/[0.08] rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500"
+            />
+          </div>
+          <div className="text-xs text-zinc-400 font-mono tabular-nums">
+            {filteredStores.length}{' '}
+            {filteredStores.length === 1
+              ? t.marketplace.activeStoreSingular
+              : t.marketplace.activeStorePlural}
+          </div>
+        </div>
+
+        {storeCategories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setStoreCategoryFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors min-h-[36px] ${
+                storeCategoryFilter === 'all'
+                  ? 'bg-amber-400 text-zinc-950'
+                  : 'bg-[#111114] border border-white/[0.08] text-zinc-300 hover:border-white/[0.2]'
+              }`}
+            >
+              {t.common.all}
+            </button>
+            {storeCategories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setStoreCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors min-h-[36px] ${
+                  storeCategoryFilter.toLowerCase() === cat.toLowerCase()
+                    ? 'bg-amber-400 text-zinc-950 font-semibold'
+                    : 'bg-[#111114] border border-white/[0.08] text-zinc-300 hover:border-white/[0.2]'
+                }`}
+              >
+                {translateCategoryLabel(cat, lang)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Active Stores Grid */}
@@ -1247,68 +2040,120 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredStores.map((store) => (
-            <div
-              key={store.id}
-              onClick={() => setSelectedStore(store)}
-              className="cursor-pointer bg-[#111114] border border-white/[0.08] hover:border-amber-500/50 rounded-2xl p-5 flex flex-col justify-between gap-4 transition-all group"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-14 h-14 rounded-xl bg-[#09090b] border border-white/[0.1] overflow-hidden shrink-0 flex items-center justify-center">
-                    {store.logoUrl ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredStores.map((store) => {
+            const isApparel =
+              Boolean(store.clothingSizesEnabled) || isFashionOrApparelCategory(store.category);
+            const coverImg = isApparel ? fashionBoutiqueImg : editorialStorefrontImg;
+            return (
+              <div
+                key={store.id}
+                onClick={() => setSelectedStore(store)}
+                className="cursor-pointer bg-[#111114] border border-white/[0.08] hover:border-amber-400/50 hover:-translate-y-0.5 rounded-2xl overflow-hidden flex flex-col justify-between transition-all duration-200 group shadow-lg shadow-black/40"
+              >
+                <div>
+                  {/* Boutique Cover Strip */}
+                  <div className="h-28 bg-[#09090b] relative overflow-hidden">
+                    {!failedImageKeys[`card-cover-${store.id}`] ? (
                       <img
-                        src={store.logoUrl}
+                        src={coverImg}
                         alt={store.storeName}
-                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setFailedImageKeys((prev) => ({
+                            ...prev,
+                            [`card-cover-${store.id}`]: true,
+                          }))
+                        }
+                        className="w-full h-full object-cover object-center opacity-55 group-hover:scale-[1.04] transition-transform duration-500"
                       />
                     ) : (
-                      <Store className="w-6 h-6 text-amber-400" />
+                      <div className="w-full h-full bg-gradient-to-br from-zinc-900 to-[#09090b]" />
                     )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#111114] via-[#111114]/45 to-transparent" />
+                    <div className="absolute top-2.5 right-3 text-[11px] font-mono text-amber-300 font-semibold">
+                      {translateCategoryLabel(store.category, lang) || tr('Comercio Verificado', 'Verified Store', '认证店铺')}
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <h3 className="text-base font-bold text-white group-hover:text-amber-300 truncate font-display">
-                      {store.storeName}
-                    </h3>
-                    <p className="text-xs text-zinc-400 truncate">
-                      {t.marketplace.ownerPrefix} {store.registeredOwnerName}
-                    </p>
-                    {store.rif && (
-                      <span className="text-[11px] font-mono text-amber-400">
-                        RIF: {store.rif}
-                      </span>
+
+                  {/* Card Body */}
+                  <div className="px-5 pb-4 -mt-7 relative space-y-3">
+                    <div className="flex items-end gap-3.5">
+                      <div className="w-14 h-14 rounded-xl bg-[#09090b] border-2 border-[#111114] ring-1 ring-white/[0.14] overflow-hidden shrink-0 flex items-center justify-center shadow-lg">
+                        {store.logoUrl && !failedImageKeys[`card-logo-${store.id}`] ? (
+                          <img
+                            src={store.logoUrl}
+                            alt={store.storeName}
+                            referrerPolicy="no-referrer"
+                            onError={() =>
+                              setFailedImageKeys((prev) => ({
+                                ...prev,
+                                [`card-logo-${store.id}`]: true,
+                              }))
+                            }
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Store className="w-6 h-6 text-amber-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0 pb-0.5 flex-1">
+                        <h3 className="text-base font-bold text-white group-hover:text-amber-300 truncate font-display transition-colors">
+                          {store.storeName}
+                        </h3>
+                        <p className="text-xs text-zinc-400 truncate">
+                          {t.marketplace.ownerPrefix} {store.registeredOwnerName}
+                          {store.rif && (
+                            <span className="font-mono text-amber-400"> · {store.rif}</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {store.description && (
+                      <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
+                        {store.description}
+                      </p>
                     )}
+
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400">
+                      {isApparel && (
+                        <span className="text-amber-300 font-medium inline-flex items-center gap-1">
+                          <Ruler className="w-3 h-3" />
+                          {tr('Tallas', 'Sizes', '多尺码')}
+                        </span>
+                      )}
+                      {store.nationalShippingEnabled && (
+                        <span className="text-zinc-300">
+                          {isApparel ? '· ' : ''}
+                          {t.marketplace.nationalShipping}
+                        </span>
+                      )}
+                      {store.localDeliveryEnabled && (
+                        <span className="text-emerald-400">
+                          {isApparel || store.nationalShippingEnabled ? '· ' : ''}
+                          {t.marketplace.localDelivery}
+                        </span>
+                      )}
+                      {store.pickupEnabled && (
+                        <span className="text-sky-400">
+                          {isApparel || store.nationalShippingEnabled || store.localDeliveryEnabled
+                            ? '· '
+                            : ''}
+                          {t.marketplace.localPickup}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {store.description && (
-                  <p className="text-xs text-zinc-300 line-clamp-2">{store.description}</p>
-                )}
-
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400">
-                  {store.nationalShippingEnabled && (
-                    <span className="text-zinc-300">{t.marketplace.nationalShipping}</span>
-                  )}
-                  {store.localDeliveryEnabled && (
-                    <span className="text-emerald-400">
-                      {store.nationalShippingEnabled ? '· ' : ''}{t.marketplace.localDelivery}
-                    </span>
-                  )}
-                  {store.pickupEnabled && (
-                    <span className="text-sky-400">
-                      {(store.nationalShippingEnabled || store.localDeliveryEnabled) ? '· ' : ''}{t.marketplace.localPickup}
-                    </span>
-                  )}
+                <div className="px-5 py-3.5 bg-[#09090b]/45 border-t border-white/[0.08] flex items-center justify-between text-xs font-bold text-amber-400 group-hover:text-amber-300">
+                  <span>{t.marketplace.visitCatalogBtn}</span>
+                  <ShoppingCart className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
-
-              <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between text-xs font-bold text-amber-400">
-                <span>{t.marketplace.visitCatalogBtn}</span>
-                <ShoppingCart className="w-4 h-4" />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

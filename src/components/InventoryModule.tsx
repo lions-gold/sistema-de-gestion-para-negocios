@@ -82,7 +82,19 @@ import {
   parseInventoryImportFile,
 } from '../utils/inventoryCatalogIO';
 import { compressImageFileToDataURL } from '../services/saasService';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
+import { SizeTagBuilder } from './SizeTagBuilder';
+import { normalizeSizeList } from '../utils/clothingSizes';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import {
+  translateAuditTypeLabel,
+  translateSizeTokenLabel,
+  translateTraceStageLabel,
+  translateTraceStatusLabel,
+  translateTurnoverRateLabel,
+  translateUnitLabel,
+  translateWarehouseLocationLabel,
+} from '../utils/platformLabelsI18n';
 
 interface InventoryModuleProps {
   products: Product[];
@@ -125,7 +137,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   onSyncAllToStore,
   isSyncingToStore = false,
 }) => {
-  const { tr } = useLanguage();
+  const { lang, tr } = useSubsectionTranslation('warehouse');
   // Main Sub-Tab: 'catalog' | 'audit' | 'traceability'
   const [activeSubTab, setActiveSubTab] = useState<'catalog' | 'audit' | 'traceability'>('catalog');
 
@@ -177,6 +189,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [newImage, setNewImage] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newRating, setNewRating] = useState('5.0');
+  const [newSizes, setNewSizes] = useState<string[]>([]);
+  const [newSizeGuide, setNewSizeGuide] = useState('');
   const [publishToStoreOnAdd, setPublishToStoreOnAdd] = useState(true);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -201,7 +215,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [auditQty, setAuditQty] = useState('1');
   const [auditLocation, setAuditLocation] = useState('Depósito Principal');
   const [auditAuditor, setAuditAuditor] = useState(
-    activeStore?.registeredOwnerName || tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')
+    activeStore?.registeredOwnerName || ''
   );
   const [auditNotes, setAuditNotes] = useState('');
   const [auditDiscountStock, setAuditDiscountStock] = useState(true);
@@ -223,7 +237,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
   const [newStepDescription, setNewStepDescription] = useState('');
   const [newStepRef, setNewStepRef] = useState('');
   const [newStepAuditor, setNewStepAuditor] = useState(
-    activeStore?.registeredOwnerName || tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')
+    activeStore?.registeredOwnerName || ''
   );
 
   const isProductSyncedToStore = (prod: Product) => {
@@ -397,6 +411,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         turnoverRate: newTurnover,
         location: newLocation,
         supplier: newSupplier.trim() || undefined,
+        availableSizes: normalizeSizeList(newSizes).length > 0 ? normalizeSizeList(newSizes) : undefined,
+        sizeGuide: newSizeGuide.trim() || undefined,
         batchNumber: `LT-${cleanCategory.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
         expirationDate: '2028-12-31',
       },
@@ -408,6 +424,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     setNewImage('');
     setNewDescription('');
     setNewRating('5.0');
+    setNewSizes([]);
+    setNewSizeGuide('');
     setShowAddModal(false);
   };
 
@@ -1014,10 +1032,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 </div>
                 <div>
                   <h4 className="text-xs sm:text-sm font-bold text-white">
-                    Exportar e Importar Catálogo (Fotos, Precios, Stock y Calificación)
+                    {tr(
+                      'Exportar e Importar Catálogo (Fotos, Tallas, Precios y Stock)',
+                      'Export & Import Catalog (Photos, Sizes, Prices & Stock)',
+                      '导出与导入目录（图片、尺码、价格与库存）'
+                    )}
                   </h4>
                   <p className="text-[11px] text-zinc-400">
-                    Respalda tu inventario en CSV/JSON o carga productos masivamente por SKU.
+                    {tr(
+                      'Respalda tu inventario en CSV/JSON o carga productos masivamente por SKU.',
+                      'Back up your inventory in CSV/JSON or bulk upload products by SKU.',
+                      '将库存备份为 CSV/JSON，或按 SKU 批量导入商品。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -1029,7 +1055,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   className="px-3 py-2 rounded-lg bg-[#09090b] hover:bg-zinc-800/80 text-zinc-300 border border-white/[0.1] font-medium flex items-center gap-1.5 transition-colors"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Plantilla CSV</span>
+                  <span>{tr('Plantilla CSV', 'CSV Template', 'CSV 模板')}</span>
                 </button>
 
                 <button
@@ -1039,7 +1065,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   className="px-3 py-2 rounded-lg bg-[#09090b] hover:bg-zinc-800/80 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Exportar CSV</span>
+                  <span>{tr('Exportar CSV', 'Export CSV', '导出 CSV')}</span>
                 </button>
 
                 <button
@@ -1049,12 +1075,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   className="px-3 py-2 rounded-lg bg-[#09090b] hover:bg-zinc-800/80 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Exportar JSON</span>
+                  <span>{tr('Exportar JSON', 'Export JSON', '导出 JSON')}</span>
                 </button>
 
                 <label className="px-3.5 py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1.5 cursor-pointer transition-colors">
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Importar Masivo CSV/JSON</span>
+                  <span>{tr('Importar Masivo CSV/JSON', 'Bulk Import CSV/JSON', '批量导入 CSV/JSON')}</span>
                   <input
                     type="file"
                     accept=".csv,.json,text/csv,application/json"
@@ -1085,7 +1111,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   type="button"
                   onClick={() => setImportFeedback(null)}
                   className="p-1 hover:text-white"
-                  aria-label="Cerrar mensaje"
+                  aria-label={tr('Cerrar mensaje', 'Close message', '关闭提示')}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1097,10 +1123,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] pb-2.5">
                   <div>
                     <span className="text-xs font-bold text-amber-300 block">
-                      Vista previa de importación: {importPreview.length} producto(s) listos
+                      {tr(
+                        `Vista previa de importación: ${importPreview.length} producto(s) listos`,
+                        `Import preview: ${importPreview.length} product(s) ready`,
+                        `导入预览：${importPreview.length} 件商品已就绪`
+                      )}
                     </span>
                     <span className="text-[11px] font-mono text-zinc-400">
-                      Archivo: {importFileName}
+                      {tr('Archivo:', 'File:', '文件：')} {importFileName}
                     </span>
                   </div>
 
@@ -1112,7 +1142,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         onChange={(e) => setImportMergeBySku(e.target.checked)}
                         className="accent-amber-500 w-4 h-4 rounded"
                       />
-                      <span>Actualizar si coincide SKU</span>
+                      <span>{tr('Actualizar si coincide SKU', 'Update on SKU match', 'SKU 匹配时更新')}</span>
                     </label>
                     {activeStore && (
                       <label className="flex items-center gap-2 text-xs text-emerald-300 font-semibold cursor-pointer">
@@ -1122,7 +1152,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                           onChange={(e) => setPublishToStoreOnImport(e.target.checked)}
                           className="accent-emerald-500 w-4 h-4 rounded"
                         />
-                        <span>Publicar también en Tienda Online</span>
+                        <span>{tr('Publicar también en Tienda Online', 'Also publish to Online Store', '同时发布到在线商店')}</span>
                       </label>
                     )}
                   </div>
@@ -1149,7 +1179,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         <div className="font-bold text-white truncate">{item.name}</div>
                         <div className="text-[10px] font-mono text-zinc-400 flex items-center gap-2 flex-wrap">
                           <span className="text-amber-400 font-bold">${item.priceUSD.toFixed(2)}</span>
-                          <span>Stock: {item.stock}</span>
+                          <span>{tr('Stock:', 'Stock:', '库存:')} {item.stock}</span>
+                          {item.availableSizes && item.availableSizes.length > 0 && (
+                            <span className="text-amber-300">[{item.availableSizes.join('/')}]</span>
+                          )}
                           <span className="inline-flex items-center gap-0.5 text-amber-300">
                             <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
                             {(item.rating ?? 5).toFixed(1)}
@@ -1161,7 +1194,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 </div>
                 {importPreview.length > 6 && (
                   <p className="text-[11px] text-zinc-400">
-                    ... y {importPreview.length - 6} producto(s) adicionales listos para importar.
+                    {tr(
+                      `... y ${importPreview.length - 6} producto(s) adicionales listos para importar.`,
+                      `... and ${importPreview.length - 6} additional product(s) ready to import.`,
+                      `... 以及另外 ${importPreview.length - 6} 件待导入商品。`
+                    )}
                   </p>
                 )}
 
@@ -1174,7 +1211,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     }}
                     className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium"
                   >
-                    Cancelar
+                    {tr('Cancelar', 'Cancel', '取消')}
                   </button>
                   <button
                     type="button"
@@ -1182,7 +1219,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-1.5"
                   >
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>Confirmar Importación ({importPreview.length})</span>
+                    <span>
+                      {tr('Confirmar Importación', 'Confirm Import', '确认导入')} ({importPreview.length})
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1202,13 +1241,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       : 'bg-[#111114] text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-white/[0.08]'
                   }`}
                 >
-                  {cat}
+                  {cat === 'Todos' ? tr('Todos', 'All', '全部') : translateCategoryLabel(cat, lang)}
                 </button>
               ))}
             </div>
 
             {/* Rotation / Alert Presets */}
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex items-center gap-1.5 text-xs flex-wrap">
               <button
                 onClick={() => setFilterMode('all')}
                 className={`px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
@@ -1217,7 +1256,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >
-                Todos ({products.length})
+                {tr('Todos', 'All', '全部')} ({products.length})
               </button>
 
               <button
@@ -1229,7 +1268,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 }`}
               >
                 <Flame className="w-3.5 h-3.5" />
-                <span>Alta Rotación Crítica ({highRotationRiskCount})</span>
+                <span>
+                  {tr('Alta Rotación Crítica', 'Critical Fast-Moving', '高周转告急')} ({highRotationRiskCount})
+                </span>
               </button>
 
               <button
@@ -1241,7 +1282,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 }`}
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
-                <span>Bajo Stock ({lowStockCount})</span>
+                <span>
+                  {tr('Bajo Stock', 'Low Stock', '低库存')} ({lowStockCount})
+                </span>
               </button>
             </div>
           </div>
@@ -1250,7 +1293,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           <div className="md:hidden space-y-3">
             {filteredProducts.length === 0 ? (
               <div className="py-8 text-center text-zinc-400 text-xs bg-[#111114] rounded-xl border border-white/[0.08]">
-                No se encontraron productos con el filtro seleccionado.
+                {tr('No se encontraron productos con el filtro seleccionado.', 'No products found matching the selected filter.', '未找到符合筛选条件的商品。')}
               </div>
             ) : (
               filteredProducts.map((p) => {
@@ -1260,10 +1303,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 return (
                   <div
                     key={p.id}
-                    className={`border rounded-xl p-3.5 space-y-2.5 transition-colors border-l-4 ${
+                    className={`border rounded-xl p-3.5 space-y-2.5 transition-colors ${
                       isLowStock
-                        ? 'bg-red-950/25 border-red-500/40 border-l-red-500 shadow-sm shadow-red-950/30'
-                        : 'bg-[#111114] border-white/[0.08] border-l-transparent'
+                        ? 'bg-red-950/20 border-red-500/40 shadow-sm shadow-red-950/20'
+                        : 'bg-[#111114] border-white/[0.08]'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2.5">
@@ -1281,26 +1324,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
                       <div className="flex-1 min-w-0 pr-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] text-amber-400 font-semibold">{p.category}</span>
+                          <span className="text-[10px] text-amber-400 font-semibold">
+                            {translateCategoryLabel(p.category, lang)}
+                          </span>
                           <span className="text-zinc-500 text-[10px]">·</span>
-                          {/* Rating */}
                           <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-bold text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                             <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
                             {(p.rating ?? 5).toFixed(1)}
                           </span>
-                          {/* Rotation Badge */}
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${
-                            isHighRot 
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                            isHighRot
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                               : 'bg-zinc-900 text-zinc-400'
                           }`}>
                             {isHighRot && <Flame className="w-2.5 h-2.5 text-amber-400" />}
-                            Rotación {p.turnoverRate || 'Media'}
+                            {tr('Rotación', 'Turnover', '周转')}{' '}
+                            {translateTurnoverRateLabel(p.turnoverRate || 'Media', lang)}
                           </span>
                           {isLowStock && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">
                               <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-                              {p.stock === 0 ? 'Agotado' : '¡Reponer Ya!'}
+                              {p.stock === 0 ? tr('Agotado', 'Out of stock', '售罄') : tr('¡Reponer Ya!', 'Restock Now!', '立即补货！')}
                             </span>
                           )}
                         </div>
@@ -1312,10 +1356,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                             {p.description}
                           </p>
                         )}
+                        {p.availableSizes && p.availableSizes.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            {p.availableSizes.slice(0, 6).map((sz) => (
+                              <span
+                                key={`${p.id}-mob-sz-${sz}`}
+                                className="px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/25 text-[10px] font-mono text-amber-300"
+                              >
+                                {translateSizeTokenLabel(sz, lang)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 mt-0.5 flex-wrap">
                           <span>SKU: {p.sku}</span>
-                          {p.batchNumber && <span>Lote: {p.batchNumber}</span>}
-                          {p.location && <span>Ubic: {p.location}</span>}
+                          {p.batchNumber && <span>{tr('Lote:', 'Batch:', '批次:')} {p.batchNumber}</span>}
+                          {p.location && (
+                            <span>
+                              {tr('Ubic:', 'Loc:', '库位:')}{' '}
+                              {translateWarehouseLocationLabel(p.location, lang)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -1332,7 +1393,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     <div className="pt-2 border-t border-white/[0.08] flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className={`text-xs font-bold ${isLowStock ? 'text-red-400' : 'text-zinc-400'}`}>
-                          Stock:
+                          {tr('Stock:', 'Stock:', '库存:')}
                         </span>
                         <span
                           className={`font-mono font-bold text-sm tabular-nums ${
@@ -1341,7 +1402,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         >
                           {p.stock}
                         </span>
-                        <span className="text-[11px] text-zinc-500">/ min {p.minStock} {p.unit}s</span>
+                        <span className="text-[11px] text-zinc-500">
+                          / {tr('mín', 'min', '最低')} {p.minStock}{' '}
+                          {translateUnitLabel(p.unit, lang, p.minStock > 1)}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1361,8 +1425,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                               {publishingId === p.id
                                 ? '...'
                                 : isProductSyncedToStore(p)
-                                  ? 'En Tienda ✓'
-                                  : 'Añadir a Tienda'}
+                                  ? tr('En Tienda ✓', 'In Store ✓', '已上架 ✓')
+                                  : tr('Añadir a Tienda', 'Add to Store', '上架到店铺')}
                             </span>
                           </button>
                         )}
@@ -1397,21 +1461,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-[#09090b]/80 text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-3 px-4">Producto & Lote</th>
-                    <th className="py-3 px-4">Categoría & Ubicación</th>
-                    <th className="py-3 px-4 text-center">Rotación</th>
-                    <th className="py-3 px-4 text-right">Costo (USD)</th>
-                    <th className="py-3 px-4 text-right">Precio Venta</th>
-                    <th className="py-3 px-4 text-center">Stock / Mínimo</th>
-                    <th className="py-3 px-4 text-center">Alerta Automática</th>
-                    <th className="py-3 px-4 text-right">Ajuste Rápido</th>
+                    <th className="py-3 px-4">{tr('Producto & Lote', 'Product & Batch', '商品与批次')}</th>
+                    <th className="py-3 px-4">{tr('Categoría & Ubicación', 'Category & Location', '分类与库位')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Rotación', 'Turnover', '周转率')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Costo (USD)', 'Cost (USD)', '成本 (USD)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Precio Venta', 'Sale Price', '售价')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Stock / Mínimo', 'Stock / Min', '库存 / 最低')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Alerta Automática', 'Auto Alert', '自动预警')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Ajuste Rápido', 'Quick Adjust', '快速调整')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]/80">
                   {filteredProducts.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-8 text-center text-zinc-400">
-                        No se encontraron productos coincidentes.
+                        {tr('No se encontraron productos coincidentes.', 'No matching products found.', '未找到匹配商品。')}
                       </td>
                     </tr>
                   ) : (
@@ -1422,10 +1486,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       return (
                         <tr
                           key={p.id}
-                          className={`transition-colors border-l-4 ${
+                          className={`transition-colors ${
                             isLowStock
-                              ? 'bg-red-950/30 hover:bg-red-950/50 border-l-red-500 text-red-100'
-                              : 'hover:bg-zinc-800/80/40 border-l-transparent'
+                              ? 'bg-red-950/20 hover:bg-red-950/35 text-red-100'
+                              : 'hover:bg-zinc-800/40'
                           }`}
                         >
                           <td className="py-3 px-4">
@@ -1451,7 +1515,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                   {isHighRot && (
                                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                       <Flame className="w-3 h-3 text-amber-400" />
-                                      Alta Rotación
+                                      {tr('Alta Rotación', 'High Turnover', '高周转')}
                                     </span>
                                   )}
                                 </div>
@@ -1460,17 +1524,32 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                     {p.description}
                                   </div>
                                 )}
+                                {p.availableSizes && p.availableSizes.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {p.availableSizes.map((sz) => (
+                                      <span
+                                        key={`${p.id}-desk-sz-${sz}`}
+                                        className="px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/25 text-[10px] font-mono text-amber-300"
+                                      >
+                                        {translateSizeTokenLabel(sz, lang)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="text-xs text-zinc-400 font-mono mt-0.5">
-                                  {p.sku} • Lote: {p.batchNumber || 'LT-GEN-01'} • {p.barcode}
+                                  {p.sku} · {tr('Lote:', 'Batch:', '批次:')} {p.batchNumber || 'LT-GEN-01'} · {p.barcode}
                                 </div>
                               </div>
                             </div>
                           </td>
 
                           <td className="py-3 px-4">
-                            <span className="text-zinc-300">{p.category}</span>
+                            <span className="text-zinc-300">
+                              {translateCategoryLabel(p.category, lang)}
+                            </span>
                             <span className="text-zinc-500 block text-xs">
-                              {p.location || 'Cava Principal'} • {p.unit}
+                              {translateWarehouseLocationLabel(p.location || 'Depósito Principal', lang)} ·{' '}
+                              {translateUnitLabel(p.unit, lang, p.stock > 1)}
                             </span>
                           </td>
 
@@ -1482,7 +1561,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                 ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                                 : 'bg-zinc-900 text-zinc-400'
                             }`}>
-                              {p.turnoverRate || 'Media'}
+                              {p.turnoverRate === 'Alta'
+                                ? tr('Alta', 'High', '高')
+                                : p.turnoverRate === 'Baja'
+                                  ? tr('Baja', 'Low', '低')
+                                  : tr('Media', 'Medium', '中')}
                             </span>
                           </td>
 
@@ -1508,20 +1591,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                               >
                                 {p.stock}
                               </span>
-                              <span className="text-xs text-zinc-500">/ min {p.minStock}</span>
+                              <span className="text-xs text-zinc-500">/ {tr('mín', 'min', '最低')} {p.minStock}</span>
                             </div>
                           </td>
 
                           <td className="py-3 px-4 text-center">
                             {isLowStock ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 whitespace-nowrap shadow-sm animate-pulse">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30 whitespace-nowrap">
                                 <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                                {p.stock === 0 ? 'Agotado' : isHighRot ? '¡Crítico Alta Rot.!' : 'Bajo Stock'}
+                                {p.stock === 0
+                                  ? tr('Agotado', 'Out of stock', '售罄')
+                                  : isHighRot
+                                    ? tr('¡Crítico Alta Rot.!', 'Critical Fast-Moving!', '高周转告急！')
+                                    : tr('Bajo Stock', 'Low Stock', '低库存')}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
                                 <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                Óptimo
+                                {tr('Óptimo', 'Optimal', '正常')}
                               </span>
                             )}
                           </td>
@@ -1540,8 +1627,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                   }`}
                                   title={
                                     isProductSyncedToStore(p)
-                                      ? 'Actualizar datos y stock en Tienda Online'
-                                      : 'Publicar este producto en tu Tienda Online'
+                                      ? tr('Actualizar datos y stock en Tienda Online', 'Update data & stock on Online Store', '同步更新至在线商店')
+                                      : tr('Publicar este producto en tu Tienda Online', 'Publish product to Online Store', '将此商品发布至在线商店')
                                   }
                                 >
                                   <Store className="w-3 h-3" />
@@ -1549,8 +1636,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                     {publishingId === p.id
                                       ? '...'
                                       : isProductSyncedToStore(p)
-                                        ? 'En Tienda ✓'
-                                        : 'Añadir a Tienda'}
+                                        ? tr('En Tienda ✓', 'In Store ✓', '已上架 ✓')
+                                        : tr('Añadir a Tienda', 'Add to Store', '上架到店铺')}
                                   </span>
                                 </button>
                               )}
@@ -1560,7 +1647,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                   onClick={() => handleStockChange(p.id, -1)}
                                   disabled={p.stock <= 0}
                                   className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                                  title="Restar 1 unidad"
+                                  title={tr('Restar 1 unidad', 'Subtract 1 unit', '减少 1 件')}
                                 >
                                   <Minus className="w-3.5 h-3.5" />
                                 </button>
@@ -1568,7 +1655,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                 <button
                                   onClick={() => handleStockChange(p.id, 1)}
                                   className="p-1 hover:bg-zinc-800/80 text-zinc-300 hover:text-white rounded"
-                                  title="Sumar 1 unidad"
+                                  title={tr('Sumar 1 unidad', 'Add 1 unit', '增加 1 件')}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -1594,37 +1681,41 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Header Explanation Banner */}
           <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-rose-500/30 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <ShieldAlert className="w-5 h-5 text-rose-400" />
                 <h3 className="font-bold text-white text-base font-display">
-                  Auditoría de Inventario & Control de Mermas
+                  {tr('Auditoría de Inventario & Control de Mermas', 'Inventory Audit & Shrinkage Control', '库存盘点与损耗管控')}
                 </h3>
                 <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-bold px-2 py-0.5 rounded">
-                  Rentabilidad Protegida
+                  {tr('Rentabilidad Protegida', 'Margin Protected', '利润率保护')}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
-                Monitoreo estricto de roturas en cava o barra, descorches de degustación, vencimientos y desvíos no justificados (robo hormiga) para salvaguardar el margen neto de la taberna.
+                {tr(
+                  'Monitoreo estricto de roturas, deterioros, vencimientos y desvíos no justificados para salvaguardar el margen neto de tu negocio.',
+                  'Strict monitoring of breakage, damage, expiration, and unexplained shrinkage to safeguard your store net margin.',
+                  '严格追踪破损、变质、过期与异常损耗，保障店铺净利润率。'
+                )}
               </p>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => exportInventoryAuditPDF(audits, exchangeRate)}
+                onClick={() => exportInventoryAuditPDF(audits, exchangeRate, lang)}
                 className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 border border-white/[0.1] transition-colors shadow-sm"
-                title="Descargar informe formal de auditoría en PDF"
+                title={tr('Descargar informe formal de auditoría en PDF', 'Download formal audit report in PDF', '下载正式 PDF 盘点报告')}
               >
                 <Download className="w-3.5 h-3.5 text-rose-400" />
-                <span>Informe PDF</span>
+                <span>{tr('Informe PDF', 'PDF Report', 'PDF 报告')}</span>
               </button>
 
               <button
-                onClick={() => exportInventoryAuditCSV(audits, exchangeRate)}
+                onClick={() => exportInventoryAuditCSV(audits, exchangeRate, lang)}
                 className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 border border-white/[0.1] transition-colors shadow-sm"
-                title="Exportar registros a hoja de cálculo Excel / CSV"
+                title={tr('Exportar registros a hoja de cálculo Excel / CSV', 'Export logs to Excel / CSV spreadsheet', '导出至 Excel / CSV 表格')}
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Exportar CSV</span>
+                <span>{tr('Exportar CSV', 'Export CSV', '导出 CSV')}</span>
               </button>
 
               <button
@@ -1632,7 +1723,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 className="px-4 py-2 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition-all"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>Registrar Merma / Desvío</span>
+                <span>{tr('Registrar Merma / Desvío', 'Log Shrinkage / Loss', '登记损耗/异常')}</span>
               </button>
             </div>
           </div>
@@ -1640,7 +1731,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Audit Metrics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-[#111114] border border-rose-500/20 p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Impacto Financiero Total (USD)</span>
+              <span className="text-xs text-zinc-400 block mb-1">
+                {tr('Impacto Financiero Total (USD)', 'Total Financial Impact (USD)', '总财务损失 (USD)')}
+              </span>
               <div className="text-xl font-bold font-mono text-rose-400 tabular-nums">
                 ${totalLossUSD.toFixed(2)} USD
               </div>
@@ -1650,32 +1743,43 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Unidades Afectadas</span>
+              <span className="text-xs text-zinc-400 block mb-1">
+                {tr('Unidades Afectadas', 'Affected Units', '受损数量')}
+              </span>
               <div className="text-xl font-bold font-mono text-white tabular-nums">
-                {totalLossQty} <span className="text-xs font-normal text-zinc-400">unid. dadas de baja</span>
+                {totalLossQty}{' '}
+                <span className="text-xs font-normal text-zinc-400">
+                  {tr('unid. dadas de baja', 'units written off', '件已核销')}
+                </span>
               </div>
               <span className="text-xs text-zinc-500">
-                En {audits.length} incidentes auditados
+                {tr(`En ${audits.length} incidentes auditados`, `Across ${audits.length} audited incidents`, `共 ${audits.length} 次盘点记录`)}
               </span>
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Índice de Merma / Almacén</span>
+              <span className="text-xs text-zinc-400 block mb-1">
+                {tr('Índice de Merma / Almacén', 'Warehouse Shrinkage Rate', '仓库损耗率')}
+              </span>
               <div className="text-xl font-bold font-mono text-amber-400 tabular-nums">
                 {totalValueUSD > 0 ? ((totalLossUSD / totalValueUSD) * 100).toFixed(2) : '0.00'}%
               </div>
               <span className="text-xs text-zinc-500">
-                Límite de tolerancia taberna: &lt; 2.50%
+                {tr('Límite recomendado: < 2.50%', 'Recommended threshold: < 2.50%', '建议控制阈值：< 2.50%')}
               </span>
             </div>
 
             <div className="bg-[#111114] border border-white/[0.08] p-4 rounded-xl">
-              <span className="text-xs text-zinc-400 block mb-1">Causa Principal de Merma</span>
+              <span className="text-xs text-zinc-400 block mb-1">
+                {tr('Causa Principal de Merma', 'Top Shrinkage Cause', '主要损耗原因')}
+              </span>
               <div className="text-base font-bold text-white truncate">
-                {audits.length > 0 ? audits[0].type : 'Sin registros'}
+                {audits.length > 0
+                  ? translateAuditTypeLabel(audits[0].type, lang)
+                  : tr('Sin registros', 'No records', '暂无记录')}
               </div>
               <span className="text-xs text-zinc-500">
-                Supervisado por administración
+                {tr('Supervisado por administración', 'Supervised by management', '由管理层监督')}
               </span>
             </div>
           </div>
@@ -1686,7 +1790,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar merma por producto, auditor, ubicación o motivo..."
+                placeholder={tr(
+                  'Buscar merma por producto, auditor, ubicación o motivo...',
+                  'Search shrinkage by product, auditor, location, or reason...',
+                  '按商品、盘点人、库位或原因搜索损耗...'
+                )}
                 value={auditSearch}
                 onChange={(e) => setAuditSearch(e.target.value)}
                 className="w-full bg-[#111114] border border-white/[0.08] rounded-lg pl-9 pr-4 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-rose-500"
@@ -1704,7 +1812,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       : 'bg-[#111114] text-zinc-400 hover:text-white border border-white/[0.08]'
                   }`}
                 >
-                  {type}
+                  {type === 'Todos'
+                    ? tr('Todos', 'All', '全部')
+                    : type === 'Merma por Rotura'
+                      ? tr('Merma por Rotura', 'Breakage Loss', '破损损耗')
+                      : type === 'Vencimiento'
+                        ? tr('Vencimiento', 'Expiration', '过期损耗')
+                        : type === 'Desvío / Pérdida'
+                          ? tr('Desvío / Pérdida', 'Missing / Loss', '遗失 / 短少')
+                          : tr('Cortesía / Muestra', 'Sample / Promo', '样品 / 赠送')}
                 </button>
               ))}
             </div>
@@ -1716,21 +1832,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead className="bg-[#09090b]/80 text-zinc-400 font-semibold border-b border-white/[0.08]">
                   <tr>
-                    <th className="py-3 px-4">Fecha & Boleta</th>
-                    <th className="py-3 px-4">Producto & SKU</th>
-                    <th className="py-3 px-4">Tipo de Incidencia</th>
-                    <th className="py-3 px-4 text-center">Cant.</th>
-                    <th className="py-3 px-4 text-right">Pérdida (USD)</th>
-                    <th className="py-3 px-4 text-right">Pérdida (Bs.)</th>
-                    <th className="py-3 px-4">Ubicación & Auditor</th>
-                    <th className="py-3 px-4">Observaciones</th>
+                    <th className="py-3 px-4">{tr('Fecha & Boleta', 'Date & Ticket', '日期与单号')}</th>
+                    <th className="py-3 px-4">{tr('Producto & SKU', 'Product & SKU', '商品与 SKU')}</th>
+                    <th className="py-3 px-4">{tr('Tipo de Incidencia', 'Incident Type', '异常类型')}</th>
+                    <th className="py-3 px-4 text-center">{tr('Cant.', 'Qty', '数量')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Pérdida (USD)', 'Loss (USD)', '损失 (USD)')}</th>
+                    <th className="py-3 px-4 text-right">{tr('Pérdida (Bs.)', 'Loss (Bs.)', '损失 (Bs.)')}</th>
+                    <th className="py-3 px-4">{tr('Ubicación & Auditor', 'Location & Auditor', '库位与盘点人')}</th>
+                    <th className="py-3 px-4">{tr('Observaciones', 'Notes', '备注')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.07]/80">
                   {filteredAudits.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-8 text-center text-zinc-400">
-                        No hay registros de mermas o pérdidas con ese criterio.
+                        {tr('No hay registros de mermas o pérdidas con ese criterio.', 'No shrinkage or loss records match that filter.', '没有符合条件的损耗或遗失记录。')}
                       </td>
                     </tr>
                   ) : (
@@ -1756,7 +1872,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                               ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
                               : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                           }`}>
-                            {a.type}
+                            {translateAuditTypeLabel(a.type, lang)}
                           </span>
                         </td>
 
@@ -1773,12 +1889,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         </td>
 
                         <td className="py-3 px-4">
-                          <span className="text-zinc-300 block text-xs">{a.location}</span>
+                          <span className="text-zinc-300 block text-xs">{translateWarehouseLocationLabel(a.location, lang)}</span>
                           <span className="text-zinc-500 text-[11px]">{a.auditorName}</span>
                         </td>
 
                         <td className="py-3 px-4 text-xs text-zinc-400 max-w-xs truncate" title={a.notes}>
-                          {a.notes || 'Sin observaciones'}
+                          {a.notes || tr('Sin observaciones', 'No notes', '无备注')}
                         </td>
                       </tr>
                     ))
@@ -1798,17 +1914,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           {/* Header Explanation Banner */}
           <div className="bg-gradient-to-r from-slate-900 to-slate-950 border border-blue-500/30 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Truck className="w-5 h-5 text-blue-400" />
                 <h3 className="font-bold text-white text-base font-display">
-                  Trazabilidad de Mercancía: Ciclo de Vida End-to-End
+                  {tr('Trazabilidad de Mercancía: Ciclo End-to-End', 'Merchandise Traceability: End-to-End Lifecycle', '商品溯源：全链路生命周期')}
                 </h3>
                 <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold px-2 py-0.5 rounded">
-                  Cadena Completa
+                  {tr('Cadena Completa', 'Full Chain', '全链路')}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
-                Monitoreo exhaustivo desde que la mercancía entra al almacén del distribuidor (Polar, Santa Teresa, DUSA) con su factura de compra y lote, su paso por Cava y Barra, hasta la emisión de la factura fiscal final al cliente en caja.
+                {tr(
+                  'Monitoreo exhaustivo desde la recepción del proveedor con factura de compra y lote, su paso por depósito y exhibición, hasta la emisión de la factura al cliente.',
+                  'End-to-end tracking from supplier intake with purchase invoice and batch, through storage and display, to final customer checkout.',
+                  '全程监控货物从供应商入库、发票批次、仓库调拨到最终销售开票的每一个环节。'
+                )}
               </p>
             </div>
 
@@ -1817,7 +1937,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-md shadow-blue-600/20 transition-all shrink-0"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Registrar Evento de Trazabilidad</span>
+              <span>{tr('Registrar Evento de Trazabilidad', 'Log Traceability Event', '登记溯源节点')}</span>
             </button>
           </div>
 
@@ -1829,7 +1949,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Buscar lote, SKU o proveedor..."
+                  placeholder={tr('Buscar lote, SKU o proveedor...', 'Search batch, SKU, or supplier...', '搜索批次、SKU 或供应商...')}
                   value={traceSearch}
                   onChange={(e) => setTraceSearch(e.target.value)}
                   className="w-full bg-[#111114] border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
@@ -1874,14 +1994,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                             ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                             : 'bg-zinc-900 text-zinc-400'
                         }`}>
-                          {trace.status}
+                          {trace.status === 'En Almacén' || trace.status === 'En Barra' ? null : null}
+                          {translateTraceStatusLabel(trace.status, lang)}
                         </span>
                       </div>
 
                       <div className="mt-2.5 pt-2 border-t border-white/[0.08] flex items-center justify-between text-[11px] text-zinc-400">
-                        <span>Entrada: {trace.entryDate.split(' ')[0]}</span>
+                        <span>{tr('Entrada:', 'Entry:', '入库：')} {trace.entryDate.split(' ')[0]}</span>
                         <span className="font-mono text-white">
-                          Stock Lote: <strong className="text-amber-400">{trace.currentQuantity}</strong> / {trace.initialQuantity}
+                          {tr('Stock Lote:', 'Batch Stock:', '批次库存：')}{' '}
+                          <strong className="text-amber-400">{trace.currentQuantity}</strong> / {trace.initialQuantity}
                         </span>
                       </div>
                     </div>
@@ -1894,37 +2016,38 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-4 sm:p-6 space-y-6">
               {currentTrace ? (
                 <>
-                  {/* Batch Summary Header */}
                   <div className="border-b border-white/[0.08] pb-4 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="text-xs font-mono text-blue-400 font-bold">
-                          LOTE OFICIAL: {currentTrace.batchNumber}
+                          {tr('LOTE OFICIAL:', 'OFFICIAL BATCH:', '官方批次：')} {currentTrace.batchNumber}
                         </span>
                         <h3 className="font-bold text-white text-base sm:text-lg font-display">
                           {currentTrace.productName}
                         </h3>
                       </div>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
-                        {currentTrace.steps.length} Hitos Registrados
+                        {currentTrace.steps.length} {tr('Hitos Registrados', 'Recorded Milestones', '个已记录节点')}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
                       <div className="bg-[#09090b] p-2 rounded-lg border border-white/[0.08]">
-                        <span className="text-zinc-500 block text-[10px]">Distribuidor / Proveedor</span>
+                        <span className="text-zinc-500 block text-[10px]">{tr('Distribuidor / Proveedor', 'Supplier / Vendor', '供应商 / 厂商')}</span>
                         <span className="font-semibold text-white truncate block">{currentTrace.supplierName}</span>
                       </div>
                       <div className="bg-[#09090b] p-2 rounded-lg border border-white/[0.08]">
-                        <span className="text-zinc-500 block text-[10px]">Factura de Compra</span>
+                        <span className="text-zinc-500 block text-[10px]">{tr('Factura de Compra', 'Purchase Invoice', '采购发票')}</span>
                         <span className="font-mono text-amber-400 font-bold">{currentTrace.purchaseInvoiceNumber}</span>
                       </div>
                       <div className="bg-[#09090b] p-2 rounded-lg border border-white/[0.08]">
-                        <span className="text-zinc-500 block text-[10px]">Ubicación Actual</span>
-                        <span className="text-zinc-200 font-medium">{currentTrace.storageLocation}</span>
+                        <span className="text-zinc-500 block text-[10px]">{tr('Ubicación Actual', 'Current Location', '当前库位')}</span>
+                        <span className="text-zinc-200 font-medium">
+                          {translateWarehouseLocationLabel(currentTrace.storageLocation, lang)}
+                        </span>
                       </div>
                       <div className="bg-[#09090b] p-2 rounded-lg border border-white/[0.08]">
-                        <span className="text-zinc-500 block text-[10px]">Vencimiento</span>
+                        <span className="text-zinc-500 block text-[10px]">{tr('Vencimiento', 'Expiration', '有效期')}</span>
                         <span className="font-mono text-zinc-300">{currentTrace.expirationDate || '2030-12-31'}</span>
                       </div>
                     </div>
@@ -1934,7 +2057,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   <div>
                     <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-4 flex items-center gap-2">
                       <Clock className="w-4 h-4 text-blue-400" />
-                      Línea de Tiempo del Lote (Proveedor → Cava → Barra → Factura Final)
+                      {tr(
+                        'Línea de Tiempo del Lote (Proveedor → Almacén → Exhibición → Venta)',
+                        'Batch Timeline (Supplier → Warehouse → Floor → Checkout)',
+                        '批次时间轴（供应商 → 仓库 → 展示 → 结账）'
+                      )}
                     </h4>
 
                     <div className="relative border-l-2 border-white/[0.08] ml-4 space-y-6 pl-6 py-2">
@@ -1961,7 +2088,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
                         return (
                           <div key={idx} className="relative group">
-                            {/* Step Node Dot */}
                             <div className={`absolute -left-[31px] top-1.5 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md ${iconBg}`}>
                               {idx + 1}
                             </div>
@@ -1969,7 +2095,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                             <div className="bg-[#09090b] p-3.5 rounded-xl border border-white/[0.08] hover:border-white/[0.1] transition-colors space-y-2">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
-                                  {step.stage}
+                                  {translateTraceStageLabel(step.stage, lang)}
                                 </span>
                                 <span className="font-mono text-[11px] text-zinc-500">
                                   {step.timestamp}
@@ -1986,7 +2112,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                                     Doc: {step.referenceDoc}
                                   </span>
                                 )}
-                                <span>Por: <strong className="text-zinc-300">{step.performedBy}</strong></span>
+                                <span>
+                                  {tr('Por:', 'By:', '经办人：')} <strong className="text-zinc-300">{step.performedBy}</strong>
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -1997,7 +2125,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 </>
               ) : (
                 <div className="py-12 text-center text-zinc-500 text-xs">
-                  Selecciona un lote de la izquierda para ver su trazabilidad.
+                  {tr('Selecciona un lote de la izquierda para ver su trazabilidad.', 'Select a batch from the left to view its traceability.', '请在左侧选择一个批次以查看溯源记录。')}
                 </div>
               )}
             </div>
@@ -2017,8 +2145,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base font-display">Registrar Incidencia de Inventario</h3>
-                  <span className="text-xs text-zinc-400">Merma, rotura, vencimiento o desvío no justificado</span>
+                  <h3 className="font-bold text-white text-base font-display">
+                    {tr('Registrar Incidencia de Inventario', 'Log Inventory Incident', '登记库存异常')}
+                  </h3>
+                  <span className="text-xs text-zinc-400">
+                    {tr('Merma, rotura, vencimiento o desvío no justificado', 'Shrinkage, breakage, expiration, or unexplained loss', '损耗、破损、过期或未明短少')}
+                  </span>
                 </div>
               </div>
               <button onClick={() => setShowAuditModal(false)} className="text-zinc-400 hover:text-white">
@@ -2029,11 +2161,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             <form onSubmit={handleCreateAudit} className="space-y-3.5 text-xs">
               {products.length === 0 ? (
                 <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 text-amber-200 text-xs">
-                  Tu almacén aún no tiene productos registrados. Agrega productos primero en el catálogo para poder registrar mermas.
+                  {tr(
+                    'Tu almacén aún no tiene productos registrados. Agrega productos primero en el catálogo para poder registrar mermas.',
+                    'Your warehouse has no products yet. Add products to your catalog first to log shrinkage.',
+                    '您的仓库暂无商品，请先在目录中添加商品后再登记损耗。'
+                  )}
                 </div>
               ) : (
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Producto Afectado</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Producto Afectado', 'Affected Product', '受影响商品')}
+                  </label>
                   <select
                     value={auditProductId || products[0]?.id || ''}
                     onChange={(e) => setAuditProductId(e.target.value)}
@@ -2041,7 +2179,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   >
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Stock: {p.stock} {p.unit}s • Costo: ${p.costUSD.toFixed(2)})
+                        {p.name} ({tr('Stock', 'Stock', '库存')}: {p.stock}{' '}
+                        {translateUnitLabel(p.unit, lang, p.stock > 1)} · {tr('Costo', 'Cost', '成本')}: $
+                        {p.costUSD.toFixed(2)})
                       </option>
                     ))}
                   </select>
@@ -2050,22 +2190,26 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Tipo de Incidencia / Causa</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Tipo de Incidencia / Causa', 'Incident Type / Cause', '异常类型 / 原因')}
+                  </label>
                   <select
                     value={auditType}
                     onChange={(e) => setAuditType(e.target.value as InventoryAuditType)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-rose-500 font-semibold text-rose-300"
                   >
-                    <option value="Merma por Rotura">Merma por Rotura en Cava/Barra</option>
-                    <option value="Vencimiento">Vencimiento / Deterioro</option>
-                    <option value="Desvío / Pérdida">Desvío / Pérdida No Justificada</option>
-                    <option value="Degustación / Cortesía">Degustación / Cortesía VIP</option>
-                    <option value="Ajuste Físico">Ajuste Físico de Arqueo</option>
+                    <option value="Merma por Rotura">{tr('Merma por Rotura en Almacén', 'Breakage / Damage', '破损损耗')}</option>
+                    <option value="Vencimiento">{tr('Vencimiento / Deterioro', 'Expiration / Spoilage', '过期 / 变质')}</option>
+                    <option value="Desvío / Pérdida">{tr('Desvío / Pérdida No Justificada', 'Missing / Unexplained Loss', '遗失 / 短少')}</option>
+                    <option value="Degustación / Cortesía">{tr('Muestra / Cortesía VIP', 'Sample / VIP Promo', '样品 / 赠送')}</option>
+                    <option value="Ajuste Físico">{tr('Ajuste Físico de Arqueo', 'Physical Count Adjustment', '实物盘点调整')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Cantidad de Unidades</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Cantidad de Unidades', 'Quantity (Units)', '数量')}
+                  </label>
                   <input
                     type="number"
                     min="1"
@@ -2077,7 +2221,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 </div>
               </div>
 
-              {/* Dynamic Financial Calculation */}
               {(() => {
                 const target = products.find((p) => p.id === auditProductId) || products[0];
                 const qty = parseInt(auditQty) || 0;
@@ -2086,7 +2229,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
                 return (
                   <div className="p-3 bg-rose-950/20 border border-rose-500/30 rounded-xl space-y-1 text-xs">
-                    <span className="text-zinc-400 block font-medium">Impacto Económico Calculado en Rentabilidad:</span>
+                    <span className="text-zinc-400 block font-medium">
+                      {tr('Impacto Económico Calculado:', 'Calculated Financial Impact:', '预估财务影响：')}
+                    </span>
                     <div className="flex items-baseline justify-between">
                       <span className="text-rose-400 font-mono font-bold text-base">
                         -${costUSD.toFixed(2)} USD
@@ -2101,38 +2246,48 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Ubicación de la Incidencia</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Ubicación de la Incidencia', 'Incident Location', '发生库位')}
+                  </label>
                   <select
                     value={auditLocation}
                     onChange={(e) => setAuditLocation(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   >
-                    <option value="Cava Principal">Cava Principal (Refrigerada)</option>
-                    <option value="Barra Central">Barra Central</option>
-                    <option value="Barra VIP">Barra VIP / Terraza</option>
-                    <option value="Depósito Seco">Depósito Seco</option>
-                    <option value="Muelle de Carga">Muelle de Carga</option>
+                    <option value="Depósito Principal">{tr('Depósito Principal', 'Main Warehouse', '主仓库')}</option>
+                    <option value="Exhibición Tienda">{tr('Exhibición Tienda', 'Storefront Display', '门店展示区')}</option>
+                    <option value="Cava Refrigerada">{tr('Cava Refrigerada', 'Cold Storage', '冷藏库')}</option>
+                    <option value="Depósito Seco">{tr('Depósito Seco', 'Dry Storage', '干货区')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Auditor / Responsable</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Auditor / Responsable', 'Auditor / Manager', '盘点人 / 负责人')}
+                  </label>
                   <input
                     type="text"
                     required
                     value={auditAuditor}
                     onChange={(e) => setAuditAuditor(e.target.value)}
+                    placeholder={tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Observaciones / Justificación</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Observaciones / Justificación', 'Notes / Justification', '备注与说明')}
+                </label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="Ej: Botella quebrada accidentalmente al mover la caja de estiba..."
+                  placeholder={tr(
+                    'Ej: Prenda o caja dañada durante manipulación en almacén...',
+                    'Ex: Item damaged during warehouse handling...',
+                    '例如：仓库搬运过程中受损...'
+                  )}
                   value={auditNotes}
                   onChange={(e) => setAuditNotes(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -2141,8 +2296,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="p-3 bg-[#09090b] rounded-xl border border-white/[0.08] flex items-center justify-between">
                 <div>
-                  <span className="font-bold text-white block">Descontar automáticamente del stock</span>
-                  <span className="text-[11px] text-zinc-400">Actualiza el conteo de cava en tiempo real</span>
+                  <span className="font-bold text-white block">
+                    {tr('Descontar automáticamente del stock', 'Automatically deduct from stock', '自动扣减库存')}
+                  </span>
+                  <span className="text-[11px] text-zinc-400">
+                    {tr('Actualiza el conteo de almacén en tiempo real', 'Updates warehouse stock count in real time', '实时更新仓库库存数量')}
+                  </span>
                 </div>
                 <input
                   type="checkbox"
@@ -2158,13 +2317,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   onClick={() => setShowAuditModal(false)}
                   className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-md shadow-rose-600/20"
                 >
-                  Guardar Incidencia
+                  {tr('Guardar Incidencia', 'Save Incident', '保存异常记录')}
                 </button>
               </div>
             </form>
@@ -2180,8 +2339,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           <div className="bg-[#111114] border-t sm:border border-blue-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div>
-                <h3 className="font-bold text-white text-base font-display">Nuevo Hito de Trazabilidad</h3>
-                <span className="text-xs font-mono text-blue-400">{currentTrace.batchNumber} • {currentTrace.productName}</span>
+                <h3 className="font-bold text-white text-base font-display">
+                  {tr('Nuevo Hito de Trazabilidad', 'New Traceability Milestone', '新增溯源节点')}
+                </h3>
+                <span className="text-xs font-mono text-blue-400">{currentTrace.batchNumber} · {currentTrace.productName}</span>
               </div>
               <button onClick={() => setShowAddTraceStepModal(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -2190,26 +2351,34 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
             <form onSubmit={handleAddTraceStep} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Etapa de la Cadena</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Etapa de la Cadena', 'Chain Stage', '流转阶段')}
+                </label>
                 <select
                   value={newStepStage}
                   onChange={(e) => setNewStepStage(e.target.value as TraceabilityStep['stage'])}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-blue-500 font-semibold text-blue-300"
                 >
-                  <option value="Traslado a Barra">Traslado Interno a Barra de Despacho</option>
-                  <option value="Ingreso a Cava">Almacenamiento / Reorganización en Cava</option>
-                  <option value="Recepción Proveedor">Recepción de Proveedor / Entrada Inicial</option>
-                  <option value="Venta al Consumidor">Venta / Despacho a Consumidor</option>
-                  <option value="Auditoría / Merma">Auditoría / Boleta de Merma</option>
+                  <option value="Traslado a Barra">{tr('Traslado Interno a Exhibición / Despacho', 'Internal Transfer to Display / Dispatch', '内部调拨至展示/发货区')}</option>
+                  <option value="Ingreso a Cava">{tr('Almacenamiento / Reorganización en Almacén', 'Warehouse Storage / Reorganization', '入库储存 / 库位整理')}</option>
+                  <option value="Recepción Proveedor">{tr('Recepción de Proveedor / Entrada Inicial', 'Supplier Intake / Initial Entry', '供应商收货入库')}</option>
+                  <option value="Venta al Consumidor">{tr('Venta / Despacho a Consumidor', 'Sale / Customer Dispatch', '销售出库')}</option>
+                  <option value="Auditoría / Merma">{tr('Auditoría / Boleta de Merma', 'Audit / Shrinkage Log', '盘点 / 损耗单')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Descripción del Movimiento</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Descripción del Movimiento', 'Movement Description', '流转说明')}
+                </label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="Ej: Pase de 6 botellas de Cava a Barra Central para surtir servicio nocturno..."
+                  placeholder={tr(
+                    'Ej: Pase de 12 unidades de depósito a exhibición en tienda...',
+                    'Ex: Moved 12 units from warehouse to store display...',
+                    '例如：从主仓库调拨 12 件至门店展示架...'
+                  )}
                   value={newStepDescription}
                   onChange={(e) => setNewStepDescription(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -2217,10 +2386,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Documento / Nro. de Referencia (Opcional)</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Documento / Nro. de Referencia (Opcional)', 'Document / Reference # (Optional)', '关联单据编号（可选）')}
+                </label>
                 <input
                   type="text"
-                  placeholder="Ej: Vale Interno #VE-094, Factura Fiscal #FAC-0084..."
+                  placeholder={tr('Ej: Vale Interno #VE-094, Factura #FAC-0084...', 'Ex: Internal Voucher #VE-094, Invoice #FAC-0084...', '例如：内部调拨单 #VE-094...')}
                   value={newStepRef}
                   onChange={(e) => setNewStepRef(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white font-mono"
@@ -2228,12 +2399,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Responsable / Operador</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Responsable / Operador', 'Manager / Operator', '负责人 / 操作员')}
+                </label>
                 <input
                   type="text"
                   required
                   value={newStepAuditor}
                   onChange={(e) => setNewStepAuditor(e.target.value)}
+                  placeholder={tr('Responsable de Almacén', 'Warehouse Manager', '仓库负责人')}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                 />
               </div>
@@ -2244,13 +2418,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   onClick={() => setShowAddTraceStepModal(false)}
                   className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md shadow-blue-600/20"
                 >
-                  Añadir al Timeline
+                  {tr('Añadir al Timeline', 'Add to Timeline', '添加到时间轴')}
                 </button>
               </div>
             </form>
@@ -2268,8 +2442,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               <div className="flex items-center gap-2">
                 <ShoppingCart className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="font-bold text-white text-base font-display">Sugerencia Automática de Pedido</h3>
-                  <span className="text-xs text-zinc-400">Productos en o bajo stock mínimo que requieren reposición</span>
+                  <h3 className="font-bold text-white text-base font-display">
+                    {tr('Sugerencia Automática de Pedido', 'Automated Restock Suggestion', '智能补货采购建议')}
+                  </h3>
+                  <span className="text-xs text-zinc-400">
+                    {tr('Productos en o bajo stock mínimo que requieren reposición', 'Items at or below minimum stock needing restock', '处于或低于最低警戒库存的商品')}
+                  </span>
                 </div>
               </div>
               <button onClick={() => setShowPurchaseOrderModal(false)} className="text-zinc-400 hover:text-white">
@@ -2279,21 +2457,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
             {reorderList.length === 0 ? (
               <div className="py-8 text-center text-zinc-400 text-xs">
-                Todos los productos se encuentran por encima de su stock mínimo de seguridad.
+                {tr(
+                  'Todos los productos se encuentran por encima de su stock mínimo de seguridad.',
+                  'All products are currently above their safety minimum stock level.',
+                  '所有商品均高于最低安全库存水平。'
+                )}
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="bg-[#09090b] p-3 rounded-xl border border-white/[0.08] space-y-2 text-xs">
                   <div className="flex justify-between text-zinc-300">
-                    <span>Total Ítems a Reponer:</span>
-                    <span className="font-bold text-white">{reorderList.length} producto(s)</span>
+                    <span>{tr('Total Ítems a Reponer:', 'Total Items to Restock:', '需补货商品总数：')}</span>
+                    <span className="font-bold text-white">
+                      {reorderList.length} {tr('producto(s)', 'product(s)', '件商品')}
+                    </span>
                   </div>
                   <div className="flex justify-between text-zinc-300">
-                    <span>Inversión Estimada en Compra:</span>
+                    <span>{tr('Inversión Estimada en Compra:', 'Estimated Purchase Cost:', '预估采购金额：')}</span>
                     <span className="font-mono font-bold text-amber-400">${totalReorderEstimateUSD.toFixed(2)} USD</span>
                   </div>
                   <div className="flex justify-between text-[11px] text-zinc-400">
-                    <span>Equivalente en Bolívares:</span>
+                    <span>{tr('Equivalente en Bolívares:', 'Bolívares Equivalent:', '折合玻利瓦尔：')}</span>
                     <span className="font-mono">{(totalReorderEstimateUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
                   </div>
                 </div>
@@ -2306,16 +2490,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                         <div>
                           <div className="font-bold text-white">{p.name}</div>
                           <div className="text-[11px] text-zinc-400 font-mono">
-                            Stock Actual: <strong className="text-red-400">{p.stock}</strong> (Mínimo: {p.minStock})
+                            {tr('Stock Actual:', 'Current Stock:', '当前库存：')} <strong className="text-red-400">{p.stock}</strong> ({tr('Mínimo:', 'Min:', '最低：')} {p.minStock})
                           </div>
                           <div className="text-[10px] text-zinc-500">
-                            Proveedor: {p.supplier || 'Distribuidor Mayorista'}
+                            {tr('Proveedor:', 'Supplier:', '供应商：')} {p.supplier || tr('Distribuidor Mayorista', 'Wholesale Distributor', '批发供应商')}
                           </div>
                         </div>
 
                         <div className="text-right">
                           <span className="text-[11px] text-amber-400 font-bold block">
-                            Pedir: {toOrder} {p.unit}s
+                            {tr('Pedir:', 'Order:', '订购：')} {toOrder}{' '}
+                            {translateUnitLabel(p.unit, lang, toOrder > 1)}
                           </span>
                           <span className="text-[10px] font-mono text-zinc-400">
                             ≈ ${(toOrder * p.costUSD).toFixed(2)}
@@ -2329,16 +2514,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 <div className="pt-2">
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
-                      `*ORDEN DE REPOSICIÓN - ${(activeStore?.storeName || 'SMITH SOLUTIONS').toUpperCase()}*\nFecha: ${new Date().toLocaleDateString(VENEZUELA_LOCALE, { timeZone: VENEZUELA_TIMEZONE })}\n----------------------------\n` +
-                      reorderList.map((p) => `• ${p.name}: Pedir ${Math.max(1, p.minStock * 2 - p.stock)} ${p.unit}s (Stock actual: ${p.stock})`).join('\n') +
-                      `\n----------------------------\nEstimado total: $${totalReorderEstimateUSD.toFixed(2)} USD\nSoftware por Smith Bussines Solutions 2026`
+                      `*${tr('ORDEN DE REPOSICIÓN', 'RESTOCK PURCHASE ORDER', '采购补货单')} - ${(activeStore?.storeName || 'SMITH SOLUTIONS').toUpperCase()}*\n${tr('Fecha', 'Date', '日期')}: ${new Date().toLocaleDateString(VENEZUELA_LOCALE, { timeZone: VENEZUELA_TIMEZONE })}\n----------------------------\n` +
+                        reorderList
+                          .map((p) => {
+                            const toOrder = Math.max(1, p.minStock * 2 - p.stock);
+                            return `• ${p.name}: ${tr('Pedir', 'Order', '订购')} ${toOrder} ${translateUnitLabel(p.unit, lang, toOrder > 1)} (${tr('Stock actual', 'Current stock', '当前库存')}: ${p.stock})`;
+                          })
+                          .join('\n') +
+                        `\n----------------------------\n${tr('Estimado total', 'Estimated total', '预估总额')}: $${totalReorderEstimateUSD.toFixed(2)} USD\nSmith Solutions E-Commerce`
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg flex items-center justify-center gap-2 text-xs transition-colors"
                   >
                     <Share2 className="w-4 h-4" />
-                    <span>Compartir Pedido por WhatsApp</span>
+                    <span>{tr('Compartir Pedido por WhatsApp', 'Share Order via WhatsApp', '通过 WhatsApp 发送采购单')}</span>
                   </a>
                 </div>
               </div>
@@ -2352,9 +2542,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
       {/* ========================================================================= */}
       {showAddModal && (
         <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
-          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
+          <div className="bg-[#111114] border-t sm:border border-amber-500/30 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <h3 className="font-bold text-white text-lg font-display">Registrar Nuevo Producto</h3>
+              <h3 className="font-bold text-white text-lg font-display">
+                {tr('Registrar Nuevo Producto', 'Register New Product', '登记新商品')}
+              </h3>
               <button
                 onClick={() => setShowAddModal(false)}
                 className="text-zinc-400 hover:text-white"
@@ -2365,11 +2557,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
             <form onSubmit={handleCreateProduct} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Nombre del Producto / Licor</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Nombre del Producto', 'Product Name', '商品名称')}
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ej: Ron Añejo Especial (750ml)"
+                  placeholder={tr('Ej: Franela Oversize Algodón o Producto General', 'Ex: Cotton Oversized Tee or Item', '例如：纯棉宽松T恤或常规商品')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
@@ -2378,76 +2572,89 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Categoría</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Categoría', 'Category', '商品分类')}
+                  </label>
                   <input
                     type="text"
                     list="inventory-categories-list"
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="Ej: Licores, Electrónica..."
+                    placeholder={tr('Ej: Moda y Ropa, Calzado, General...', 'Ex: Fashion & Apparel, Footwear, General...', '例如：时尚服饰、鞋靴、综合百货...')}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                   />
                   <datalist id="inventory-categories-list">
-                    <option value="Licores" />
-                    <option value="Cervezas" />
-                    <option value="Vinos" />
-                    <option value="Bebidas" />
-                    <option value="Snacks" />
-                    <option value="General" />
+                    <option value="Moda y Ropa">{translateCategoryLabel('Moda y Ropa', lang)}</option>
+                    <option value="Calzado">{translateCategoryLabel('Calzado', lang)}</option>
+                    <option value="Accesorios">{translateCategoryLabel('Accesorios', lang)}</option>
+                    <option value="Licores">{translateCategoryLabel('Licores', lang)}</option>
+                    <option value="Cervezas">{translateCategoryLabel('Cervezas', lang)}</option>
+                    <option value="Bebidas">{translateCategoryLabel('Bebidas', lang)}</option>
+                    <option value="Tecnología">{translateCategoryLabel('Tecnología', lang)}</option>
+                    <option value="General">{translateCategoryLabel('General', lang)}</option>
                   </datalist>
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Unidad</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Unidad', 'Unit', '计量单位')}
+                  </label>
                   <select
                     value={newUnit}
                     onChange={(e) => setNewUnit(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Unidad">Unidad</option>
-                    <option value="Caja">Caja</option>
-                    <option value="Fardo">Fardo</option>
-                    <option value="Botella">Botella</option>
-                    <option value="Lata">Lata</option>
-                    <option value="Bolsa">Bolsa</option>
-                    <option value="Paquete">Paquete</option>
-                    <option value="Kg">Kilogramo</option>
+                    <option value="Unidad">{tr('Unidad', 'Unit', '件/个')}</option>
+                    <option value="Prenda">{tr('Prenda', 'Garment', '件（服饰）')}</option>
+                    <option value="Par">{tr('Par (Calzado)', 'Pair (Footwear)', '双（鞋靴）')}</option>
+                    <option value="Caja">{tr('Caja', 'Box', '箱')}</option>
+                    <option value="Paquete">{tr('Paquete', 'Pack', '包')}</option>
+                    <option value="Botella">{tr('Botella', 'Bottle', '瓶')}</option>
+                    <option value="Lata">{tr('Lata', 'Can', '罐')}</option>
+                    <option value="Bolsa">{tr('Bolsa', 'Bag', '袋')}</option>
+                    <option value="Kg">{tr('Kilogramo', 'Kilogram', '公斤')}</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Rotación Comercial</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Rotación Comercial', 'Sales Turnover', '销售周转率')}
+                  </label>
                   <select
                     value={newTurnover}
                     onChange={(e) => setNewTurnover(e.target.value as 'Alta' | 'Media' | 'Baja')}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500 font-semibold"
                   >
-                    <option value="Alta">Alta Rotación (Prioridad)</option>
-                    <option value="Media">Media Rotación</option>
-                    <option value="Baja">Baja Rotación</option>
+                    <option value="Alta">{tr('Alta Rotación (Prioridad)', 'High Turnover (Priority)', '高周转（优先）')}</option>
+                    <option value="Media">{tr('Media Rotación', 'Medium Turnover', '中周转')}</option>
+                    <option value="Baja">{tr('Baja Rotación', 'Low Turnover', '低周转')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Ubicación</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Ubicación', 'Location', '库位')}
+                  </label>
                   <select
                     value={newLocation}
                     onChange={(e) => setNewLocation(e.target.value as Product['location'])}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
                   >
-                    <option value="Depósito Principal">Depósito Principal</option>
-                    <option value="Exhibición Tienda">Exhibición Tienda</option>
-                    <option value="Cava Refrigerada">Cava Refrigerada</option>
-                    <option value="Depósito Seco">Depósito Seco</option>
+                    <option value="Depósito Principal">{tr('Depósito Principal', 'Main Warehouse', '主仓库')}</option>
+                    <option value="Exhibición Tienda">{tr('Exhibición Tienda', 'Storefront Display', '门店展示区')}</option>
+                    <option value="Cava Refrigerada">{tr('Cava Refrigerada', 'Cold Storage', '冷藏库')}</option>
+                    <option value="Depósito Seco">{tr('Depósito Seco', 'Dry Storage', '干货区')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Distribuidor / Proveedor (Opcional)</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Distribuidor / Proveedor (Opcional)', 'Supplier / Brand (Optional)', '供应商 / 品牌（可选）')}
+                </label>
                 <input
                   type="text"
-                  placeholder="Ej: Proveedor mayorista, distribuidora..."
+                  placeholder={tr('Ej: Proveedor mayorista, marca textil...', 'Ex: Wholesale supplier, apparel brand...', '例如：批发商、服饰品牌...')}
                   value={newSupplier}
                   onChange={(e) => setNewSupplier(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white"
@@ -2456,7 +2663,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Costo Compra (USD)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Costo Compra (USD)', 'Purchase Cost (USD)', '采购成本 (USD)')}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -2466,7 +2675,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Precio Venta (USD)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Precio Venta (USD)', 'Sale Price (USD)', '销售单价 (USD)')}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -2482,7 +2693,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Stock Inicial</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Stock Inicial', 'Initial Stock', '初始库存')}
+                  </label>
                   <input
                     type="number"
                     value={newStock}
@@ -2491,7 +2704,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Mínimo Alerta</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Mínimo Alerta', 'Min Stock Alert', '警戒下限')}
+                  </label>
                   <input
                     type="number"
                     value={newMinStock}
@@ -2503,46 +2718,62 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">SKU (Opcional)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('SKU (Opcional)', 'SKU (Optional)', 'SKU 货号（可选）')}
+                  </label>
                   <input
                     type="text"
-                    placeholder="Ej: RON-1796"
+                    placeholder="Ej: MOD-OV24"
                     value={newSKU}
                     onChange={(e) => setNewSKU(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-300 font-medium mb-1">Calificación (1 a 5 ★)</label>
+                  <label className="block text-zinc-300 font-medium mb-1">
+                    {tr('Calificación (1 a 5 ★)', 'Rating (1 to 5 ★)', '评分 (1 到 5 ★)')}
+                  </label>
                   <select
                     value={newRating}
                     onChange={(e) => setNewRating(e.target.value)}
                     className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-amber-300 font-mono font-bold"
                   >
-                    <option value="5.0">5.0 ★ Excelente</option>
-                    <option value="4.5">4.5 ★ Muy bueno</option>
-                    <option value="4.0">4.0 ★ Bueno</option>
-                    <option value="3.5">3.5 ★ Regular</option>
-                    <option value="3.0">3.0 ★ Estándar</option>
-                    <option value="2.0">2.0 ★ Bajo</option>
-                    <option value="1.0">1.0 ★ Crítico</option>
+                    <option value="5.0">5.0 ★ {tr('Excelente', 'Excellent', '极佳')}</option>
+                    <option value="4.5">4.5 ★ {tr('Muy bueno', 'Very good', '很好')}</option>
+                    <option value="4.0">4.0 ★ {tr('Bueno', 'Good', '良好')}</option>
+                    <option value="3.5">3.5 ★ {tr('Regular', 'Fair', '一般')}</option>
+                    <option value="3.0">3.0 ★ {tr('Estándar', 'Standard', '普通')}</option>
+                    <option value="2.0">2.0 ★ {tr('Bajo', 'Low', '较低')}</option>
+                    <option value="1.0">1.0 ★ {tr('Crítico', 'Poor', '极差')}</option>
                   </select>
                 </div>
               </div>
 
+              {/* Optional Clothing Sizes Builder available for ANY store/product */}
+              <SizeTagBuilder
+                sizes={newSizes}
+                onChange={setNewSizes}
+                storeDefaultSizes={activeStore?.defaultClothingSizes}
+                sizeGuide={newSizeGuide}
+                onSizeGuideChange={setNewSizeGuide}
+                compact
+              />
+
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Foto del Producto (Subir o pegar URL)</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Foto del Producto (Subir o pegar URL)', 'Product Photo (Upload or paste URL)', '商品图片（上传或粘贴链接）')}
+                </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="https://... o sube una foto"
+                    placeholder={tr('https://... o sube una foto', 'https://... or upload a photo', 'https://... 或上传图片')}
                     value={newImage}
                     onChange={(e) => setNewImage(e.target.value)}
                     className="flex-1 bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
                   />
                   <label className="px-3 py-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-white/[0.1] font-semibold cursor-pointer shrink-0 flex items-center gap-1.5">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{isUploadingImage ? '...' : 'Subir'}</span>
+                    <span>{isUploadingImage ? '...' : tr('Subir', 'Upload', '上传')}</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -2555,7 +2786,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   <div className="mt-2 flex items-center gap-2">
                     <img
                       src={newImage}
-                      alt="Vista previa"
+                      alt={tr('Vista previa', 'Preview', '预览')}
                       className="w-12 h-12 rounded-lg object-cover border border-white/[0.1]"
                     />
                     <button
@@ -2563,17 +2794,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                       onClick={() => setNewImage('')}
                       className="text-[11px] text-rose-400 hover:underline"
                     >
-                      Quitar foto
+                      {tr('Quitar foto', 'Remove photo', '移除图片')}
                     </button>
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-zinc-300 font-medium mb-1">Descripción Breve (Opcional)</label>
+                <label className="block text-zinc-300 font-medium mb-1">
+                  {tr('Descripción Breve (Opcional)', 'Short Description (Optional)', '简短描述（可选）')}
+                </label>
                 <textarea
                   rows={2}
-                  placeholder="Detalles del producto, presentación o notas para catálogo..."
+                  placeholder={tr('Detalles del producto, material, presentación o notas...', 'Product details, material, packaging, or notes...', '商品详情、材质、包装或备注...')}
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full bg-[#09090b] border border-white/[0.08] rounded-lg p-2.5 text-white focus:outline-none focus:border-amber-500"
@@ -2583,9 +2816,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
               {activeStore && (
                 <label className="p-3 rounded-xl bg-emerald-950/25 border border-emerald-500/30 flex items-center justify-between gap-3 cursor-pointer">
                   <div>
-                    <span className="font-bold text-emerald-300 block">Publicar también en mi Tienda Online</span>
+                    <span className="font-bold text-emerald-300 block">
+                      {tr('Publicar también en mi Tienda Online', 'Also publish to my Online Store', '同时发布到我的在线商店')}
+                    </span>
                     <span className="text-[11px] text-zinc-400">
-                      Añade este producto directo al catálogo de "{activeStore.storeName}" y vincula el stock.
+                      {tr(
+                        `Añade este producto directo al catálogo de "${activeStore.storeName}" y vincula el stock.`,
+                        `Adds this item directly to "${activeStore.storeName}" catalog and links stock.`,
+                        `直接添加到 "${activeStore.storeName}" 商店目录并联动库存。`
+                      )}
                     </span>
                   </div>
                   <input
@@ -2603,13 +2842,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-medium"
                 >
-                  Cancelar
+                  {tr('Cancelar', 'Cancel', '取消')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold"
                 >
-                  Guardar en Almacén
+                  {tr('Guardar en Almacén', 'Save to Warehouse', '保存至仓库')}
                 </button>
               </div>
             </form>
@@ -2635,7 +2874,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
       {/* Floating Email Notification Toast */}
       {emailToast && (
-        <div 
+        <div
           className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-50 max-w-sm sm:max-w-md bg-[#111114] border border-amber-500/50 p-4 rounded-2xl shadow-2xl shadow-black/80 flex items-start gap-3 animate-in slide-in-from-bottom duration-300 backdrop-blur-md"
           role="status"
           aria-live="polite"
@@ -2645,7 +2884,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           </div>
           <div className="flex-1 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-sm font-display">Notificación de Alerta</span>
+              <span className="font-bold text-white text-sm font-display">
+                {tr('Notificación de Alerta', 'Alert Notification', '预警通知')}
+              </span>
             </div>
             <p className="mt-1 text-zinc-300 leading-snug">{emailToast.message}</p>
             <div className="mt-2.5 flex items-center gap-3">
@@ -2657,7 +2898,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                 }}
                 className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center gap-1 hover:underline min-h-[36px]"
               >
-                <span>Ver Historial & Config. SMTP</span>
+                <span>{tr('Ver Historial & Config. SMTP', 'View History & SMTP Config', '查看记录与 SMTP 配置')}</span>
                 <span>→</span>
               </button>
             </div>
@@ -2666,7 +2907,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             type="button"
             onClick={() => setEmailToast(null)}
             className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800/80 transition-colors"
-            title="Cerrar notificación"
+            title={tr('Cerrar notificación', 'Close notification', '关闭通知')}
           >
             <X className="w-4 h-4" />
           </button>

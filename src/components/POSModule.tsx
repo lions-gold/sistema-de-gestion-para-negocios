@@ -30,7 +30,15 @@ import {
 } from '../utils/fiscalPrinter';
 import { useOnlineStatus } from '../hooks/usePWAInstall';
 import { getCaracasDateTimeStamp, normalizeVenezuelanPhone } from '../utils/venezuelaTime';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
+import { buildCartLineKey } from '../utils/clothingSizes';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import {
+  translateCommonPaymentInstruction,
+  translatePaymentMethodLabel,
+  translateSizeTokenLabel,
+} from '../utils/platformLabelsI18n';
+import { Ruler } from 'lucide-react';
 
 export interface POSCustomPaymentOption {
   name: string;
@@ -68,11 +76,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
   customPaymentMethods = [],
   onOpenPaymentSettings,
 }) => {
-  const { tr } = useLanguage();
+  const { lang, tr } = useSubsectionTranslation('warehouse');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerName, setCustomerName] = useState(() =>
-    tr('Cliente Mostrador', 'Walk-in Customer', '柜台散客')
-  );
+  const [customerName, setCustomerName] = useState('');
   const [customerRIF, setCustomerRIF] = useState('V-27891234-5');
   const [customerPhone, setCustomerPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Pago Móvil');
@@ -82,35 +88,41 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const [lastScannedFeedback, setLastScannedFeedback] = useState<string | null>(null);
   const [fiscalPrintSuccess, setFiscalPrintSuccess] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<'catalog' | 'cart'>('catalog');
+  const [sizePromptProduct, setSizePromptProduct] = useState<Product | null>(null);
   const { isOnline } = useOnlineStatus();
 
-  const getMethodDisplayLabel = (name: string) => {
-    switch (name) {
-      case 'Efectivo USD':
-        return tr('Efectivo USD', 'Cash USD', '美元现金');
-      case 'Efectivo Bs':
-        return tr('Efectivo Bs', 'Cash Bs', '玻利瓦尔现金');
-      case 'Punto de Venta':
-        return tr('Punto de Venta', 'Debit/Card POS', '银行卡 POS 机');
-      case 'Fiado (Crédito)':
-        return tr('Fiado (Crédito)', 'Store Credit', '挂账 / 赊账');
-      default:
-        return name;
-    }
+  const getMethodDisplayLabel = (name: string) => translatePaymentMethodLabel(name, lang);
+
+  const addToCartWithSize = (product: Product, selectedSize?: string) => {
+    if (product.stock <= 0) return;
+    setCart((prev) => {
+      const totalForProduct = prev
+        .filter((i) => i.product.id === product.id)
+        .reduce((sum, i) => sum + i.quantity, 0);
+      if (totalForProduct >= product.stock) return prev;
+
+      const lineKey = buildCartLineKey(product.id, selectedSize);
+      const existing = prev.find(
+        (item) => buildCartLineKey(item.product.id, item.selectedSize) === lineKey
+      );
+      if (existing) {
+        return prev.map((item) =>
+          buildCartLineKey(item.product.id, item.selectedSize) === lineKey
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      return [...prev, { product, quantity: 1, selectedSize }];
+    });
   };
 
   const addToCart = (product: Product) => {
     if (product.stock <= 0) return;
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id);
-      if (existing) {
-        if (existing.quantity >= product.stock) return prev;
-        return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      return [...prev, { product, quantity: 1 }];
-    });
+    if (product.availableSizes && product.availableSizes.length > 0) {
+      setSizePromptProduct(product);
+      return;
+    }
+    addToCartWithSize(product);
   };
 
   // Support for PC USB / Bluetooth Barcode Scanners (wedge mode typing + Enter)
@@ -146,7 +158,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
           );
 
           if (found && found.stock > 0) {
-            addToCart(found);
+            addToCartWithSize(found, found.availableSizes?.[0]);
             setLastScannedFeedback(
               tr(
                 `¡Escaneado en PC: ${found.name}!`,
@@ -190,24 +202,48 @@ export const POSModule: React.FC<POSModuleProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [products]);
 
-  const updateQuantity = (productId: string, delta: number) => {
-    setCart((prev) =>
-      prev
+  const updateQuantity = (lineKey: string, delta: number) => {
+    setCart((prev) => {
+      const target = prev.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === lineKey
+      );
+      if (!target) return prev;
+      const totalOtherForProduct = prev
+        .filter(
+          (i) =>
+            i.product.id === target.product.id &&
+            buildCartLineKey(i.product.id, i.selectedSize) !== lineKey
+        )
+        .reduce((s, i) => s + i.quantity, 0);
+
+      return prev
         .map((item) => {
-          if (item.product.id === productId) {
+          if (buildCartLineKey(item.product.id, item.selectedSize) === lineKey) {
             const newQty = item.quantity + delta;
             if (newQty <= 0) return null;
-            if (newQty > item.product.stock) return item;
+            if (newQty + totalOtherForProduct > item.product.stock) return item;
             return { ...item, quantity: newQty };
           }
           return item;
         })
-        .filter(Boolean) as CartItem[]
+        .filter(Boolean) as CartItem[];
+    });
+  };
+
+  const updateCartItemSize = (lineKey: string, nextSize: string) => {
+    setCart((prev) =>
+      prev.map((item) =>
+        buildCartLineKey(item.product.id, item.selectedSize) === lineKey
+          ? { ...item, selectedSize: nextSize }
+          : item
+      )
     );
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  const removeFromCart = (lineKey: string) => {
+    setCart((prev) =>
+      prev.filter((item) => buildCartLineKey(item.product.id, item.selectedSize) !== lineKey)
+    );
   };
 
   const clearCart = () => setCart([]);
@@ -287,7 +323,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
       fiscalControlNumber: controlNum,
       fiscalZReportNumber: 'Z-0082',
       fiscalDeviceSerial: 'HKA0084920',
-      cashierName: 'Carlos Smith (Caja Principal)',
+      cashierName: tr('Caja Principal', 'Main Register', '主收银台'),
     };
 
     onCompleteSale(newSale);
@@ -326,22 +362,62 @@ export const POSModule: React.FC<POSModuleProps> = ({
   };
 
   const generateWhatsAppReceiptText = (sale: Sale) => {
+    const sizeTxt = tr('Talla', 'Size', '尺码');
     const itemsList = sale.items
       .map(
-        (i) => `• ${i.quantity}x ${i.product.name} = $${(i.quantity * i.product.priceUSD).toFixed(2)}`
+        (i) =>
+          `• ${i.quantity}x ${i.product.name}${
+            i.selectedSize
+              ? ` [${sizeTxt}: ${translateSizeTokenLabel(i.selectedSize, lang)}]`
+              : ''
+          } = $${(i.quantity * i.product.priceUSD).toFixed(2)}`
       )
-      .join('%0A');
+      .join('\n');
 
-    const igtfText = (sale.igtfAmountUSD && sale.igtfAmountUSD > 0)
-      ? `%0A*IGTF (3% Divisas)*: +$${sale.igtfAmountUSD.toFixed(2)} USD`
-      : '';
+    const igtfText =
+      sale.igtfAmountUSD && sale.igtfAmountUSD > 0
+        ? `\n*${tr('IGTF (3% Divisas)', 'IGTF (3% FX Tax)', 'IGTF 外汇税 (3%)')}*: +$${sale.igtfAmountUSD.toFixed(2)} USD`
+        : '';
 
-    const totalFinalUSD = sale.totalWithIgtfUSD ? sale.totalWithIgtfUSD.toFixed(2) : sale.subtotalUSD.toFixed(2);
-    const totalFinalBs = sale.totalWithIgtfBs 
+    const totalFinalUSD = sale.totalWithIgtfUSD
+      ? sale.totalWithIgtfUSD.toFixed(2)
+      : sale.subtotalUSD.toFixed(2);
+    const totalFinalBs = sale.totalWithIgtfBs
       ? sale.totalWithIgtfBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })
       : sale.subtotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 });
 
-    return `*SMITH SOLUTIONS E-COMMERCE*%0A*Comprobante de Venta*: ${sale.receiptNumber}%0A*Factura Fiscal*: ${sale.fiscalInvoiceNumber || 'N/A'}%0A*Fecha*: ${sale.date}%0A*Cliente*: ${sale.customerName}%0A*RIF/CI*: ${sale.customerRIF || 'V-00000000-0'}%0A----------------------------%0A${itemsList}%0A----------------------------%0A*Base Imponible (16%)*: $${(sale.baseAmountUSD || (sale.subtotalUSD / 1.16)).toFixed(2)}%0A*IVA (16%)*: $${(sale.ivaUSD || (sale.subtotalUSD - sale.subtotalUSD / 1.16)).toFixed(2)}${igtfText}%0A*TOTAL FINAL USD*: $${totalFinalUSD}%0A*TOTAL BS*: ${totalFinalBs} Bs.%0A*Tasa*: ${sale.exchangeRate.toFixed(2)} Bs/USD%0A*Método de Pago*: ${sale.paymentMethod}%0A----------------------------%0A_Gracias por su compra en Smith Solutions E-Commerce._%0ASoftware por Smith Bussines Solutions 2026`;
+    const text = [
+      `*SMITH SOLUTIONS E-COMMERCE*`,
+      `*${tr('Comprobante de Venta', 'Sales Receipt', '销售凭证')}*: ${sale.receiptNumber}`,
+      `*${tr('Factura Fiscal', 'Fiscal Invoice', '税控发票')}*: ${sale.fiscalInvoiceNumber || 'N/A'}`,
+      `*${tr('Fecha', 'Date', '日期')}*: ${sale.date}`,
+      `*${tr('Cliente', 'Customer', '客户')}*: ${sale.customerName}`,
+      `*${tr('RIF/CI', 'Tax ID', '税号/证件')}*: ${sale.customerRIF || 'V-00000000-0'}`,
+      `----------------------------`,
+      itemsList,
+      `----------------------------`,
+      `*${tr('Base Imponible (16%)', 'Taxable Base (16%)', '应税基数 (16%)')}*: $${(
+        sale.baseAmountUSD || sale.subtotalUSD / 1.16
+      ).toFixed(2)}`,
+      `*${tr('IVA (16%)', 'VAT (16%)', '增值税 (16%)')}*: $${(
+        sale.ivaUSD || sale.subtotalUSD - sale.subtotalUSD / 1.16
+      ).toFixed(2)}${igtfText}`,
+      `*${tr('TOTAL FINAL USD', 'TOTAL USD', '美元总计')}*: $${totalFinalUSD}`,
+      `*${tr('TOTAL BS', 'TOTAL BS', '玻利瓦尔总计')}*: ${totalFinalBs} Bs.`,
+      `*${tr('Tasa', 'Rate', '汇率')}*: ${sale.exchangeRate.toFixed(2)} Bs/USD`,
+      `*${tr('Método de Pago', 'Payment Method', '支付方式')}*: ${translatePaymentMethodLabel(
+        sale.paymentMethod,
+        lang
+      )}`,
+      `----------------------------`,
+      `_${tr(
+        'Gracias por su compra en Smith Solutions E-Commerce.',
+        'Thank you for your purchase at Smith Solutions E-Commerce.',
+        '感谢您在 Smith Solutions E-Commerce 购买！'
+      )}_`,
+    ].join('\n');
+
+    return encodeURIComponent(text);
   };
 
   const totalCartItems = cart.reduce((a, b) => a + b.quantity, 0);
@@ -438,7 +514,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {products.map((p) => {
-            const inCart = cart.find((i) => i.product.id === p.id);
+            const qtyInCart = cart
+              .filter((i) => i.product.id === p.id)
+              .reduce((s, i) => s + i.quantity, 0);
             const isOutOfStock = p.stock <= 0;
 
             return (
@@ -449,21 +527,31 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 className={`text-left p-3 rounded-xl border transition-all relative flex flex-col justify-between min-h-[112px] active:scale-[0.98] ${
                   isOutOfStock
                     ? 'bg-[#111114]/40 border-white/[0.08] opacity-50 cursor-not-allowed'
-                    : inCart
+                    : qtyInCart > 0
                     ? 'bg-[#111114] border-amber-500/80 shadow-md shadow-amber-500/10'
                     : 'bg-[#111114] border-white/[0.08] hover:border-amber-500/40 hover:bg-zinc-900'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1 gap-1">
-                    <span className="truncate">{p.category}</span>
+                    <span className="truncate">{translateCategoryLabel(p.category, lang)}</span>
                     <span className={`font-mono shrink-0 ${p.stock <= p.minStock ? 'text-amber-400' : 'text-zinc-400'}`}>
                       {p.stock}
                     </span>
                   </div>
-                  <h4 className="font-medium text-white text-xs sm:text-sm line-clamp-2 mb-2 leading-tight">
+                  <h4 className="font-medium text-white text-xs sm:text-sm line-clamp-2 mb-1.5 leading-tight">
                     {p.name}
                   </h4>
+                  {p.availableSizes && p.availableSizes.length > 0 && (
+                    <div className="text-[10px] font-mono text-amber-300/90 mb-2 truncate">
+                      {tr('Tallas:', 'Sizes:', '尺码：')}{' '}
+                      {p.availableSizes
+                        .slice(0, 5)
+                        .map((sz) => translateSizeTokenLabel(sz, lang))
+                        .join(' · ')}
+                      {p.availableSizes.length > 5 ? ` +${p.availableSizes.length - 5}` : ''}
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-white/[0.08] flex items-baseline justify-between gap-1">
@@ -475,9 +563,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
                   </span>
                 </div>
 
-                {inCart && (
+                {qtyInCart > 0 && (
                   <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-amber-500 text-zinc-950 font-bold text-xs flex items-center justify-center shadow-md">
-                    {inCart.quantity}
+                    {qtyInCart}
                   </span>
                 )}
               </button>
@@ -542,7 +630,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 type="text"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder={tr('Nombre del cliente', 'Customer name', '客户姓名')}
+                placeholder={tr('Cliente Mostrador', 'Walk-in Customer', '柜台散客')}
                 className="w-full bg-[#09090b] border border-white/[0.08] rounded px-2.5 py-1.5 text-white"
               />
             </div>
@@ -587,55 +675,75 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 )}
               </div>
             ) : (
-              cart.map((item) => (
-                <div
-                  key={item.product.id}
-                  className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex items-center justify-between gap-2 text-xs min-w-0"
-                >
-                  <div className="flex-1 min-w-0 pr-1">
-                    <span className="text-white font-medium block truncate">
-                      {item.product.name}
-                    </span>
-                    <span className="text-zinc-400 font-mono text-[11px]">
-                      ${item.product.priceUSD.toFixed(2)} {tr('c/u', 'ea.', '/件')}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="flex items-center gap-1 bg-[#111114] rounded-lg p-0.5 border border-white/[0.08]">
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(item.product.id, -1)}
-                        className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
-                      >
-                        <Minus className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="font-mono px-1.5 text-white font-bold tabular-nums">
-                        {item.quantity}
+              cart.map((item) => {
+                const lineKey = buildCartLineKey(item.product.id, item.selectedSize);
+                const sizes = item.product.availableSizes || [];
+                return (
+                  <div
+                    key={lineKey}
+                    className="bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08] flex items-center justify-between gap-2 text-xs min-w-0"
+                  >
+                    <div className="flex-1 min-w-0 pr-1">
+                      <span className="text-white font-medium block truncate">
+                        {item.product.name}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => updateQuantity(item.product.id, 1)}
-                        className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        <span className="text-zinc-400 font-mono text-[11px]">
+                          ${item.product.priceUSD.toFixed(2)} {tr('c/u', 'ea.', '/件')}
+                        </span>
+                        {sizes.length > 0 && (
+                          <select
+                            value={item.selectedSize || sizes[0]}
+                            onChange={(e) => updateCartItemSize(lineKey, e.target.value)}
+                            className="bg-[#111114] border border-amber-400/35 rounded px-1.5 py-0.5 text-[10px] font-mono text-amber-300"
+                            aria-label={tr('Talla', 'Size', '尺码')}
+                          >
+                            {sizes.map((sz) => (
+                              <option key={`${lineKey}-opt-${sz}`} value={sz}>
+                                {tr('Talla:', 'Size:', '尺码:')} {translateSizeTokenLabel(sz, lang)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     </div>
 
-                    <span className="font-mono font-bold text-amber-400 w-16 text-right tabular-nums">
-                      ${(item.quantity * item.product.priceUSD).toFixed(2)}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 bg-[#111114] rounded-lg p-0.5 border border-white/[0.08]">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(lineKey, -1)}
+                          className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-mono px-1.5 text-white font-bold tabular-nums">
+                          {item.quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(lineKey, 1)}
+                          className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-400 hover:text-white rounded"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={() => removeFromCart(item.product.id)}
-                      className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-500 hover:text-rose-400 rounded"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                      <span className="font-mono font-bold text-amber-400 w-16 text-right tabular-nums">
+                        ${(item.quantity * item.product.priceUSD).toFixed(2)}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(lineKey)}
+                        className="min-w-[34px] min-h-[34px] flex items-center justify-center text-zinc-500 hover:text-rose-400 rounded"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -711,7 +819,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
                   </div>
                 )}
                 {selectedCustomMethod.instructions && (
-                  <div className="text-zinc-400">{selectedCustomMethod.instructions}</div>
+                  <div className="text-zinc-400">
+                    {translateCommonPaymentInstruction(selectedCustomMethod.instructions, lang)}
+                  </div>
                 )}
               </div>
             )}
@@ -866,12 +976,12 @@ export const POSModule: React.FC<POSModuleProps> = ({
             {/* Receipt card preview with Venezuelan SENIAT details */}
             <div className="bg-[#09090b] p-4 rounded-xl border border-white/[0.08] font-mono space-y-2">
               <div className="text-center border-b border-white/[0.08] pb-2">
-                <div className="font-bold text-white text-xs tracking-wider">LA TABERNA LIONS GOLD C.A.</div>
+                <div className="font-bold text-white text-xs tracking-wider">SMITH SOLUTIONS E-COMMERCE</div>
                 <div className="text-[10px] text-amber-400 font-bold">RIF: J-50129384-7</div>
-                <div className="text-[10px] text-zinc-400">Av. Las Mercedes, Caracas - Venezuela</div>
+                <div className="text-[10px] text-zinc-400">Caracas, Venezuela</div>
                 <div className="text-[9px] text-zinc-500 mt-1">
                   {tr('Factura Fiscal:', 'Fiscal Invoice:', '税控发票：')}{' '}
-                  {completedSale.fiscalInvoiceNumber || 'FAC-0084'} | Control:{' '}
+                  {completedSale.fiscalInvoiceNumber || 'FAC-0084'} | {tr('Control:', 'Control:', '控税号：')}{' '}
                   {completedSale.fiscalControlNumber || '00-008420'}
                 </div>
                 <div className="text-[9px] text-zinc-500">
@@ -900,7 +1010,12 @@ export const POSModule: React.FC<POSModuleProps> = ({
               <div className="border-t border-b border-white/[0.08] py-2 space-y-1 text-[11px]">
                 {completedSale.items.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-zinc-300">
-                    <span className="truncate pr-2">{item.quantity}x {item.product.name}</span>
+                    <span className="truncate pr-2">
+                      {item.quantity}x {item.product.name}
+                      {item.selectedSize
+                        ? ` [${tr('Talla', 'Size', '尺码')}: ${translateSizeTokenLabel(item.selectedSize, lang)}]`
+                        : ''}
+                    </span>
                     <span className="tabular-nums font-semibold">${(item.quantity * item.product.priceUSD).toFixed(2)}</span>
                   </div>
                 ))}
@@ -960,7 +1075,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => exportSingleReceiptPDF(completedSale)}
+                  onClick={() => exportSingleReceiptPDF(completedSale, lang)}
                   className="py-2.5 px-3 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors border border-white/[0.1]"
                 >
                   <Download className="w-3.5 h-3.5 text-amber-400" />
@@ -969,7 +1084,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => printReceiptTicket(completedSale)}
+                  onClick={() => printReceiptTicket(completedSale, lang)}
                   className="py-2.5 px-3 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors border border-white/[0.1]"
                 >
                   <Printer className="w-3.5 h-3.5 text-amber-400" />
@@ -996,6 +1111,55 @@ export const POSModule: React.FC<POSModuleProps> = ({
               >
                 {tr('Nueva Venta', 'New Sale', '开始下一笔销售')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Size Picker Modal for Apparel / Sized Items */}
+      {sizePromptProduct && (
+        <div className="fixed inset-0 z-[75] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 safe-area-bottom">
+          <div className="bg-[#111114] border-t sm:border border-amber-400/35 rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between gap-2 border-b border-white/[0.08] pb-3">
+              <div>
+                <div className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                  <Ruler className="w-3.5 h-3.5" />
+                  <span>{tr('Seleccionar talla en caja', 'Select size at POS', '收银选码')}</span>
+                </div>
+                <h4 className="text-sm font-bold text-white mt-0.5">{sizePromptProduct.name}</h4>
+                <p className="text-xs font-mono text-amber-300 mt-0.5">
+                  ${sizePromptProduct.priceUSD.toFixed(2)} · {tr('Stock total:', 'Total stock:', '总库存：')} {sizePromptProduct.stock}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSizePromptProduct(null)}
+                className="p-1.5 text-zinc-400 hover:text-white rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {sizePromptProduct.sizeGuide && (
+              <p className="text-[11px] text-zinc-400 bg-[#09090b] p-2.5 rounded-lg border border-white/[0.08]">
+                {sizePromptProduct.sizeGuide}
+              </p>
+            )}
+
+            <div className="grid grid-cols-3 gap-2">
+              {(sizePromptProduct.availableSizes || []).map((sz) => (
+                <button
+                  key={`pos-sz-${sz}`}
+                  type="button"
+                  onClick={() => {
+                    addToCartWithSize(sizePromptProduct, sz);
+                    setSizePromptProduct(null);
+                  }}
+                  className="min-h-[44px] px-3 py-2 rounded-xl bg-[#09090b] hover:bg-amber-400 hover:text-zinc-950 border border-white/[0.12] hover:border-amber-300 text-xs font-bold text-white transition-colors"
+                >
+                  {sz}
+                </button>
+              ))}
             </div>
           </div>
         </div>

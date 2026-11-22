@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Sale, Product, InventoryAuditLog, StoreTenant } from '../types';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
 import {
   ResponsiveContainer,
   BarChart,
@@ -46,6 +46,8 @@ import {
 } from 'lucide-react';
 import { exportSingleReceiptPDF, printReceiptTicket, exportSalesReportPDF } from '../utils/pdfExport';
 import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import { translatePaymentMethodLabel } from '../utils/platformLabelsI18n';
 import {
   getCaracasDateString,
   getCaracasYesterdayDateString,
@@ -94,7 +96,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   onOpenEmailConfig,
   onGoToPOS,
 }) => {
-  const { tr, lang } = useLanguage();
+  const { tr, lang } = useSubsectionTranslation('warehouse');
   // Navigation Sub-tab
   const [activeTab, setActiveTab] = useState<'profitability' | 'visual_reports' | 'top_products' | 'peak_hours' | 'sales_team' | 'history'>('profitability');
   const [period, setPeriod] = useState<PeriodFilter>('7days');
@@ -339,7 +341,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
 
     list.sort((a, b) => b.revenueUSD - a.revenueUSD);
     return list;
-  }, [filteredSales, profitabilityMetrics.grossRevenueUSD]);
+  }, [filteredSales, profitabilityMetrics.grossRevenueUSD, lang]);
 
   // 5. SALES HISTORY FILTERING
   const historyFilteredSales = useMemo(() => {
@@ -564,19 +566,10 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
     };
   }, [sales, filteredSales, paymentChartScope]);
 
-  const methodLabel = (method: string) => {
-    const map: Record<string, string> = {
-      'Todos': tr('Todos', 'All', '全部'),
-      'Pago Móvil': tr('Pago Móvil', 'Pago Móvil', '移动支付 Pago Móvil'),
-      'Efectivo USD': tr('Efectivo USD', 'Cash USD', '美元现金'),
-      'Efectivo Bs': tr('Efectivo Bs', 'Cash Bs', '玻利瓦尔现金'),
-      'Punto de Venta': tr('Punto de Venta', 'POS Card', 'POS 刷卡'),
-      'Zelle': 'Zelle',
-      'Fiado (Crédito)': tr('Fiado (Crédito)', 'Store Credit', '赊账 (信用)'),
-      'Otro': tr('Otro', 'Other', '其他'),
-    };
-    return map[method] || method;
-  };
+  const methodLabel = (method: string) =>
+    method === 'Todos'
+      ? tr('Todos', 'All', '全部')
+      : translatePaymentMethodLabel(method, lang);
 
   const handleSendSalesReportEmail = async () => {
     const storeId = activeStore?.id || 'default-warehouse';
@@ -1633,7 +1626,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                           <span className="font-bold text-white block">{p.name}</span>
                           <span className="text-[11px] font-mono text-zinc-400">{p.sku}</span>
                         </td>
-                        <td className="py-3 px-4 text-zinc-300">{p.category}</td>
+                        <td className="py-3 px-4 text-zinc-300">{translateCategoryLabel(p.category, lang)}</td>
                         <td className="py-3 px-4 text-center font-mono font-bold text-white tabular-nums">
                           {p.quantitySold}
                         </td>
@@ -1869,7 +1862,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
               </button>
 
               <button
-                onClick={() => exportSalesReportPDF(sales, exchangeRate)}
+                onClick={() => exportSalesReportPDF(sales, exchangeRate, lang)}
                 disabled={sales.length === 0}
                 className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 active:scale-95 text-zinc-950 font-bold rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md shadow-amber-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap min-h-[44px]"
                 title={tr('Descargar documento PDF con todas las ventas registradas', 'Download PDF report with all recorded sales', '下载包含所有已记录销售的 PDF 报告')}
@@ -1935,7 +1928,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                       </td>
                       <td className="py-3 px-4">
                         <span className="font-mono text-zinc-300 text-xs block">{sale.date}</span>
-                        <span className="text-[10px] text-zinc-500">{sale.cashierName || 'Carlos Smith'}</span>
+                        <span className="text-[10px] text-zinc-500">{sale.cashierName || tr('Caja Principal', 'Main Cashier', '主收银台')}</span>
                       </td>
                       <td className="py-3 px-4">
                         <span className="text-white font-medium block">{sale.customerName}</span>
@@ -1957,16 +1950,14 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                         <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                           {sale.status === 'Completada'
                             ? tr('Completada', 'Completed', '已完成')
-                            : sale.status === 'Anulada'
-                              ? tr('Anulada', 'Voided', '已作废')
-                              : sale.status}
+                            : tr('Pendiente (Fiado)', 'Pending (Credit)', '挂账待收')}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="inline-flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => exportSingleReceiptPDF(sale)}
+                            onClick={() => exportSingleReceiptPDF(sale, lang)}
                             className="p-1.5 bg-[#09090b] hover:bg-zinc-800/80 border border-white/[0.08] hover:border-amber-500/40 text-amber-400 rounded-lg transition-colors"
                             title={tr('Descargar comprobante en PDF', 'Download receipt PDF', '下载 PDF 收据')}
                           >
@@ -1974,7 +1965,7 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => printReceiptTicket(sale)}
+                            onClick={() => printReceiptTicket(sale, lang)}
                             className="p-1.5 bg-[#09090b] hover:bg-zinc-800/80 border border-white/[0.08] hover:border-white/[0.1] text-zinc-300 hover:text-white rounded-lg transition-colors"
                             title={tr('Imprimir ticket térmico', 'Print thermal receipt', '打印热敏小票')}
                           >

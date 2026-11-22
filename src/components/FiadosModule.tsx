@@ -13,7 +13,7 @@ import {
   getCaracasDateString,
   normalizeVenezuelanPhone,
 } from '../utils/venezuelaTime';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
 
 interface FiadosModuleProps {
   debtors: Debtor[];
@@ -28,14 +28,12 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
   onAddDebtor,
   onRecordPayment,
 }) => {
-  const { tr } = useLanguage();
+  const { tr } = useSubsectionTranslation('warehouse');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDebtorForPayment, setSelectedDebtorForPayment] = useState<Debtor | null>(null);
   const [paymentAmountUSD, setPaymentAmountUSD] = useState('');
-  const [paymentDesc, setPaymentDesc] = useState(() =>
-    tr('Abono en efectivo en barra', 'Cash payment at counter', '柜台现金还款')
-  );
+  const [paymentDesc, setPaymentDesc] = useState('');
   const [historyModalDebtor, setHistoryModalDebtor] = useState<Debtor | null>(null);
 
   // New debtor form
@@ -76,16 +74,24 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
     const amount = parseFloat(paymentAmountUSD);
     if (isNaN(amount) || amount <= 0) return;
 
-    onRecordPayment(selectedDebtorForPayment.id, amount, paymentDesc);
+    const resolvedDesc =
+      paymentDesc.trim() ||
+      tr('Abono en efectivo / caja', 'Cash / counter payment', '柜台现金还款');
+    onRecordPayment(selectedDebtorForPayment.id, amount, resolvedDesc);
     setSelectedDebtorForPayment(null);
     setPaymentAmountUSD('');
+    setPaymentDesc('');
   };
 
   const generateWhatsAppLink = (debtor: Debtor) => {
     const amountBs = debtor.balanceUSD * exchangeRate;
-    const msg = `*LA TABERNA LIONS GOLD*%0AEstimado/a *${debtor.name}*, reciba un cordial saludo.%0A%0ALe contactamos para recordarle su saldo pendiente de *$${debtor.balanceUSD.toFixed(2)} USD* (equivalente a *${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.* a la tasa oficial del día).%0A%0A*Métodos disponibles:*%0A• Pago Móvil%0A• Efectivo (USD / Bs.)%0A• Zelle / Punto de Venta en local%0A%0AQuedamos a su entera disposición. ¡Muchas gracias!%0A_Smith Bussines Solutions 2026_`;
+    const msgText = tr(
+      `*ESTADO DE CUENTA / RECORDATORIO DE PAGO*\nEstimado/a *${debtor.name}*, reciba un cordial saludo.\n\nLe contactamos para recordarle su saldo pendiente de *$${debtor.balanceUSD.toFixed(2)} USD* (equivalente a *${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.* a la tasa oficial del día).\n\n*Métodos disponibles:*\n• Pago Móvil\n• Efectivo (USD / Bs.)\n• Zelle / Punto de Venta en local\n\nQuedamos a su entera disposición. ¡Muchas gracias!\n_Smith Solutions E-Commerce_`,
+      `*ACCOUNT STATEMENT / PAYMENT REMINDER*\nDear *${debtor.name}*,\n\nThis is a friendly reminder regarding your pending balance of *$${debtor.balanceUSD.toFixed(2)} USD* (equivalent to *${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.* at today's official rate).\n\n*Accepted methods:*\n• Pago Móvil\n• Cash (USD / Bs.)\n• Zelle / In-store POS\n\nThank you for your business!\n_Smith Solutions E-Commerce_`,
+      `*账户对账 / 付款提醒*\n尊敬的 *${debtor.name}*，您好：\n\n提醒您当前尚有待结余款 *$${debtor.balanceUSD.toFixed(2)} USD*（按今日官方汇率折合 *${amountBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.*）。\n\n*支持付款方式：*\n• Pago Móvil 移动转账\n• 现金 (USD / Bs.)\n• Zelle / 门店 POS 刷卡\n\n感谢您的支持，祝商祺！\n_Smith Solutions E-Commerce_`
+    );
     const cleanPhone = normalizeVenezuelanPhone(debtor.phone);
-    return `https://wa.me/${cleanPhone}?text=${msg}`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
   };
 
   return (

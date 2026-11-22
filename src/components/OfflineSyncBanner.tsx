@@ -27,6 +27,7 @@ import {
   syncPendingOfflineActions,
 } from '../services/offlineSyncService';
 import { useLanguage } from '../i18n/LanguageContext';
+import { translatePaymentMethodLabel } from '../utils/platformLabelsI18n';
 
 interface OfflineSyncBannerProps {
   user: User | null;
@@ -461,7 +462,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 font-mono tabular-nums">
-                        <span className="text-[11px] text-zinc-400">{saleItem.paymentMethod}</span>
+                        <span className="text-[11px] text-zinc-400">{translatePaymentMethodLabel(saleItem.paymentMethod, lang)}</span>
                         <span className="font-bold text-emerald-400">
                           ${saleItem.totalUSD.toFixed(2)} USD
                         </span>

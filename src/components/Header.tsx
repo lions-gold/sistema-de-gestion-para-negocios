@@ -17,6 +17,7 @@ import {
   MessageCircle,
   ChevronRight,
   FileDown,
+  Video,
 } from 'lucide-react';
 import { MaterialAssembleLogo } from './MaterialAssembleLogo';
 import { AppMainView } from '../utils/seoAndAnalytics';
@@ -39,6 +40,7 @@ interface HeaderProps {
   onSignOut?: () => Promise<void>;
   isOfflinePanelOpen?: boolean;
   onToggleOfflinePanel?: () => void;
+  onOpenVideoGuides?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   isOfflinePanelOpen = false,
   onToggleOfflinePanel,
+  onOpenVideoGuides,
 }) => {
   const { t, tr } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -403,6 +406,25 @@ export const Header: React.FC<HeaderProps> = ({
                 <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
               </button>
 
+              {onOpenVideoGuides && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenVideoGuides();
+                  }}
+                  className={menuItemClass(false)}
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <Video className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="truncate">
+                      {tr('Video Guías de Uso', 'Video Tutorials', '视频使用教程')}
+                    </span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0" />
+                </button>
+              )}
+
               {onOpenScanner && (
                 <button
                   type="button"
@@ -601,6 +623,24 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="truncate">{t.header.downloadGuide}</span>
             </span>
           </button>
+
+          {onOpenVideoGuides && (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenVideoGuides();
+              }}
+              className={menuItemClass(false)}
+            >
+              <span className="flex items-center gap-3 min-w-0">
+                <Video className="w-5 h-5 text-amber-400 shrink-0" />
+                <span className="truncate">
+                  {tr('Video Guías de Uso', 'Video Tutorials', '视频使用教程')}
+                </span>
+              </span>
+            </button>
+          )}
 
           {onToggleOfflinePanel && (
             <button

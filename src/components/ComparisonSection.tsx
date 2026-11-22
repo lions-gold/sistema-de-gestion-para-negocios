@@ -1,4 +1,5 @@
 import React from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const ComparisonSection: React.FC = () => {
@@ -15,7 +16,7 @@ export const ComparisonSection: React.FC = () => {
           <p className="mt-3 text-sm sm:text-base text-zinc-400">{t.comparison.subtitle}</p>
         </div>
 
-        <div className="max-w-4xl mx-auto w-full min-w-0 obsidian-surface rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
+        <div className="max-w-5xl mx-auto w-full min-w-0 obsidian-surface rounded-2xl overflow-hidden shadow-2xl shadow-black/60">
           <div className="w-full overflow-x-auto">
             <table className="w-full min-w-[540px] text-left text-xs sm:text-sm">
               <thead className="bg-[#09090b] text-zinc-300 font-semibold border-b border-white/[0.08]">
@@ -23,7 +24,7 @@ export const ComparisonSection: React.FC = () => {
                   <th className="py-4 px-5">{t.comparison.colFeature}</th>
                   <th className="py-4 px-4 text-center text-zinc-400">{t.comparison.colExcel}</th>
                   <th className="py-4 px-4 text-center text-zinc-400">{t.comparison.colGeneric}</th>
-                  <th className="py-4 px-5 text-center text-amber-400 bg-amber-500/[0.07] border-x border-amber-400/20 font-bold">
+                  <th className="py-4 px-5 text-center text-amber-400 bg-amber-500/[0.08] border-x border-amber-400/25 font-bold">
                     Smith Solutions E-Commerce
                   </th>
                 </tr>
@@ -31,13 +32,16 @@ export const ComparisonSection: React.FC = () => {
               <tbody className="divide-y divide-white/[0.06]">
                 {t.comparison.rows.map((row, idx) => (
                   <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="py-3.5 px-5 font-medium text-zinc-100">{row.feature}</td>
-                    <td className="py-3.5 px-4 text-center text-rose-400 font-mono tabular-nums">{row.excel}</td>
-                    <td className="py-3.5 px-4 text-center text-zinc-400 font-mono tabular-nums">
+                    <td className="py-4 px-5 font-medium text-zinc-100">{row.feature}</td>
+                    <td className="py-4 px-4 text-center text-rose-400 font-mono tabular-nums">{row.excel}</td>
+                    <td className="py-4 px-4 text-center text-zinc-400 font-mono tabular-nums">
                       {row.generic}
                     </td>
-                    <td className="py-3.5 px-5 text-center text-emerald-400 bg-amber-500/[0.04] border-x border-amber-400/20 font-semibold">
-                      {row.smith}
+                    <td className="py-4 px-5 text-center text-emerald-400 bg-amber-500/[0.04] border-x border-amber-400/25 font-semibold">
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>{row.smith}</span>
+                      </span>
                     </td>
                   </tr>
                 ))}

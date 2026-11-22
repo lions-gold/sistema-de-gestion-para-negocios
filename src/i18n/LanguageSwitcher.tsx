@@ -16,7 +16,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
   align,
   className = '',
 }) => {
-  const { lang, setLang, t } = useLanguage();
+  const { lang, setLang, t, tr } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -98,7 +98,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
         <div
           role="listbox"
           aria-label={t.header.languageLabel}
-          className={`absolute ${menuPositionClass} z-[70] min-w-[176px] rounded-xl bg-[#111114] border border-white/[0.12] shadow-2xl shadow-black/75 p-1.5 backdrop-blur-xl`}
+          className={`absolute ${menuPositionClass} z-[70] min-w-[218px] rounded-xl bg-[#111114] border border-white/[0.12] shadow-2xl shadow-black/75 p-1.5 backdrop-blur-xl`}
         >
           <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             {t.header.languageLabel}
@@ -135,6 +135,13 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
                 </button>
               );
             })}
+          </div>
+          <div className="mt-1.5 pt-1.5 px-2.5 pb-1 border-t border-white/[0.08] text-[10px] leading-snug text-zinc-400">
+            {tr(
+              'Predeterminado: Español · Tu idioma es privado y no cambia la vista de otros usuarios.',
+              'Default: Spanish · Your language is personal and does not change other users’ view.',
+              '系统默认：西班牙语 · 切换语言仅影响您个人页面，不会改变其他用户的视图。'
+            )}
           </div>
         </div>
       )}

@@ -34,9 +34,16 @@ import {
   Server,
   Wallet,
   Save,
+  Ruler,
+  Globe,
+  ChevronDown,
+  Video,
 } from 'lucide-react';
 import { MerchantVectorTab } from './MerchantVectorTab';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
+import { SizeTagBuilder } from './SizeTagBuilder';
+import { LanguageSettings } from './LanguageSettings';
+import { normalizeSizeList, buildCartLineKey } from '../utils/clothingSizes';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
@@ -58,6 +65,7 @@ import {
   StoreTenant,
   SubscriptionPayment,
   SubscriptionPaymentMethod,
+  GuideVideoAudience,
 } from '../types';
 import {
   buildPaymentVoucherLinks,
@@ -107,6 +115,15 @@ import {
   exportStoreSalesLedgerPDF,
 } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import {
+  translateCommonPaymentInstruction,
+  translateOrderStatusLabel,
+  translatePaymentMethodLabel,
+  translateSaleChannelLabel,
+  translateShippingTypeLabel,
+  translateSizeTokenLabel,
+} from '../utils/platformLabelsI18n';
 import {
   applyOfflineOrderStockToCache,
   createLocalOfflineOrderSnapshot,
@@ -141,6 +158,7 @@ interface MerchantPortalProps {
   onOpenWarehouseApp?: (storeId?: string) => void;
   onNavigateMarketplace?: () => void;
   onOpenVectorSellerGuide?: (autoPrompt?: string) => void;
+  onOpenVideoGuides?: (audience?: GuideVideoAudience) => void;
   onActiveBrandContext?: (ctx: { store: StoreTenant | null; products: StoreProduct[] }) => void;
 }
 
@@ -152,9 +170,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   onOpenWarehouseApp,
   onNavigateMarketplace,
   onOpenVectorSellerGuide,
+  onOpenVideoGuides,
   onActiveBrandContext,
 }) => {
-  const { t, tr } = useLanguage();
+  const { lang, t, tr } = useLanguage();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [selectedStoreId, setSelectedStoreId] = useState<string>('');
@@ -209,6 +228,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [regLocalFee, setRegLocalFee] = useState('3');
   const [regLocalZone, setRegLocalZone] = useState('Área Metropolitana');
   const [regPickupEnabled, setRegPickupEnabled] = useState(true);
+  const [regClothingSizesEnabled, setRegClothingSizesEnabled] = useState(false);
+  const [regDefaultClothingSizes, setRegDefaultClothingSizes] = useState<string[]>([
+    'XS',
+    'S',
+    'M',
+    'L',
+    'XL',
+  ]);
   const [regReferralCode, setRegReferralCode] = useState(initialReferralCode);
   const [resolvedReferrer, setResolvedReferrer] = useState<ReferralCodeLookup | null>(null);
 
@@ -239,6 +266,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [prodSku, setProdSku] = useState('');
   const [prodStock, setProdStock] = useState('15');
   const [prodUnit, setProdUnit] = useState('und');
+  const [prodAvailableSizes, setProdAvailableSizes] = useState<string[]>([]);
+  const [prodSizeGuide, setProdSizeGuide] = useState('');
 
   // Bulk Import Preview State
   const [importPreview, setImportPreview] = useState<StoreProductInput[]>([]);
@@ -247,6 +276,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   // Direct Sale Modal State (Per-store personalized sales registration)
   const [showDirectSaleModal, setShowDirectSaleModal] = useState(false);
   const [directCart, setDirectCart] = useState<StoreCartItem[]>([]);
+  const [directSizePromptProduct, setDirectSizePromptProduct] = useState<StoreProduct | null>(null);
   const [saleCustomerName, setSaleCustomerName] = useState('');
   const [saleCustomerRif, setSaleCustomerRif] = useState('');
   const [saleCustomerPhone, setSaleCustomerPhone] = useState('');
@@ -264,6 +294,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [stPmAppliesIgtf, setStPmAppliesIgtf] = useState(false);
   const [stPmActive, setStPmActive] = useState(true);
   const [confirmDeleteStoreMethodId, setConfirmDeleteStoreMethodId] = useState<string | null>(null);
+  const [showOwnerGuide, setShowOwnerGuide] = useState(true);
 
   useEffect(() => {
     getPlatformBillingSettings().then((b) => {
@@ -464,6 +495,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setRegLocalFee(String(activeStore.localDeliveryFeeUSD ?? 0));
     setRegLocalZone(activeStore.localDeliveryZone || '');
     setRegPickupEnabled(activeStore.pickupEnabled);
+    setRegClothingSizesEnabled(Boolean(activeStore.clothingSizesEnabled));
+    setRegDefaultClothingSizes(
+      normalizeSizeList(activeStore.defaultClothingSizes).length > 0
+        ? normalizeSizeList(activeStore.defaultClothingSizes)
+        : ['XS', 'S', 'M', 'L', 'XL']
+    );
   }, [activeStore, isCreatingNewStore]);
 
   const notify = (msg: string) => {
@@ -519,6 +556,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         localDeliveryFeeUSD: Number(regLocalFee) || 0,
         localDeliveryZone: regLocalZone,
         pickupEnabled: regPickupEnabled,
+        clothingSizesEnabled: regClothingSizesEnabled,
+        defaultClothingSizes: normalizeSizeList(regDefaultClothingSizes),
         referredByCode: regReferralCode.trim() || undefined,
       });
       setSelectedStoreId(created.id);
@@ -552,8 +591,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         localDeliveryFeeUSD: Number(regLocalFee) || 0,
         localDeliveryZone: regLocalZone,
         pickupEnabled: regPickupEnabled,
+        clothingSizesEnabled: regClothingSizesEnabled,
+        defaultClothingSizes: normalizeSizeList(regDefaultClothingSizes),
       });
-      notify(tr('Datos fiscales, logo y preferencias de envío actualizados.', 'Tax details, logo, and shipping preferences updated.', '税务资料、徽标与配送偏好已更新。'));
+      notify(tr('Datos fiscales, logo, tallas y preferencias de envío actualizados.', 'Tax details, logo, sizes, and shipping preferences updated.', '税务资料、徽标、尺码设置与配送偏好已更新。'));
     } catch (err) {
       notifyError(err instanceof Error ? err.message : tr('Error actualizando tienda.', 'Error updating store.', '更新店铺资料时出错。'));
     } finally {
@@ -628,7 +669,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   }> = [
     ...activeStoreSubscriptionMethods.map((pm) => ({
       value: pm.name,
-      label: `${pm.name} (${pm.currency}) · ${tr('Asignado a tu tienda', 'Assigned to your store', '专属您店铺')}`,
+      label: `${translatePaymentMethodLabel(pm.name, lang)} (${pm.currency}) · ${tr('Asignado a tu tienda', 'Assigned to your store', '专属您店铺')}`,
       currency: pm.currency,
       accountHolder: pm.accountHolder,
       accountDetails: pm.accountDetails,
@@ -638,7 +679,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     })),
     ...filteredGlobalCustomMethods.map((pm) => ({
       value: pm.name,
-      label: `${pm.name} (${pm.currency})`,
+      label: `${translatePaymentMethodLabel(pm.name, lang)} (${pm.currency})`,
       currency: pm.currency,
       accountHolder: pm.accountHolder,
       accountDetails: pm.accountDetails,
@@ -759,6 +800,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeStore || !effectiveUid) return;
+    const normalizedSizes = normalizeSizeList(prodAvailableSizes);
+    const cleanSizeGuide = prodSizeGuide.trim();
     const productInput: StoreProductInput = {
       id: editingProduct?.id,
       name: prodName,
@@ -771,6 +814,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       sku: prodSku,
       stock: Number(prodStock) || 0,
       unit: prodUnit,
+      availableSizes: normalizedSizes,
+      sizeGuide: cleanSizeGuide || undefined,
       isActive: true,
     };
 
@@ -784,6 +829,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       setProdImage('');
       setProdSku('');
       setProdStock('15');
+      setProdAvailableSizes([]);
+      setProdSizeGuide('');
     };
 
     const saveProductLocally = () => {
@@ -801,6 +848,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         sku: productInput.sku,
         stock: Math.max(0, productInput.stock),
         unit: productInput.unit,
+        ...(normalizedSizes.length > 0 ? { availableSizes: normalizedSizes } : {}),
+        ...(cleanSizeGuide ? { sizeGuide: cleanSizeGuide } : {}),
         isActive: true,
         createdAt: editingProduct?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -966,9 +1015,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
   const downloadSampleCSVTemplate = () => {
     const csv =
-      '\uFEFFnombre,descripcion,precioUSD,calificacionEstrellas,foto,categoria,sku,stock,costoUSD,unidad\n' +
-      '"Audífonos Pro Bluetooth","Cancelación de ruido y estuche de carga rápida",29.90,5,"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400","Electrónica","AUD-001",25,16.50,"und"\n' +
-      '"Café Gourmet Venezolano 500g","Tueste medio altura andina aroma intenso",8.50,4.8,"","Alimentos","CAF-500",40,4.80,"bolsa"\n';
+      '\uFEFFnombre,descripcion,precioUSD,calificacionEstrellas,foto,categoria,sku,stock,costoUSD,unidad,tallas,guiaTallas\n' +
+      '"Franela Oversize Algodón Pima","Corte urbano unisex 240gsm suave al tacto",18.00,5,"","Moda y Ropa","FRAN-01",40,9.50,"und","XS | S | M | L | XL","Corte holgado; pedir talla habitual"\n' +
+      '"Audífonos Pro Bluetooth","Cancelación de ruido y estuche de carga rápida",29.90,5,"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400","Electrónica","AUD-001",25,16.50,"und","",""\n' +
+      '"Café Gourmet Venezolano 500g","Tueste medio altura andina aroma intenso",8.50,4.8,"","Alimentos","CAF-500",40,4.80,"bolsa","",""\n';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -986,7 +1036,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setIsBusy(true);
     try {
       const items = await fetchStoreOrderItems(activeStore.id, ord, user.uid);
-      exportStoreOrderInvoicePDF(activeStore, ord, items, mode);
+      exportStoreOrderInvoicePDF(activeStore, ord, items, mode, lang);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : tr('No se pudo generar la factura PDF.', 'Could not generate PDF invoice.', '无法生成 PDF 发票。'));
     } finally {
@@ -1007,10 +1057,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         nextStatus,
         products
       );
+      const nextStatusLabel = translateOrderStatusLabel(nextStatus, lang);
       notify(
         stockDiscountedNow
-          ? tr(`Orden #${ord.invoiceNumber} actualizada a "${nextStatus}" y stock descontado automáticamente.`, `Order #${ord.invoiceNumber} updated to "${nextStatus}" and stock deducted automatically.`, `订单 #${ord.invoiceNumber} 已更新为“${nextStatus}”并自动扣减库存。`)
-          : tr(`Estado de orden #${ord.invoiceNumber} actualizado a "${nextStatus}".`, `Order #${ord.invoiceNumber} status updated to "${nextStatus}".`, `订单 #${ord.invoiceNumber} 状态已更新为“${nextStatus}”。`)
+          ? tr(`Orden #${ord.invoiceNumber} actualizada a "${nextStatusLabel}" y stock descontado automáticamente.`, `Order #${ord.invoiceNumber} updated to "${nextStatusLabel}" and stock deducted automatically.`, `订单 #${ord.invoiceNumber} 已更新为“${nextStatusLabel}”并自动扣减库存。`)
+          : tr(`Estado de orden #${ord.invoiceNumber} actualizado a "${nextStatusLabel}".`, `Order #${ord.invoiceNumber} status updated to "${nextStatusLabel}".`, `订单 #${ord.invoiceNumber} 状态已更新为“${nextStatusLabel}”。`)
       );
     } catch (err) {
       notifyError(err instanceof Error ? err.message : tr('Error actualizando estado de orden.', 'Error updating order status.', '更新订单状态时出错。'));
@@ -1019,30 +1070,94 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     }
   };
 
-  const addProductToDirectSale = (prod: StoreProduct) => {
+  const addProductToDirectSale = (prod: StoreProduct, explicitSize?: string) => {
+    const pSizes = normalizeSizeList(prod.availableSizes);
+    if (pSizes.length > 0 && !explicitSize) {
+      setDirectSizePromptProduct(prod);
+      return;
+    }
+    const chosenSize = pSizes.length > 0 ? explicitSize || pSizes[0] : undefined;
+    const targetKey = buildCartLineKey(prod.id, chosenSize);
+
     setDirectCart((prev) => {
-      const found = prev.find((i) => i.product.id === prod.id);
+      const totalForProd = prev.reduce(
+        (sum, i) => (i.product.id === prod.id ? sum + i.quantity : sum),
+        0
+      );
+      const maxStock = prod.stock > 0 ? prod.stock : 999;
+      if (totalForProd >= maxStock) return prev;
+
+      const found = prev.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === targetKey
+      );
       if (found) {
         return prev.map((i) =>
-          i.product.id === prod.id
-            ? { ...i, quantity: Math.min(prod.stock || 999, i.quantity + 1) }
+          buildCartLineKey(i.product.id, i.selectedSize) === targetKey
+            ? { ...i, quantity: i.quantity + 1 }
             : i
         );
       }
-      return [...prev, { product: prod, quantity: 1 }];
+      return [
+        ...prev,
+        { product: prod, quantity: 1, ...(chosenSize ? { selectedSize: chosenSize } : {}) },
+      ];
+    });
+    setDirectSizePromptProduct(null);
+  };
+
+  const updateDirectSaleQty = (productId: string, delta: number, selectedSize?: string) => {
+    const targetKey = buildCartLineKey(productId, selectedSize);
+    setDirectCart((prev) => {
+      const otherLinesQty = prev.reduce(
+        (sum, i) =>
+          i.product.id === productId &&
+          buildCartLineKey(i.product.id, i.selectedSize) !== targetKey
+            ? sum + i.quantity
+            : sum,
+        0
+      );
+      return prev
+        .map((i) => {
+          if (buildCartLineKey(i.product.id, i.selectedSize) !== targetKey) return i;
+          const maxStock =
+            i.product.stock > 0 ? Math.max(0, i.product.stock - otherLinesQty) : 999;
+          return { ...i, quantity: Math.min(maxStock, i.quantity + delta) };
+        })
+        .filter((i) => i.quantity > 0);
     });
   };
 
-  const updateDirectSaleQty = (productId: string, delta: number) => {
-    setDirectCart((prev) =>
-      prev
-        .map((i) => {
-          if (i.product.id !== productId) return i;
-          const maxStock = i.product.stock > 0 ? i.product.stock : 999;
-          return { ...i, quantity: Math.min(maxStock, i.quantity + delta) };
-        })
-        .filter((i) => i.quantity > 0)
-    );
+  const changeDirectSaleItemSize = (
+    productId: string,
+    oldSize: string | undefined,
+    newSize: string
+  ) => {
+    const oldKey = buildCartLineKey(productId, oldSize);
+    const newKey = buildCartLineKey(productId, newSize);
+    if (oldKey === newKey) return;
+    setDirectCart((prev) => {
+      const source = prev.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === oldKey
+      );
+      if (!source) return prev;
+      const targetExists = prev.find(
+        (i) => buildCartLineKey(i.product.id, i.selectedSize) === newKey
+      );
+      if (targetExists) {
+        return prev
+          .filter((i) => buildCartLineKey(i.product.id, i.selectedSize) !== oldKey)
+          .map((i) =>
+            buildCartLineKey(i.product.id, i.selectedSize) === newKey
+              ? { ...i, quantity: i.quantity + source.quantity }
+              : i
+          );
+      }
+      return prev.map((i) =>
+        buildCartLineKey(i.product.id, i.selectedSize) === oldKey
+          ? { ...i, selectedSize: newSize }
+          : i
+      );
+    });
   };
 
   const handleCreateDirectStoreSale = async (e: React.FormEvent) => {
@@ -1063,7 +1178,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       const totalUSD = Number((subtotalUSD + shippingFeeUSD).toFixed(2));
       const totalBs = Number((totalUSD * exchangeRate).toFixed(2));
       const itemsSummary = directCart
-        .map((i) => `${i.quantity}x ${i.product.name} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`)
+        .map(
+          (i) =>
+            `${i.quantity}x ${i.product.name}${i.selectedSize ? ` [Talla: ${i.selectedSize}]` : ''} ($${(i.product.priceUSD * i.quantity).toFixed(2)})`
+        )
         .join(' | ')
         .slice(0, 1950);
 
@@ -1090,8 +1208,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       };
 
       const finishDirectSaleReset = (order: StoreOrder, offlineSaved: boolean) => {
-        exportStoreOrderInvoicePDF(activeStore, order, snapshot, 'dual');
+        exportStoreOrderInvoicePDF(activeStore, order, snapshot, 'dual', lang);
         setDirectCart([]);
+        setDirectSizePromptProduct(null);
         setSaleCustomerName('');
         setSaleCustomerRif('');
         setSaleCustomerPhone('');
@@ -1115,9 +1234,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             options: saleOptions,
           },
         });
+        const soldByProduct = new Map<string, number>();
+        snapshot.forEach((line) => {
+          soldByProduct.set(
+            line.product.id,
+            (soldByProduct.get(line.product.id) || 0) + line.quantity
+          );
+        });
         const nextProducts = products.map((p) => {
-          const sold = snapshot.find((i) => i.product.id === p.id);
-          return sold ? { ...p, stock: Math.max(0, (Number(p.stock) || 0) - sold.quantity) } : p;
+          const soldQty = soldByProduct.get(p.id) || 0;
+          return soldQty > 0
+            ? { ...p, stock: Math.max(0, (Number(p.stock) || 0) - soldQty) }
+            : p;
         });
         setProducts(nextProducts);
         saveCachedStorefrontWarehouseProducts(activeStore.id, nextProducts);
@@ -1172,17 +1300,30 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   if (!user && !effectiveUid) {
     return (
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-5">
-        {/* Clear Seller Space Role Header */}
+        {/* Clear Seller Space Role Header + Private Language Reassurance */}
         <div className="bg-[#111114] border border-white/[0.08] rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 text-amber-400 font-semibold">
-            <Store className="w-4 h-4 shrink-0" />
-            <span>{t.merchant.roleBanner}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+            <div className="flex items-center gap-2 text-amber-400 font-semibold">
+              <Store className="w-4 h-4 shrink-0" />
+              <span>{t.merchant.roleBanner}</span>
+            </div>
+            <span className="text-zinc-500 hidden sm:inline" aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-1.5 text-zinc-400 text-[11px]">
+              <Globe className="w-3.5 h-3.5 text-amber-400/80 shrink-0" />
+              <span>
+                {tr(
+                  'Tu idioma es privado (Español por defecto). Tus compradores eligen el suyo aparte.',
+                  'Your panel language stays private to you; buyers always choose their own language.',
+                  '您的管理语言仅自己可见，不会影响买家（买家默认界面为西班牙语）。'
+                )}
+              </span>
+            </span>
           </div>
           {onNavigateMarketplace && (
             <button
               type="button"
               onClick={onNavigateMarketplace}
-              className="text-zinc-300 hover:text-white font-medium flex items-center gap-1.5 transition-colors"
+              className="text-zinc-300 hover:text-white font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap"
             >
               <ShoppingBag className="w-3.5 h-3.5 text-zinc-400" />
               <span>{t.merchant.switchToBuyer}</span>
@@ -1241,6 +1382,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               >
                 <Compass className="w-4 h-4 text-amber-400" />
                 <span>{t.merchant.askVectorGuide}</span>
+              </button>
+            )}
+            {onOpenVideoGuides && (
+              <button
+                type="button"
+                onClick={() => onOpenVideoGuides('sellers')}
+                className="px-4 py-3 rounded-xl bg-[#09090b] hover:bg-zinc-900 border border-white/[0.12] hover:border-amber-400/35 text-xs sm:text-sm font-semibold text-zinc-100 flex items-center gap-2 min-h-[44px]"
+              >
+                <Video className="w-4 h-4 text-amber-400" />
+                <span>{tr('Video Guías para Dueños', 'Owner Video Guides', '商家视频教程')}</span>
               </button>
             )}
           </div>
@@ -1432,7 +1583,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 type="text"
                 value={regStoreName}
                 onChange={(e) => setRegStoreName(e.target.value)}
-                placeholder="Ej: Inversiones Caracas Tech"
+                placeholder={tr('Ej: Inversiones Caracas Tech', 'Ex: Caracas Tech Store', '例：Caracas 科技贸易行')}
                 className="w-full px-3.5 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-sm text-white"
               />
             </div>
@@ -1446,7 +1597,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 type="text"
                 value={regOwnerName}
                 onChange={(e) => setRegOwnerName(e.target.value)}
-                placeholder="Ej: María Rodríguez / Inversiones C.A."
+                placeholder={tr('Ej: María Rodríguez / Inversiones C.A.', 'Ex: Maria Rodriguez / Corp LLC', '例：李华 / 某某贸易有限公司')}
                 className="w-full px-3.5 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-sm text-white"
               />
             </div>
@@ -1459,7 +1610,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 type="text"
                 value={regRif}
                 onChange={(e) => setRegRif(e.target.value)}
-                placeholder="Ej: J-50129384-7"
+                placeholder={tr('Ej: J-50129384-7', 'Ex: J-50129384-7', '例：J-50129384-7')}
                 className="w-full px-3.5 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-sm text-white"
               />
             </div>
@@ -1484,9 +1635,36 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 type="text"
                 value={regCategory}
                 onChange={(e) => setRegCategory(e.target.value)}
-                placeholder="Bodegón, Tech, Retail..."
+                placeholder={tr('Moda y Ropa, Bodegón, Tech...', 'Apparel & Fashion, Retail, Tech...', '服装时尚、百货、数码...')}
                 className="w-full px-3.5 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-sm text-white"
               />
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {[
+                  'Moda y Ropa',
+                  'Calzado y Accesorios',
+                  'Comercio General',
+                  'Bodegón & Licores',
+                  'Tecnología',
+                ].map((catSug) => (
+                  <button
+                    key={catSug}
+                    type="button"
+                    onClick={() => {
+                      setRegCategory(catSug);
+                      if (/ropa|moda|calzado|apparel|fashion|footwear|服|鞋/i.test(catSug)) {
+                        setRegClothingSizesEnabled(true);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                      regCategory === catSug
+                        ? 'bg-amber-400/15 border-amber-400/50 text-amber-300 font-semibold'
+                        : 'bg-[#09090b] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {translateCategoryLabel(catSug, lang)}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -1518,6 +1696,46 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               placeholder="..."
               className="w-full px-3.5 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-sm text-white"
             />
+          </div>
+
+          {/* Universal Clothing / Product Sizes Configurator (Indistinct of project/category) */}
+          <div className="bg-[#09090b]/70 border border-amber-500/25 rounded-xl p-4 space-y-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={regClothingSizesEnabled}
+                onChange={(e) => setRegClothingSizesEnabled(e.target.checked)}
+                className="mt-0.5 accent-amber-500 w-4 h-4 shrink-0"
+              />
+              <div>
+                <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5" />
+                  <span>
+                    {tr(
+                      'Habilitar Selector de Tallas de Ropa / Calzado (Válido para cualquier rubro)',
+                      'Enable Clothing / Footwear Size Configurator (Works for any store)',
+                      '启用服装/鞋靴尺码配置器（适用于任意店铺品类）'
+                    )}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  {tr(
+                    'Pre-carga tallas por defecto (XS–3XL, pantalones 26–42, calzado 35–44 o personalizadas) para aplicarlas rápido a tus productos.',
+                    'Preload default size packs (XS–3XL, pants 26–42, footwear 35–44, or custom) to quickly apply across your products.',
+                    '预置默认尺码表（XS–3XL、裤装 26–42、鞋码 35–44 或自定义）以便快速应用至商品。'
+                  )}
+                </p>
+              </div>
+            </label>
+
+            {regClothingSizesEnabled && (
+              <SizeTagBuilder
+                compact
+                sizes={regDefaultClothingSizes}
+                onChange={setRegDefaultClothingSizes}
+                title={tr('Tallas base de la tienda', 'Store default sizes', '店铺默认尺码')}
+              />
+            )}
           </div>
 
           {/* Shipping Options */}
@@ -1770,6 +1988,193 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         </div>
       )}
 
+      {/* Owner Operational Guide & Language Isolation Strip */}
+      {(() => {
+        const activeCollectionCount = storePaymentMethods.filter((m) => m.isActive).length;
+        const pendingOrdersCount = orders.filter((o) => o.status === 'pending').length;
+        const isStoreActive = activeStore.status === 'active';
+        const hasProducts = products.length > 0;
+        const hasPayments = activeCollectionCount > 0;
+        const completedSteps =
+          (isStoreActive ? 1 : 0) + (hasProducts ? 1 : 0) + (hasPayments ? 1 : 0) + 1;
+
+        return (
+          <div className="bg-[#111114] border border-white/[0.08] rounded-2xl p-4 space-y-3 min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                <Globe className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-semibold text-zinc-100">
+                  {tr(
+                    'Guía Operativa del Dueño · Idioma personal: Español',
+                    'Store Owner Action Guide · Personal UI: English',
+                    '店主运营操作指南 · 当前仅您个人使用中文后台'
+                  )}
+                </span>
+                <span className="text-[11px] font-mono text-amber-400 tabular-nums">
+                  {completedSteps}/4 {tr('listos', 'ready', '项就绪')}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {onOpenVectorSellerGuide && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenVectorSellerGuide(
+                        tr(
+                          '¿Qué debo configurar primero en mi tienda para empezar a vender?',
+                          'What should I configure first in my store to start selling?',
+                          '我是商家，如何快速完成开店、上传商品和设置收款？'
+                        )
+                      )
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-amber-400/30 text-[11px] font-semibold text-amber-300 flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Compass className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tr('Consultar Dudas (Vector)', 'Ask Vector Guide', '向 Vector 咨询开店流程')}</span>
+                  </button>
+                )}
+                {onOpenVideoGuides && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenVideoGuides('sellers')}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-400/35 text-[11px] font-semibold text-zinc-200 flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Video className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>{tr('Video Guías', 'Video Guides', '视频指南')}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowOwnerGuide((prev) => !prev)}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.08] text-[11px] font-medium text-zinc-300 flex items-center gap-1 whitespace-nowrap"
+                >
+                  <span>
+                    {showOwnerGuide
+                      ? tr('Ocultar guía', 'Hide guide', '收起指南')
+                      : tr('Ver guía paso a paso', 'Show owner guide', '展开店主指南')}
+                  </span>
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform ${showOwnerGuide ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {showOwnerGuide && (
+              <>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  {tr(
+                    'Tu selección de idioma es privada para tu cuenta. Tus compradores verán el catálogo en su propio idioma (Español por defecto). Sigue estos 4 pasos para operar tu tienda:',
+                    'Your dashboard language is isolated to your account only. Customers browse your catalog in their own preferred language (Spanish by default). Follow these 4 steps to run your store:',
+                    '您切换的中文界面仅保存在您的个人账号中，绝不会强制改变顾客或管理员的语言（平台默认对买家展示西班牙语）。请按以下 4 步管理您的店铺：'
+                  )}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+                  {/* Step 1: Subscription & Activation */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('billing')}
+                    className={`p-3 rounded-xl border text-left transition-colors flex flex-col justify-between gap-1.5 min-h-[76px] ${
+                      isStoreActive
+                        ? 'bg-[#09090b] border-emerald-500/30 hover:border-emerald-400/50'
+                        : 'bg-amber-500/[0.08] border-amber-400/45 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span className={`font-bold ${isStoreActive ? 'text-emerald-300' : 'text-amber-300'}`}>
+                        {tr('1. Activar Suscripción', '1. Store Activation', '1. 激活店铺订阅')}
+                      </span>
+                      {isStoreActive ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[11px] text-zinc-400 leading-snug">
+                      {isStoreActive
+                        ? tr('Tienda activa y visible al público en el directorio.', 'Store active and live in the public directory.', '店铺已激活，已在公共商城公开展示。')
+                        : tr('Reporta tu pago en Suscripción para activar tu tienda.', 'Submit subscription payment to publish your store.', '前往“订阅”上报付款凭证即可解锁公开营业。')}
+                    </span>
+                  </button>
+
+                  {/* Step 2: Catalog & Clothing Sizes */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('catalog')}
+                    className={`p-3 rounded-xl border text-left transition-colors flex flex-col justify-between gap-1.5 min-h-[76px] ${
+                      hasProducts
+                        ? 'bg-[#09090b] border-emerald-500/30 hover:border-emerald-400/50'
+                        : 'bg-amber-500/[0.08] border-amber-400/45 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span className={`font-bold ${hasProducts ? 'text-emerald-300' : 'text-amber-300'}`}>
+                        {tr('2. Cargar Productos', '2. Publish Products', '2. 上架商品与尺码')}
+                      </span>
+                      <span className="font-mono text-[11px] text-zinc-300 tabular-nums shrink-0">
+                        {products.length}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-zinc-400 leading-snug">
+                      {hasProducts
+                        ? tr('Agrega fotos, precios USD, stock o tallas de ropa en Catálogo.', 'Manage USD pricing, stock quantities & sizes in Catalog.', '可在“商品目录”继续添加图片、美元定价、库存及服装尺码。')
+                        : tr('Aún sin productos: carga artículos manuales o importa un CSV.', 'No items yet: add products manually or import CSV here.', '暂无上架商品：点击此处手动添加或批量导入 CSV 商品清单。')}
+                    </span>
+                  </button>
+
+                  {/* Step 3: Store Payment Collection Accounts */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('payment_methods')}
+                    className={`p-3 rounded-xl border text-left transition-colors flex flex-col justify-between gap-1.5 min-h-[76px] ${
+                      hasPayments
+                        ? 'bg-[#09090b] border-emerald-500/30 hover:border-emerald-400/50'
+                        : 'bg-amber-500/[0.08] border-amber-400/45 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span className={`font-bold ${hasPayments ? 'text-emerald-300' : 'text-amber-300'}`}>
+                        {tr('3. Cuentas de Cobro', '3. Payment Accounts', '3. 设置收款账户')}
+                      </span>
+                      <span className="font-mono text-[11px] text-zinc-300 tabular-nums shrink-0">
+                        {activeCollectionCount}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-zinc-400 leading-snug">
+                      {hasPayments
+                        ? tr('Tus clientes ya ven tus cuentas al pagar en el carrito.', 'Buyers see your receiving accounts clearly at checkout.', '买家在购物车结账时已可查看您的 Pago Móvil / Zelle / Binance 等收款信息。')
+                        : tr('Configura Pago Móvil, Zelle o Binance para cobrar pedidos.', 'Add Pago Móvil, Zelle, or Binance so buyers can pay you.', '请配置 Pago Móvil、Zelle 或 Binance 账户，方便客户直接付款下单。')}
+                    </span>
+                  </button>
+
+                  {/* Step 4: Shipping, Orders & POS */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(pendingOrdersCount > 0 ? 'orders' : 'settings')}
+                    className="p-3 rounded-xl border bg-[#09090b] border-white/[0.1] hover:border-amber-400/45 text-left transition-colors flex flex-col justify-between gap-1.5 min-h-[76px]"
+                  >
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span className="font-bold text-zinc-100">
+                        {pendingOrdersCount > 0
+                          ? tr(`4. Atender Pedidos (${pendingOrdersCount})`, `4. Pending Orders (${pendingOrdersCount})`, `4. 处理待办订单 (${pendingOrdersCount})`)
+                          : tr('4. Envíos y Ventas', '4. Shipping & Orders', '4. 配送设置与接单')}
+                      </span>
+                      <ShoppingBag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    </div>
+                    <span className="text-[11px] text-zinc-400 leading-snug">
+                      {pendingOrdersCount > 0
+                        ? tr('Tienes pedidos por confirmar: revisa comprobantes y despacha.', 'You have orders awaiting confirmation and dispatch.', '您有新订单等待确认付款与安排发货，点击立即处理。')
+                        : tr('Revisa tus envíos, retiro en tienda y registra ventas directas.', 'Configure delivery fees, pickup & manage POS or web orders.', '配置全国物流/同城配送/到店自提，并管理线上与门店销售订单。')}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-white/[0.08] pb-3">
         {[
@@ -1859,7 +2264,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     </p>
                     <a
                       href={`https://wa.me/${(normalizeVenezuelanPhone(billing.supportWhatsapp) || '584220273766')}?text=${encodeURIComponent(
-                        `Hola Administrador, deseo pagar la suscripción de mi tienda "${activeStore?.storeName || ''}" ($${netSubscriptionUSD} USD). ¿A qué cuenta transfiero?`
+                        tr(
+                          `Hola Administrador, deseo pagar la suscripción de mi tienda "${activeStore?.storeName || ''}" ($${netSubscriptionUSD} USD). ¿A qué cuenta transfiero?`,
+                          `Hello Admin, I would like to pay the subscription for my store "${activeStore?.storeName || ''}" ($${netSubscriptionUSD} USD). Which account should I transfer to?`,
+                          `管理员您好，我想支付我店铺“${activeStore?.storeName || ''}”的订阅费 ($${netSubscriptionUSD} USD)，请问转账至哪个账户？`
+                        )
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -1876,11 +2285,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     opt.currency,
                     netSubscriptionUSD
                   );
+                  const displayOptName = translatePaymentMethodLabel(opt.value, lang);
+                  const displayInstructions = translateCommonPaymentInstruction(opt.instructions, lang);
                   const fullCopyText = [
-                    `${opt.value} (${opt.currency}) · ${tr('Monto:', 'Amount:', '金额:')} ${exactPayAmount}`,
+                    `${displayOptName} (${opt.currency}) · ${tr('Monto:', 'Amount:', '金额:')} ${exactPayAmount}`,
                     opt.accountHolder ? `${tr('Titular:', 'Holder:', '持有人:')} ${opt.accountHolder}` : '',
                     opt.accountDetails,
-                    opt.instructions ? `${tr('Instrucciones:', 'Instructions:', '说明:')} ${opt.instructions}` : '',
+                    displayInstructions ? `${tr('Instrucciones:', 'Instructions:', '说明:')} ${displayInstructions}` : '',
                   ]
                     .filter(Boolean)
                     .join('\n');
@@ -1911,7 +2322,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2 min-w-0">
                           <span className={`font-bold truncate ${isSelected ? 'text-amber-300' : 'text-emerald-300'}`}>
-                            {opt.value}
+                            {displayOptName}
                           </span>
                           <span className="text-zinc-500" aria-hidden="true">·</span>
                           <span className="font-mono text-[11px] text-amber-200 tabular-nums shrink-0">
@@ -1938,7 +2349,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             setHasManualPayMethodSelection(true);
                             setPayMethod(opt.value as SubscriptionPaymentMethod);
                             navigator.clipboard?.writeText(fullCopyText);
-                            notify(`${opt.value} - ${t.common.copied}`);
+                            notify(`${displayOptName} - ${t.common.copied}`);
                           }}
                           className="text-[11px] text-zinc-300 hover:text-white px-2.5 py-1 rounded-lg bg-[#111114] border border-white/[0.08] flex items-center gap-1 shrink-0"
                         >
@@ -1954,8 +2365,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       <p className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">
                         {opt.accountDetails}
                       </p>
-                      {opt.instructions && (
-                        <p className="text-zinc-400 text-[11px]">{opt.instructions}</p>
+                      {displayInstructions && (
+                        <p className="text-zinc-400 text-[11px]">{displayInstructions}</p>
                       )}
                     </div>
                   );
@@ -2025,7 +2436,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       >
                         {subscriptionCheckoutOptions.length === 0 ? (
                           <option value="Coordinado con Admin (WhatsApp)">
-                            Coordinado con Admin (WhatsApp)
+                            {translatePaymentMethodLabel('Coordinado con Admin (WhatsApp)', lang)}
                           </option>
                         ) : (
                           subscriptionCheckoutOptions.map((opt) => (
@@ -2054,7 +2465,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[11px] font-semibold text-amber-300">
-                            Cuenta receptora ({activeSelectedSubscriptionOption.value}):
+                            {tr('Cuenta receptora', 'Receiving account', '收款账户')} ({translatePaymentMethodLabel(activeSelectedSubscriptionOption.value, lang)}):
                           </span>
                           <span className="font-mono text-[11px] font-bold text-emerald-300">
                             {formatSubscriptionOptionAmount(
@@ -2064,7 +2475,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           </span>
                           {activeSelectedSubscriptionOption.isStoreSpecific && (
                             <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/35 text-indigo-200 text-[10px] font-semibold">
-                              Asignado a tu tienda
+                              {tr('Asignado a tu tienda', 'Assigned to your store', '专属您店铺')}
                             </span>
                           )}
                         </div>
@@ -2072,7 +2483,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           type="button"
                           onClick={() => {
                             navigator.clipboard?.writeText(activeSelectedSubscriptionOption.accountDetails);
-                            notify(`${activeSelectedSubscriptionOption.value} - ${t.common.copied}`);
+                            notify(`${translatePaymentMethodLabel(activeSelectedSubscriptionOption.value, lang)} - ${t.common.copied}`);
                           }}
                           className="text-[11px] text-zinc-300 hover:text-white flex items-center gap-1"
                         >
@@ -2082,7 +2493,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       </div>
                       {activeSelectedSubscriptionOption.accountHolder && (
                         <div className="text-[11px] text-zinc-400">
-                          Titular: <span className="text-zinc-200">{activeSelectedSubscriptionOption.accountHolder}</span>
+                          {tr('Titular:', 'Holder:', '持有人:')} <span className="text-zinc-200">{activeSelectedSubscriptionOption.accountHolder}</span>
                         </div>
                       )}
                       <div className="font-mono text-[11px] text-zinc-200 whitespace-pre-line">
@@ -2090,7 +2501,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       </div>
                       {activeSelectedSubscriptionOption.instructions && (
                         <div className="text-[11px] text-zinc-400">
-                          {activeSelectedSubscriptionOption.instructions}
+                          {translateCommonPaymentInstruction(activeSelectedSubscriptionOption.instructions, lang)}
                         </div>
                       )}
                     </div>
@@ -2112,7 +2523,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 </div>
                 <div>
                   <label className="text-xs text-zinc-400 block mb-1">
-                    WhatsApp para recibir confirmación
+                    {tr('WhatsApp para recibir confirmación', 'WhatsApp to receive confirmation', '接收确认通知的 WhatsApp')}
                   </label>
                   <input
                     type="tel"
@@ -2126,12 +2537,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
               <div>
                 <label className="text-xs text-zinc-400 block mb-1">
-                  Captura del Comprobante (Opcional - Imagen)
+                  {tr('Captura del Comprobante (Opcional - Imagen)', 'Payment Screenshot (Optional - Image)', '付款截图（可选 - 图片）')}
                 </label>
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-amber-300 cursor-pointer inline-flex items-center gap-1.5">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{isUploadingProof ? 'Procesando...' : 'Adjuntar Captura'}</span>
+                    <span>
+                      {isUploadingProof
+                        ? tr('Procesando...', 'Processing...', '处理中...')
+                        : tr('Adjuntar Captura', 'Attach Screenshot', '添加付款截图')}
+                    </span>
                     <input
                       type="file"
                       accept="image/*"
@@ -2143,7 +2558,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     <div className="flex items-center gap-2">
                       <img
                         src={payProofImage}
-                        alt="Captura de pago"
+                        alt={tr('Captura de pago', 'Payment screenshot', '付款截图')}
+                        referrerPolicy="no-referrer"
                         className="w-10 h-10 rounded-lg object-cover border border-emerald-500/40"
                       />
                       <button
@@ -2151,12 +2567,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                         onClick={() => setPayProofImage('')}
                         className="text-[11px] text-rose-400 hover:underline"
                       >
-                        Quitar
+                        {tr('Quitar', 'Remove', '移除')}
                       </button>
                     </div>
                   ) : (
                     <span className="text-[11px] text-zinc-500">
-                      Se adjuntará automáticamente en el correo al Administrador.
+                      {tr(
+                        'Se adjuntará automáticamente en el correo al Administrador.',
+                        'Will be automatically attached in the email to the Administrator.',
+                        '将自动附加到发送给管理员的电子邮件中。'
+                      )}
                     </span>
                   )}
                 </div>
@@ -2191,7 +2611,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       <h4 className="text-sm font-bold text-white font-display">
-                        Comprobante #{lastPaymentVoucher.payment.referenceNumber} Listo
+                        {tr(
+                          `Comprobante #${lastPaymentVoucher.payment.referenceNumber} Listo`,
+                          `Receipt #${lastPaymentVoucher.payment.referenceNumber} Ready`,
+                          `付款凭证 #${lastPaymentVoucher.payment.referenceNumber} 已就绪`
+                        )}
                       </h4>
                     </div>
                     <p className="text-xs text-emerald-200/90 mt-1">
@@ -2202,7 +2626,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     type="button"
                     onClick={() => setLastPaymentVoucher(null)}
                     className="text-zinc-400 hover:text-white p-1"
-                    aria-label="Cerrar comprobante"
+                    aria-label={t.common.close}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -2210,21 +2634,21 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
                 <div className="bg-[#09090b]/80 border border-white/[0.08] rounded-xl p-3 text-xs space-y-1">
                   <div className="flex justify-between">
-                    <span className="text-zinc-400">Tienda:</span>
+                    <span className="text-zinc-400">{tr('Tienda:', 'Store:', '店铺:')}</span>
                     <span className="font-bold text-white">{lastPaymentVoucher.payment.storeName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-400">Monto reportado:</span>
+                    <span className="text-zinc-400">{tr('Monto reportado:', 'Reported amount:', '申报金额:')}</span>
                     <span className="font-mono font-bold text-amber-400">
-                      ${Number(lastPaymentVoucher.payment.amountUSD).toFixed(2)} USD · {lastPaymentVoucher.payment.paymentMethod}
+                      ${Number(lastPaymentVoucher.payment.amountUSD).toFixed(2)} USD · {translatePaymentMethodLabel(lastPaymentVoucher.payment.paymentMethod, lang)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-400">Estado de correo:</span>
+                    <span className="text-zinc-400">{tr('Estado de correo:', 'Email status:', '邮件状态:')}</span>
                     <span className="font-semibold text-emerald-300">
                       {lastPaymentVoucher.result.emailSent
-                        ? `Enviado (${lastPaymentVoucher.result.deliveryChannel.toUpperCase()})`
-                        : 'Listo para enviar vía tu correo'}
+                        ? `${tr('Enviado', 'Sent', '已发送')} (${lastPaymentVoucher.result.deliveryChannel.toUpperCase()})`
+                        : tr('Listo para enviar vía tu correo', 'Ready to send via your email', '准备通过您的邮箱发送')}
                     </span>
                   </div>
                 </div>
@@ -2237,7 +2661,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors min-h-[42px]"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>Enviar Comprobante por WhatsApp</span>
+                    <span>{tr('Enviar Comprobante por WhatsApp', 'Send Receipt via WhatsApp', '通过 WhatsApp 发送凭证')}</span>
                   </a>
                   <a
                     href={lastPaymentVoucher.result.mailtoHref}
@@ -2246,8 +2670,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     <Mail className="w-4 h-4" />
                     <span>
                       {lastPaymentVoucher.result.emailSent
-                        ? 'Reenviar Copia por Correo'
-                        : 'Enviar Comprobante por Correo'}
+                        ? tr('Reenviar Copia por Correo', 'Resend Copy via Email', '重发邮件副本')
+                        : tr('Enviar Comprobante por Correo', 'Send Receipt via Email', '通过邮件发送凭证')}
                     </span>
                   </a>
                 </div>
@@ -2275,12 +2699,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       >
                         <div>
                           <div className="font-bold text-white">
-                            {p.paymentMethod} · Ref: {p.referenceNumber}
+                            {translatePaymentMethodLabel(p.paymentMethod, lang)} · Ref: {p.referenceNumber}
                           </div>
                           <div className="text-[11px] text-zinc-400">
                             ${p.amountUSD} USD · {p.storeName}
-                            {p.couponCode ? ` · 🎟 ${p.couponCode} (-$${p.discountUSD ?? 0})` : ''}
-                            {p.proofImageUrl ? ' · 📎 Captura adjunta' : ''}
+                            {p.couponCode ? ` · ${p.couponCode} (-$${p.discountUSD ?? 0})` : ''}
+                            {p.proofImageUrl ? ` · ${tr('Captura adjunta', 'Screenshot attached', '含付款截图')}` : ''}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -2289,7 +2713,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 text-[10px] font-bold flex items-center gap-1"
-                            title="Enviar comprobante por WhatsApp"
+                            title={tr('Enviar comprobante por WhatsApp', 'Send receipt via WhatsApp', '通过 WhatsApp 发送凭证')}
                           >
                             <MessageCircle className="w-3 h-3" />
                             <span>WhatsApp</span>
@@ -2297,10 +2721,10 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           <a
                             href={voucherLinks.mailtoHref}
                             className="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-amber-300 text-[10px] font-bold flex items-center gap-1 border border-white/[0.08]"
-                            title="Enviar comprobante por correo"
+                            title={tr('Enviar comprobante por correo', 'Send receipt via email', '通过邮件发送凭证')}
                           >
                             <Mail className="w-3 h-3" />
-                            <span>Correo</span>
+                            <span>{tr('Correo', 'Email', '邮件')}</span>
                           </a>
                           <span
                             className={`px-2 py-0.5 rounded font-bold text-[11px] ${
@@ -2351,7 +2775,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     className="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-bold text-white flex items-center gap-1.5"
                   >
                     <Package className="w-3.5 h-3.5" />
-                    <span>Llenar desde Almacén</span>
+                    <span>{tr('Llenar desde Almacén', 'Fill from Warehouse', '从仓库导入商品')}</span>
                   </button>
                 )}
                 <button
@@ -2511,12 +2935,30 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={prodImage.startsWith('data:') ? 'Photo loaded' : prodImage}
+                    value={prodImage.startsWith('data:') ? tr('Foto cargada', 'Photo loaded', '已加载图片') : prodImage}
                     onChange={(e) => setProdImage(e.target.value)}
                     placeholder="https://..."
                     className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-lg text-xs text-white"
                   />
                 </div>
+              </div>
+
+              {/* Universal Size Configurator for any Product (Clothes, Footwear, Variants) */}
+              <div className="pt-2 border-t border-white/[0.08]">
+                <SizeTagBuilder
+                  compact
+                  sizes={prodAvailableSizes}
+                  onChange={setProdAvailableSizes}
+                  storeDefaultSizes={activeStore.defaultClothingSizes}
+                  sizeGuide={prodSizeGuide}
+                  onSizeGuideChange={setProdSizeGuide}
+                  title={tr('Tallas de Ropa / Calzado (Opcional)', 'Apparel / Footwear Sizes (Optional)', '服装/鞋靴尺码配置（可选）')}
+                  subtitle={tr(
+                    'Agrega o edita tallas para este producto sin importar la categoría de tu tienda.',
+                    'Add or edit sizes for this item regardless of your store category.',
+                    '无论店铺品类，均可为该商品添加或编辑可选尺码。'
+                  )}
+                />
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -2529,6 +2971,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       setProdDesc('');
                       setProdPrice('');
                       setProdImage('');
+                      setProdAvailableSizes([]);
+                      setProdSizeGuide('');
                     }}
                     className="px-3 py-2 rounded-lg bg-zinc-900 text-xs text-zinc-300"
                   >
@@ -2552,73 +2996,87 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   {t.merchant.noProductsYet}
                 </div>
               ) : (
-                products.map((prod) => (
-                  <div
-                    key={prod.id}
-                    className="bg-[#111114] border border-white/[0.08] rounded-xl p-3.5 flex items-center justify-between gap-3"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-lg bg-[#09090b] border border-white/[0.08] overflow-hidden shrink-0 flex items-center justify-center">
-                        {prod.imageUrl ? (
-                          <img
-                            src={prod.imageUrl}
-                            alt={prod.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <Package className="w-5 h-5 text-zinc-500" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{prod.name}</div>
-                        <div className="text-[11px] text-zinc-400 truncate">
-                          {prod.description}
+                products.map((prod) => {
+                  const pSizes = normalizeSizeList(prod.availableSizes);
+                  return (
+                    <div
+                      key={prod.id}
+                      className="bg-[#111114] border border-white/[0.08] rounded-xl p-3.5 flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-lg bg-[#09090b] border border-white/[0.08] overflow-hidden shrink-0 flex items-center justify-center">
+                          {prod.imageUrl ? (
+                            <img
+                              src={prod.imageUrl}
+                              alt={prod.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Package className="w-5 h-5 text-zinc-500" />
+                          )}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] mt-0.5">
-                          <span className="font-mono font-bold text-amber-400">
-                            ${prod.priceUSD.toFixed(2)}
-                          </span>
-                          <span className="text-zinc-500">·</span>
-                          <span className="flex items-center gap-0.5 text-amber-300 font-mono">
-                            <Star className="w-3 h-3 fill-amber-400" />
-                            {prod.rating.toFixed(1)}
-                          </span>
-                          <span className="text-zinc-500">·</span>
-                          <span className="text-zinc-400">{t.common.stock}: {prod.stock}</span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">{prod.name}</div>
+                          <div className="text-[11px] text-zinc-400 truncate">
+                            {prod.description}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] mt-0.5">
+                            <span className="font-mono font-bold text-amber-400">
+                              ${prod.priceUSD.toFixed(2)}
+                            </span>
+                            <span className="text-zinc-500">·</span>
+                            <span className="flex items-center gap-0.5 text-amber-300 font-mono">
+                              <Star className="w-3 h-3 fill-amber-400" />
+                              {prod.rating.toFixed(1)}
+                            </span>
+                            <span className="text-zinc-500">·</span>
+                            <span className="text-zinc-400">{t.common.stock}: {prod.stock}</span>
+                            {pSizes.length > 0 && (
+                              <>
+                                <span className="text-zinc-500">·</span>
+                                <span className="font-mono text-amber-300 truncate max-w-[220px]">
+                                  {tr('Tallas:', 'Sizes:', '尺码:')} {pSizes.map((s) => translateSizeTokenLabel(s, lang)).join(', ')}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => {
-                          setEditingProduct(prod);
-                          setProdName(prod.name);
-                          setProdDesc(prod.description);
-                          setProdPrice(String(prod.priceUSD));
-                          setProdCost(prod.costUSD ? String(prod.costUSD) : '');
-                          setProdRating(String(prod.rating));
-                          setProdImage(prod.imageUrl || '');
-                          setProdCategory(prod.category || 'General');
-                          setProdSku(prod.sku || '');
-                          setProdStock(String(prod.stock));
-                          setProdUnit(prod.unit || 'und');
-                        }}
-                        className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200"
-                        title={t.common.edit}
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => deleteStoreProduct(activeStore.id, prod.id)}
-                        className="p-2 rounded-lg bg-red-950/60 hover:bg-red-900/70 text-red-300"
-                        title={t.common.delete}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingProduct(prod);
+                            setProdName(prod.name);
+                            setProdDesc(prod.description);
+                            setProdPrice(String(prod.priceUSD));
+                            setProdCost(prod.costUSD ? String(prod.costUSD) : '');
+                            setProdRating(String(prod.rating));
+                            setProdImage(prod.imageUrl || '');
+                            setProdCategory(prod.category || 'General');
+                            setProdSku(prod.sku || '');
+                            setProdStock(String(prod.stock));
+                            setProdUnit(prod.unit || 'und');
+                            setProdAvailableSizes(normalizeSizeList(prod.availableSizes));
+                            setProdSizeGuide(prod.sizeGuide || '');
+                          }}
+                          className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-200"
+                          title={t.common.edit}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteStoreProduct(activeStore.id, prod.id)}
+                          className="p-2 rounded-lg bg-red-950/60 hover:bg-red-900/70 text-red-300"
+                          title={t.common.delete}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -2674,7 +3132,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => exportStoreSalesLedgerPDF(activeStore, orders, exchangeRate)}
+                  onClick={() => exportStoreSalesLedgerPDF(activeStore, orders, exchangeRate, lang)}
                   disabled={orders.length === 0}
                   className="px-3.5 py-2 rounded-lg bg-[#09090b] border border-emerald-500/30 hover:border-emerald-400 disabled:opacity-40 text-xs font-semibold text-emerald-300 flex items-center gap-1.5"
                 >
@@ -2760,7 +3218,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           #{ord.invoiceNumber}
                         </span>
                         <span className="px-2 py-0.5 rounded bg-zinc-900 text-zinc-200 font-semibold">
-                          {ord.saleChannel || 'Carrito Web'}
+                          {translateSaleChannelLabel(ord.saleChannel || 'Carrito Web', lang)}
                         </span>
                         <span className="font-bold text-white">{ord.customerName}</span>
                         {ord.customerRif && (
@@ -2768,7 +3226,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                         )}
                         <span className="text-zinc-400">· {ord.customerPhone}</span>
                         <span className="px-2 py-0.5 rounded bg-[#09090b] border border-white/[0.1] text-zinc-300">
-                          {ord.shippingType}
+                          {translateShippingTypeLabel(ord.shippingType, lang)}
                         </span>
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
@@ -2789,7 +3247,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           {t.common.total}: ${ord.totalUSD.toFixed(2)} USD ({ord.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.)
                         </span>
                         <span className="text-zinc-500">·</span>
-                        <span className="text-zinc-300 font-normal">{ord.paymentMethod}</span>
+                        <span className="text-zinc-300 font-normal">{translatePaymentMethodLabel(ord.paymentMethod, lang)}</span>
                         {typeof ord.estimatedProfitUSD === 'number' && (
                           <>
                             <span className="text-zinc-500">·</span>
@@ -2839,7 +3297,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
                       <a
                         href={`https://wa.me/${normalizeVenezuelanPhone(ord.customerPhone)}?text=${encodeURIComponent(
-                          `Hola ${ord.customerName}, te escribimos de ${activeStore.storeName} respecto a tu factura #${ord.invoiceNumber}.`
+                          tr(
+                            `Hola ${ord.customerName}, te escribimos de ${activeStore.storeName} respecto a tu factura #${ord.invoiceNumber}.`,
+                            `Hello ${ord.customerName}, writing from ${activeStore.storeName} regarding your invoice #${ord.invoiceNumber}.`,
+                            `${ord.customerName} 您好，我们是 ${activeStore.storeName}，关于您的订单发票 #${ord.invoiceNumber} 与您联系。`
+                          )
                         )}`}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -2882,54 +3344,121 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       {t.merchant.directStep1}
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
-                      {products.map((prod) => (
-                        <button
-                          key={prod.id}
-                          type="button"
-                          disabled={prod.stock <= 0}
-                          onClick={() => addProductToDirectSale(prod)}
-                          className="p-2.5 rounded-lg bg-[#09090b] border border-white/[0.08] hover:border-amber-500/40 disabled:opacity-40 text-left flex items-center justify-between gap-2 text-xs"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-bold text-white truncate">{prod.name}</div>
-                            <div className="text-[11px] font-mono text-zinc-400">
-                              ${prod.priceUSD.toFixed(2)} · {t.common.stock}: {prod.stock}
+                      {products.map((prod) => {
+                        const pSizes = normalizeSizeList(prod.availableSizes);
+                        return (
+                          <button
+                            key={prod.id}
+                            type="button"
+                            disabled={prod.stock <= 0}
+                            onClick={() => addProductToDirectSale(prod)}
+                            className="p-2.5 rounded-lg bg-[#09090b] border border-white/[0.08] hover:border-amber-500/40 disabled:opacity-40 text-left flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-bold text-white truncate">{prod.name}</div>
+                              <div className="text-[11px] font-mono text-zinc-400">
+                                ${prod.priceUSD.toFixed(2)} · {t.common.stock}: {prod.stock}
+                                {pSizes.length > 0 ? ` · ${pSizes.length} ${tr('tallas', 'sizes', '尺码')}` : ''}
+                              </div>
                             </div>
-                          </div>
-                          <Plus className="w-4 h-4 text-amber-400 shrink-0" />
-                        </button>
-                      ))}
+                            <Plus className="w-4 h-4 text-amber-400 shrink-0" />
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {/* Size Prompt for Apparel Products */}
+                  {directSizePromptProduct && (
+                    <div className="bg-amber-500/[0.07] border border-amber-400/40 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                          <Ruler className="w-3.5 h-3.5" />
+                          <span>
+                            {tr('Elige talla para', 'Select size for', '选择尺码:')}{' '}
+                            <strong className="text-white">{directSizePromptProduct.name}</strong>
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDirectSizePromptProduct(null)}
+                          className="text-zinc-400 hover:text-white"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {normalizeSizeList(directSizePromptProduct.availableSizes).map((sz) => (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={() => addProductToDirectSale(directSizePromptProduct, sz)}
+                            className="min-w-[38px] min-h-[34px] px-2.5 rounded-lg bg-[#09090b] hover:bg-amber-400 hover:text-zinc-950 border border-amber-400/40 text-xs font-mono font-bold text-amber-300 transition-colors"
+                          >
+                            {translateSizeTokenLabel(sz, lang)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Selected Cart Items */}
                   {directCart.length > 0 && (
                     <div className="bg-[#09090b] border border-white/[0.08] rounded-xl p-3 space-y-2">
-                      {directCart.map((item) => (
-                        <div key={item.product.id} className="flex items-center justify-between gap-2 text-xs">
-                          <span className="text-white font-semibold truncate">{item.product.name}</span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => updateDirectSaleQty(item.product.id, -1)}
-                              className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center"
-                            >
-                              <Minus className="w-3 h-3" />
-                            </button>
-                            <span className="font-mono text-white w-5 text-center">{item.quantity}</span>
-                            <button
-                              type="button"
-                              onClick={() => updateDirectSaleQty(item.product.id, 1)}
-                              className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            <span className="font-mono text-amber-400 w-16 text-right">
-                              ${(item.product.priceUSD * item.quantity).toFixed(2)}
-                            </span>
+                      {directCart.map((item) => {
+                        const lineKey = buildCartLineKey(item.product.id, item.selectedSize);
+                        const itemSizes = normalizeSizeList(item.product.availableSizes);
+                        return (
+                          <div key={lineKey} className="flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0 flex items-center gap-2 flex-1">
+                              <span className="text-white font-semibold truncate">{item.product.name}</span>
+                              {itemSizes.length > 0 && (
+                                <select
+                                  value={item.selectedSize || itemSizes[0]}
+                                  onChange={(e) =>
+                                    changeDirectSaleItemSize(
+                                      item.product.id,
+                                      item.selectedSize,
+                                      e.target.value
+                                    )
+                                  }
+                                  className="px-1.5 py-0.5 rounded bg-[#111114] border border-amber-400/35 text-[11px] font-mono text-amber-300 shrink-0"
+                                >
+                                  {itemSizes.map((sz) => (
+                                    <option key={sz} value={sz}>
+                                      {translateSizeTokenLabel(sz, lang)}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateDirectSaleQty(item.product.id, -1, item.selectedSize)
+                                }
+                                className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-mono text-white w-5 text-center">{item.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateDirectSaleQty(item.product.id, 1, item.selectedSize)
+                                }
+                                className="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <span className="font-mono text-amber-400 w-16 text-right">
+                                ${(item.product.priceUSD * item.quantity).toFixed(2)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -2979,7 +3508,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                               if (!k || seen.has(k)) return;
                               seen.add(k);
                               opts.push({
-                                label: `${m.name} (${m.currency} · Mi Tienda)`,
+                                label: `${translatePaymentMethodLabel(m.name, lang)} (${m.currency} · ${tr('Mi Tienda', 'My Store', '我的店铺')})`,
                                 value: m.name,
                                 details: m.accountDetails,
                               });
@@ -2989,17 +3518,17 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             if (!k || seen.has(k)) return;
                             seen.add(k);
                             opts.push({
-                              label: `${m.name} (${m.currency}${m.appliesIgtf ? ' · IGTF 3%' : ''})`,
+                              label: `${translatePaymentMethodLabel(m.name, lang)} (${m.currency}${m.appliesIgtf ? ' · IGTF 3%' : ''})`,
                               value: m.name,
                             });
                           });
                           [
-                            { value: 'Pago Móvil', label: 'Pago Móvil (Bs.)' },
-                            { value: 'Efectivo USD', label: 'Efectivo USD' },
-                            { value: 'Transferencia Bancaria', label: 'Transferencia Bancaria' },
-                            { value: 'Binance Pay', label: 'Binance Pay (USDT)' },
-                            { value: 'Bybit', label: 'Bybit Pay' },
-                            { value: 'Zelle', label: 'Zelle' },
+                            { value: 'Pago Móvil', label: `${translatePaymentMethodLabel('Pago Móvil', lang)} (Bs.)` },
+                            { value: 'Efectivo USD', label: translatePaymentMethodLabel('Efectivo USD', lang) },
+                            { value: 'Transferencia Bancaria', label: translatePaymentMethodLabel('Transferencia Bancaria', lang) },
+                            { value: 'Binance Pay', label: `${translatePaymentMethodLabel('Binance Pay', lang)} (USDT)` },
+                            { value: 'Bybit', label: translatePaymentMethodLabel('Bybit', lang) },
+                            { value: 'Zelle', label: translatePaymentMethodLabel('Zelle', lang) },
                           ].forEach((fallback) => {
                             const k = fallback.value.toLowerCase();
                             if (!seen.has(k)) {
@@ -3103,7 +3632,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 </p>
               </div>
               <div className="px-4 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs font-mono text-emerald-300 shrink-0">
-                🎁 Premio: ${billing.referralRewardUSD ?? 25} USD / Referido
+                {tr(
+                  `Premio: $${billing.referralRewardUSD ?? 25} USD / Referido`,
+                  `Reward: $${billing.referralRewardUSD ?? 25} USD / Referral`,
+                  `推荐奖励: $${billing.referralRewardUSD ?? 25} USD / 位`
+                )}
               </div>
             </div>
 
@@ -3114,7 +3647,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   ? `${window.location.origin}/?ref=${storeRefCode}`
                   : `https://smith-solutions.app/?ref=${storeRefCode}`;
               const waInviteText = encodeURIComponent(
-                `¡Hola! Te invito a crear tu propia tienda online con carrito, facturas PDF duales, Pago Móvil, Binance Pay y pedidos por WhatsApp en Smith Solutions E-Commerce ($25/mes).\n\nUsa mi enlace oficial de referido para registrarte:\n${promoUrl}\n\nCódigo de referido: ${storeRefCode}`
+                tr(
+                  `¡Hola! Te invito a crear tu propia tienda online con carrito, facturas PDF duales, Pago Móvil, Binance Pay y pedidos por WhatsApp en Smith Solutions E-Commerce ($25/mes).\n\nUsa mi enlace oficial de referido para registrarte:\n${promoUrl}\n\nCódigo de referido: ${storeRefCode}`,
+                  `Hi! I invite you to launch your own online store with shopping cart, dual PDF invoices, Pago Móvil, Binance Pay, and WhatsApp orders on Smith Solutions E-Commerce ($25/mo).\n\nUse my official referral link to register:\n${promoUrl}\n\nReferral code: ${storeRefCode}`,
+                  `您好！诚邀您在 Smith Solutions E-Commerce（$25/月）创建专属线上店铺，支持购物车、双联 PDF 发票、Pago Móvil、Binance Pay 与 WhatsApp 接单。\n\n请使用我的官方推荐链接注册：\n${promoUrl}\n\n推荐码：${storeRefCode}`
+                )
               );
               return (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -3202,7 +3739,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                         </div>
                         {c.referredStoreName && (
                           <div className="text-xs text-zinc-400">
-                            Por invitar a: <strong className="text-zinc-200">{c.referredStoreName}</strong>
+                            {tr('Por invitar a:', 'For inviting:', '邀请店铺:')}{' '}
+                            <strong className="text-zinc-200">{c.referredStoreName}</strong>
                           </div>
                         )}
                       </div>
@@ -3262,8 +3800,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       <div>
                         <div className="font-bold text-white text-sm">{r.referredStoreName}</div>
                         <div className="text-zinc-400 font-mono text-[11px]">
-                          Código: {r.referrerCode}
-                          {r.rewardCouponCode ? ` · 🎟 ${r.rewardCouponCode}` : ''}
+                          {tr('Código:', 'Code:', '推荐码:')} {r.referrerCode}
+                          {r.rewardCouponCode ? ` · ${r.rewardCouponCode}` : ''}
                         </div>
                       </div>
                       <span
@@ -3358,15 +3896,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         </div>
       )}
 
-      {/* TAB 6: STORE DATA & SHIPPING SETTINGS */}
+      {/* TAB 6: STORE DATA, CLOTHING SIZES & SHIPPING SETTINGS */}
       {activeTab === 'settings' && (
-        <form
-          onSubmit={handleSaveStoreSettings}
-          className="bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-5"
-        >
-          <h2 className="text-base font-bold text-white font-display">
-            {t.merchant.settingsTitle}
-          </h2>
+        <div className="space-y-6">
+          <LanguageSettings />
+
+          <form
+            onSubmit={handleSaveStoreSettings}
+            className="bg-[#111114] border border-white/[0.08] rounded-2xl p-6 space-y-5"
+          >
+            <h2 className="text-base font-bold text-white font-display">
+              {t.merchant.settingsTitle}
+            </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -3408,6 +3949,64 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
               />
             </div>
+            <div>
+              <label className="text-xs text-zinc-400 block mb-1">{t.merchant.categoryLabel}</label>
+              <input
+                type="text"
+                value={regCategory}
+                onChange={(e) => setRegCategory(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-400 block mb-1">{t.merchant.descLabel}</label>
+              <input
+                type="text"
+                value={regDescription}
+                onChange={(e) => setRegDescription(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+              />
+            </div>
+          </div>
+
+          {/* Store-level Default Clothing / Apparel Sizes Settings */}
+          <div className="bg-[#09090b] border border-amber-500/25 rounded-xl p-4 space-y-3">
+            <label className="flex items-start gap-2.5 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={regClothingSizesEnabled}
+                onChange={(e) => setRegClothingSizesEnabled(e.target.checked)}
+                className="mt-0.5 accent-amber-500 w-4 h-4 shrink-0"
+              />
+              <div>
+                <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5" />
+                  <span>
+                    {tr(
+                      'Modo Tallas de Ropa / Calzado para esta Tienda (Cualquier Categoría)',
+                      'Apparel / Footwear Size Mode for this Store (Any Category)',
+                      '店铺服装/鞋靴尺码默认模板（适用于任意品类）'
+                    )}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  {tr(
+                    'Permite aplicar rápidamente tallas por defecto al crear productos y destacar disponibilidad de tallas en el directorio.',
+                    'Lets you apply default size presets rapidly when adding items and highlights size availability in the marketplace directory.',
+                    '新增商品时可一键应用默认尺码模板，并在商城目录中展示尺码支持标记。'
+                  )}
+                </p>
+              </div>
+            </label>
+
+            {regClothingSizesEnabled && (
+              <SizeTagBuilder
+                compact
+                sizes={regDefaultClothingSizes}
+                onChange={setRegDefaultClothingSizes}
+                title={tr('Tallas base predeterminadas', 'Default base sizes', '店铺默认基础尺码')}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-white/[0.08]">
@@ -3454,7 +4053,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   type="text"
                   value={regLocalZone}
                   onChange={(e) => setRegLocalZone(e.target.value)}
-                  placeholder="Zone"
+                  placeholder={tr('Zona de entrega', 'Delivery zone', '配送区域')}
                   className="px-3 py-2 bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white"
                 />
               </div>
@@ -3468,7 +4067,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           >
             {t.merchant.saveSettingsBtn}
           </button>
-        </form>
+          </form>
+        </div>
       )}
 
       {/* TAB: PER-STORE OWNER MANUAL PAYMENT & COLLECTION CONFIGURATION */}
@@ -3477,10 +4077,20 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           <div className="bg-[#111114] border border-emerald-500/30 rounded-2xl p-5 space-y-1.5">
             <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
               <Wallet className="w-5 h-5 text-emerald-400" />
-              <span>Configurar Cómo Cobra Tu Tienda ({activeStore.storeName})</span>
+              <span>
+                {tr(
+                  `Configurar Cómo Cobra Tu Tienda (${activeStore.storeName})`,
+                  `Configure How Your Store Collects Payments (${activeStore.storeName})`,
+                  `配置店铺收款方式 (${activeStore.storeName})`
+                )}
+              </span>
             </h2>
             <p className="text-xs text-zinc-400">
-              Cada dueño de tienda configura de forma manual sus propias cuentas bancarias, Pago Móvil, Binance Pay, Zinli, Transferencia Banesco o Zelle donde recibe el dinero de sus ventas. Los métodos activos se muestran a tus compradores al finalizar el carrito y en tu sistema POS/Ventas.
+              {tr(
+                'Cada dueño de tienda configura de forma manual sus propias cuentas bancarias, Pago Móvil, Binance Pay, Zinli, Transferencia Banesco o Zelle donde recibe el dinero de sus ventas. Los métodos activos se muestran a tus compradores al finalizar el carrito y en tu sistema POS/Ventas.',
+                'Each store owner manually configures their own bank accounts, Pago Móvil, Binance Pay, Zinli, Bank Transfer, or Zelle where sales revenue is received. Active methods appear to buyers at checkout and in your POS/Sales system.',
+                '每位店主均可手动配置自己的收款账户（银行账户、Pago Móvil、Binance Pay、Zinli 或 Zelle）。启用后的方式将向购物车结账顾客以及收银台展示。'
+              )}
             </p>
           </div>
 
@@ -3495,12 +4105,16 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
                       {editingStoreMethod
-                        ? `Editar Cobro: ${editingStoreMethod.name}`
-                        : 'Agregar Cuenta o Método de Cobro'}
+                        ? `${tr('Editar Cobro:', 'Edit Method:', '编辑收款方式:')} ${translatePaymentMethodLabel(editingStoreMethod.name, lang)}`
+                        : tr('Agregar Cuenta o Método de Cobro', 'Add Collection Account or Method', '添加收款账户或方式')}
                     </span>
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Ingresa tus datos reales donde tus clientes te enviarán el dinero.
+                    {tr(
+                      'Ingresa tus datos reales donde tus clientes te enviarán el dinero.',
+                      'Enter your real account details where customers will send payments.',
+                      '填写顾客将向您付款的真实账户信息。'
+                    )}
                   </p>
                 </div>
                 {editingStoreMethod && (
@@ -3509,7 +4123,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     onClick={resetStoreMethodForm}
                     className="text-xs text-zinc-400 hover:text-white px-2 py-1 rounded bg-[#09090b]"
                   >
-                    Cancelar
+                    {t.common.cancel}
                   </button>
                 )}
               </div>
@@ -3517,7 +4131,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               {!editingStoreMethod && (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-zinc-400">
-                    Plantillas rápidas (opcionales, luego colocas tu cuenta):
+                    {tr(
+                      'Plantillas rápidas (opcionales, luego colocas tu cuenta):',
+                      'Quick templates (optional, then fill in your account):',
+                      '快速模板（可选，选择后填入您的账户）：'
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {(() => {
@@ -3563,7 +4181,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                           }}
                           className="px-2.5 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-500/40 text-[11px] text-zinc-200 font-medium transition-colors"
                         >
-                          + {sug.name}
+                          + {translatePaymentMethodLabel(sug.name, lang)}
                         </button>
                       ));
                     })()}
@@ -3573,19 +4191,23 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {tr('Nombre del Método *', 'Method Name *', '收款方式名称 *')}
+                  </label>
                   <input
                     required
                     type="text"
                     maxLength={80}
                     value={stPmName}
                     onChange={(e) => setStPmName(e.target.value)}
-                    placeholder="Ej: Pago Móvil Banesco / Binance Pay / Zelle"
+                    placeholder={tr('Ej: Pago Móvil Banesco / Binance Pay / Zelle', 'Ex: Pago Móvil / Binance Pay / Zelle', '如：Pago Móvil / Binance Pay / Zelle')}
                     className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {tr('Moneda *', 'Currency *', '币种 *')}
+                  </label>
                   <select
                     value={stPmCurrency}
                     onChange={(e) => setStPmCurrency(e.target.value as PlatformPaymentCurrency)}
@@ -3595,26 +4217,32 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     <option value="Bs">Bs.</option>
                     <option value="USDT">USDT</option>
                     <option value="EUR">EUR</option>
-                    <option value="Otro">Otro</option>
+                    <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-zinc-300 block mb-1">Titular / Razón Social / RIF</label>
+                <label className="text-xs text-zinc-300 block mb-1">
+                  {tr('Titular / Razón Social / RIF', 'Account Holder / Business / Tax ID', '账户持有人 / 企业名称 / RIF')}
+                </label>
                 <input
                   type="text"
                   maxLength={120}
                   value={stPmHolder}
                   onChange={(e) => setStPmHolder(e.target.value)}
-                  placeholder={`Ej: ${activeStore.registeredOwnerName}${activeStore.rif ? ` · ${activeStore.rif}` : ''}`}
+                  placeholder={`${activeStore.registeredOwnerName}${activeStore.rif ? ` · ${activeStore.rif}` : ''}`}
                   className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
               </div>
 
               <div>
                 <label className="text-xs text-zinc-300 block mb-1">
-                  Datos de Cobro de Tu Tienda (Cuenta, Teléfono Pago Móvil, Correo o Wallet) *
+                  {tr(
+                    'Datos de Cobro de Tu Tienda (Cuenta, Teléfono Pago Móvil, Correo o Wallet) *',
+                    'Your Store Payment Details (Bank Account, Pago Móvil Phone, Email, or Wallet) *',
+                    '收款详情（银行账号、Pago Móvil 电话、邮箱或钱包地址）*'
+                  )}
                 </label>
                 <textarea
                   required
@@ -3622,21 +4250,25 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   maxLength={300}
                   value={stPmDetails}
                   onChange={(e) => setStPmDetails(e.target.value)}
-                  placeholder="Ej: 0134 Banesco · 0414-0000000 · V-12345678 / correo@tudominio.com / PayID: 12345678"
+                  placeholder="0134 Banesco · 0414-0000000 · V-12345678 / PayID: 12345678"
                   className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
               </div>
 
               <div>
                 <label className="text-xs text-zinc-300 block mb-1">
-                  Instrucciones para Tu Cliente (Opcional)
+                  {tr('Instrucciones para Tu Cliente (Opcional)', 'Instructions for Your Customer (Optional)', '买家付款指引（可选）')}
                 </label>
                 <input
                   type="text"
                   maxLength={400}
                   value={stPmInstructions}
                   onChange={(e) => setStPmInstructions(e.target.value)}
-                  placeholder="Ej: Enviar captura por WhatsApp tras transferir para despachar pedido"
+                  placeholder={tr(
+                    'Ej: Enviar captura por WhatsApp tras transferir para despachar pedido',
+                    'Ex: Send screenshot via WhatsApp after transfer to dispatch order',
+                    '例如：转账后请通过 WhatsApp 发送截图以便安排发货'
+                  )}
                   className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
               </div>
@@ -3649,7 +4281,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     onChange={(e) => setStPmAppliesIgtf(e.target.checked)}
                     className="accent-amber-500 w-4 h-4"
                   />
-                  <span>Aplica IGTF 3% Divisas (SENIAT) cuando se registre en POS</span>
+                  <span>
+                    {tr(
+                      'Aplica IGTF 3% Divisas (SENIAT) cuando se registre en POS',
+                      'Apply 3% Foreign Currency Tax (IGTF) when recorded in POS',
+                      '在 POS 结算时适用 3% 外汇交易税 (IGTF)'
+                    )}
+                  </span>
                 </label>
 
                 <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
@@ -3659,7 +4297,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     onChange={(e) => setStPmActive(e.target.checked)}
                     className="accent-emerald-500 w-4 h-4"
                   />
-                  <span>Visible para clientes en tu Tienda Online y POS</span>
+                  <span>
+                    {tr(
+                      'Visible para clientes en tu Tienda Online y POS',
+                      'Visible to customers in your Online Store & POS',
+                      '在线上商城与 POS 结算中向顾客可见'
+                    )}
+                  </span>
                 </label>
               </div>
 
@@ -3670,7 +4314,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               >
                 <Save className="w-4 h-4" />
                 <span>
-                  {editingStoreMethod ? 'Actualizar Método de Cobro' : 'Guardar Método de Cobro'}
+                  {editingStoreMethod
+                    ? tr('Actualizar Método de Cobro', 'Update Collection Method', '更新收款方式')
+                    : tr('Guardar Método de Cobro', 'Save Collection Method', '保存收款方式')}
                 </span>
               </button>
             </form>
@@ -3679,10 +4325,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-white font-display">
-                    Métodos de Cobro de Tu Tienda ({storePaymentMethods.length})
+                    {tr(
+                      `Métodos de Cobro de Tu Tienda (${storePaymentMethods.length})`,
+                      `Your Store Collection Methods (${storePaymentMethods.length})`,
+                      `已配置的店铺收款方式 (${storePaymentMethods.length})`
+                    )}
                   </h3>
                   <p className="text-xs text-zinc-400">
-                    Solo tú administras las cuentas y wallets mostradas a tus clientes.
+                    {tr(
+                      'Solo tú administras las cuentas y wallets mostradas a tus clientes.',
+                      'Only you manage the accounts and wallets displayed to your buyers.',
+                      '仅您本人可管理展示给买家的银行账户与电子钱包。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -3691,10 +4345,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-1.5">
                   <Wallet className="w-8 h-8 text-zinc-600 mx-auto" />
                   <p className="text-xs font-semibold text-zinc-300">
-                    Aún no has configurado tus cuentas de cobro manuales
+                    {tr(
+                      'Aún no has configurado tus cuentas de cobro manuales',
+                      'You have not configured any manual collection accounts yet',
+                      '您尚未配置任何手动收款账户'
+                    )}
                   </p>
                   <p className="text-[11px] text-zinc-500">
-                    Agrega aquí tu Pago Móvil, cuenta Banesco, Binance Pay, Zinli o Zelle para que tus compradores sepan exactamente a dónde pagarte.
+                    {tr(
+                      'Agrega aquí tu Pago Móvil, cuenta Banesco, Binance Pay, Zinli o Zelle para que tus compradores sepan exactamente a dónde pagarte.',
+                      'Add your Pago Móvil, bank account, Binance Pay, Zinli, or Zelle here so buyers know exactly where to pay you.',
+                      '在此添加您的 Pago Móvil、银行账号、Binance Pay、Zinli 或 Zelle，方便买家直接向您付款。'
+                    )}
                   </p>
                 </div>
               ) : (
@@ -3706,7 +4368,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                     >
                       <div className="space-y-1 text-xs min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-white text-sm">{method.name}</span>
+                          <span className="font-bold text-white text-sm">{translatePaymentMethodLabel(method.name, lang)}</span>
                           <span className="text-amber-300 font-mono text-[11px] font-bold">
                             {method.currency}
                           </span>
@@ -3720,17 +4382,21 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                                 : 'bg-zinc-800 text-zinc-400'
                             }`}
                           >
-                            {method.isActive ? 'Activo' : 'Pausado'}
+                            {method.isActive
+                              ? tr('Activo', 'Active', '已启用')
+                              : tr('Pausado', 'Paused', '已暂停')}
                           </span>
                         </div>
                         {method.accountHolder && (
-                          <div className="text-zinc-400">Titular: {method.accountHolder}</div>
+                          <div className="text-zinc-400">
+                            {tr('Titular:', 'Holder:', '持有人:')} {method.accountHolder}
+                          </div>
                         )}
                         <div className="text-zinc-200 whitespace-pre-line font-mono text-[11px]">
                           {method.accountDetails}
                         </div>
                         {method.instructions && (
-                          <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                          <div className="text-zinc-400 text-[11px]">{translateCommonPaymentInstruction(method.instructions, lang)}</div>
                         )}
                       </div>
 
@@ -3745,7 +4411,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                               : 'bg-[#111114] border-white/[0.1] text-zinc-300'
                           }`}
                         >
-                          {method.isActive ? 'Pausar' : 'Activar'}
+                          {method.isActive
+                            ? tr('Pausar', 'Pause', '暂停')
+                            : tr('Activar', 'Activate', '启用')}
                         </button>
                         <button
                           type="button"
@@ -3760,7 +4428,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             setStPmActive(method.isActive);
                           }}
                           className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                          title="Editar método"
+                          title={tr('Editar método', 'Edit method', '编辑方式')}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -3771,14 +4439,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             onClick={() => handleDeleteStorePaymentMethod(method)}
                             className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
                           >
-                            Confirmar
+                            {tr('Confirmar', 'Confirm', '确认删除')}
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteStoreMethodId(method.id)}
                             className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                            title="Eliminar método"
+                            title={tr('Eliminar método', 'Delete method', '删除方式')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

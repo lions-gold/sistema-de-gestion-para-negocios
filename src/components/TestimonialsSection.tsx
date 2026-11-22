@@ -1,4 +1,5 @@
 import React from 'react';
+import { Star } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export const TestimonialsSection: React.FC = () => {
@@ -17,11 +18,18 @@ export const TestimonialsSection: React.FC = () => {
         {t.testimonials.items.map((item, idx) => (
           <div
             key={idx}
-            className="min-w-0 obsidian-surface rounded-2xl p-5 sm:p-6 flex flex-col justify-between hover:border-amber-400/30 transition-colors space-y-5"
+            className="min-w-0 obsidian-surface rounded-2xl p-6 flex flex-col justify-between hover:border-amber-400/35 transition-colors space-y-5"
           >
             <div>
-              <div className="text-amber-400 font-mono text-xs font-semibold mb-3 tabular-nums">
-                {item.metric}
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="text-amber-400 font-mono text-xs font-semibold tabular-nums">
+                  {item.metric}
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0" aria-hidden="true">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  ))}
+                </div>
               </div>
               <p className="text-sm text-zinc-300 leading-relaxed">
                 &ldquo;{item.text}&rdquo;

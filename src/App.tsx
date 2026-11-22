@@ -13,6 +13,7 @@ import {
   StoreProduct,
   StoreTenant,
   UserPlatformRole,
+  GuideVideoAudience,
 } from './types';
 import { INITIAL_EXCHANGE_RATE } from './data/mockData';
 import { Header } from './components/Header';
@@ -25,6 +26,7 @@ import { ContactSection } from './components/ContactSection';
 import { Footer } from './components/Footer';
 import { WarehouseApp } from './components/WarehouseApp';
 import { GitHubModal } from './components/GitHubModal';
+import { VideoTutorialsSection } from './components/VideoTutorialsSection';
 import { BarcodeScannerModal } from './components/BarcodeScannerModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { fetchLiveExchangeRates, BCVRatesState } from './services/bcvApi';
@@ -131,8 +133,8 @@ export default function App() {
     initialCachedBcv || {
       bcv: INITIAL_EXCHANGE_RATE,
       paralelo: 1072.46,
-      lastUpdated: tr('Conectando...', 'Connecting...', '连接中...'),
-      source: tr('BCV Oficial', 'Official BCV', 'BCV 官方汇率'),
+      lastUpdated: 'Conectando...',
+      source: 'BCV Oficial',
       isLive: true,
       activeRateType: 'bcv',
     }
@@ -157,6 +159,13 @@ export default function App() {
   >(initialRoute.tab);
   const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isVideoGuideOpen, setIsVideoGuideOpen] = useState(false);
+  const [videoGuideAudience, setVideoGuideAudience] = useState<GuideVideoAudience | 'all'>('all');
+
+  const openVideoGuidesModal = useCallback((audience: GuideVideoAudience | 'all' = 'all') => {
+    setVideoGuideAudience(audience);
+    setIsVideoGuideOpen(true);
+  }, []);
 
   // Admin-controlled Almacén & POS access state (hydrated from cache if offline)
   const [authUser, setAuthUser] = useState<User | null>(auth.currentUser);
@@ -1380,6 +1389,7 @@ export default function App() {
         onSignOut={handleSignOutWithCacheClear}
         isOfflinePanelOpen={isOfflinePanelOpen}
         onToggleOfflinePanel={() => setIsOfflinePanelOpen((prev) => !prev)}
+        onOpenVideoGuides={() => openVideoGuidesModal('all')}
       />
 
       {redirectAuthError && (
@@ -1469,6 +1479,7 @@ export default function App() {
             exchangeRate={exchangeRate}
             initialStoreSlug={selectedStoreSlug}
             onNavigateMerchant={() => navigateTo('merchant')}
+            onOpenVideoGuides={(aud) => openVideoGuidesModal(aud || 'buyers')}
             onVectorContextChange={setActiveVectorContext}
           />
         ) : currentView === 'merchant' ? (
@@ -1489,6 +1500,7 @@ export default function App() {
               navigateTo('app', 'inventory');
             }}
             onNavigateMarketplace={() => navigateTo('marketplace')}
+            onOpenVideoGuides={(aud) => openVideoGuidesModal(aud || 'sellers')}
             onOpenVectorSellerGuide={(autoPrompt) =>
               openVectorGuide(
                 'seller',
@@ -1538,6 +1550,8 @@ export default function App() {
             <ComparisonSection />
 
             <TestimonialsSection />
+
+            <VideoTutorialsSection variant="section" />
 
             <ContactSection />
           </div>
@@ -1617,6 +1631,15 @@ export default function App() {
         onNavigateView={(view) => navigateTo(view)}
         onTrigger404={() => navigateTo('not_found', undefined, '/404')}
         showWarehousePos={canAccessWarehousePos}
+        onOpenVideoGuides={() => openVideoGuidesModal('all')}
+      />
+
+      {/* Platform YouTube Tutorial Videos Modal */}
+      <VideoTutorialsSection
+        variant="modal"
+        isOpen={isVideoGuideOpen}
+        onClose={() => setIsVideoGuideOpen(false)}
+        initialAudience={videoGuideAudience}
       />
 
       {/* Mobile Fixed Bottom Navigation Bar */}
@@ -1633,7 +1656,13 @@ export default function App() {
 
       {/* Direct WhatsApp Floating Support Button */}
       <a
-        href="https://wa.me/584220273766?text=Hola%20Smith%20Bussines%20Solutions,%20deseo%20informaci%C3%B3n%20sobre%20Smith%20Solutions%20E-Commerce"
+        href={`https://wa.me/584220273766?text=${encodeURIComponent(
+          tr(
+            'Hola Smith Solutions, deseo información sobre Smith Solutions E-Commerce',
+            'Hello Smith Solutions, I would like information about Smith Solutions E-Commerce',
+            '您好 Smith Solutions，我想了解关于 Smith Solutions E-Commerce 平台的信息'
+          )
+        )}`}
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-5 right-3 md:right-5 z-40 bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/30 text-white min-w-[48px] min-h-[48px] p-3 md:p-3.5 rounded-full shadow-2xl shadow-black/80 hover:scale-105 active:scale-95 transition-transform flex items-center justify-center group"

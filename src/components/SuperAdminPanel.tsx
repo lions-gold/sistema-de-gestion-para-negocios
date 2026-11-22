@@ -25,8 +25,11 @@ import {
   UserPlus,
   Wallet,
   X,
+  Video,
+  Play,
 } from 'lucide-react';
 import { AdminVectorHub } from './AdminVectorHub';
+import { LanguageSettings } from './LanguageSettings';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, SUPER_ADMIN_EMAIL } from '../firebase';
 import {
@@ -42,6 +45,9 @@ import {
   StoreSubscriptionPaymentMethod,
   StoreTenant,
   SubscriptionPayment,
+  GuideVideoAudience,
+  GuideVideoLanguage,
+  PlatformGuideVideo,
 } from '../types';
 import {
   adminCreateStoreWithOwner,
@@ -77,16 +83,32 @@ import {
   togglePlatformPaymentMethodActive,
   toggleSalesPaymentMethodActive,
   toggleStoreSubscriptionPaymentMethodActive,
+  subscribeAllPlatformGuideVideosForAdmin,
+  savePlatformGuideVideo,
+  togglePlatformGuideVideoActive,
+  deletePlatformGuideVideo,
 } from '../services/saasService';
+import {
+  buildYouTubeEmbedUrl,
+  buildYouTubeThumbnailUrl,
+  buildYouTubeWatchUrl,
+  extractYouTubeVideoId,
+} from '../utils/youtube';
 import { GoogleAuthButton } from './GoogleAuthButton';
 import { useLanguage } from '../i18n/LanguageContext';
+import { translateCategoryLabel } from '../utils/categoryI18n';
+import {
+  translateCommonPaymentInstruction,
+  translatePaymentMethodLabel,
+  translateUnconfiguredBillingText,
+} from '../utils/platformLabelsI18n';
 
 interface SuperAdminPanelProps {
   onOpenWarehouseApp?: (storeId?: string) => void;
 }
 
 export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehouseApp }) => {
-  const { t, tr } = useLanguage();
+  const { lang, t, tr } = useLanguage();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [stores, setStores] = useState<StoreTenant[]>([]);
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
@@ -98,6 +120,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   const [customPaymentMethods, setCustomPaymentMethods] = useState<PlatformPaymentMethod[]>([]);
   const [salesPaymentMethods, setSalesPaymentMethods] = useState<SalesPaymentMethod[]>([]);
   const [ownerClaims, setOwnerClaims] = useState<StoreOwnerClaim[]>([]);
+  const [guideVideos, setGuideVideos] = useState<PlatformGuideVideo[]>([]);
 
   const [activeTab, setActiveTab] = useState<
     | 'stores'
@@ -108,6 +131,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     | 'sub_methods'
     | 'billing'
     | 'sales_methods'
+    | 'videos'
   >('stores');
   const [subMethodFilter, setSubMethodFilter] = useState<'all' | 'active' | 'paused'>('all');
   const [subMethodSearch, setSubMethodSearch] = useState('');
@@ -169,6 +193,18 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   const [spActive, setSpActive] = useState(true);
   const [confirmDeleteSalesMethodId, setConfirmDeleteSalesMethodId] = useState<string | null>(null);
 
+  // Admin YouTube Guide Videos Form State
+  const [editingVideoTarget, setEditingVideoTarget] = useState<PlatformGuideVideo | null>(null);
+  const [vidTitle, setVidTitle] = useState('');
+  const [vidUrl, setVidUrl] = useState('');
+  const [vidDescription, setVidDescription] = useState('');
+  const [vidAudience, setVidAudience] = useState<GuideVideoAudience>('all');
+  const [vidLanguage, setVidLanguage] = useState<GuideVideoLanguage>('es');
+  const [vidSortOrder, setVidSortOrder] = useState<number>(1);
+  const [vidActive, setVidActive] = useState(true);
+  const [confirmDeleteVideoId, setConfirmDeleteVideoId] = useState<string | null>(null);
+  const [previewAdminVideoId, setPreviewAdminVideoId] = useState<string | null>(null);
+
   // Email Composer State
   const [emailMode, setEmailMode] = useState<'individual' | 'collective'>('individual');
   const [selectedIndividualStoreId, setSelectedIndividualStoreId] = useState<string>('');
@@ -206,6 +242,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       setCustomPaymentMethods([]);
       setSalesPaymentMethods([]);
       setOwnerClaims([]);
+      setGuideVideos([]);
       setStoreSubMethodsMap({});
       return;
     }
@@ -219,6 +256,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     const unsubCustomMethods = subscribeAllPlatformPaymentMethodsForAdmin(setCustomPaymentMethods);
     const unsubSalesMethods = subscribeAllSalesPaymentMethodsForAdmin(setSalesPaymentMethods);
     const unsubClaims = subscribeAllStoreOwnerClaimsForAdmin(setOwnerClaims);
+    const unsubGuideVideos = subscribeAllPlatformGuideVideosForAdmin(setGuideVideos);
     return () => {
       unsubStores();
       unsubPayments();
@@ -228,6 +266,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       unsubCustomMethods();
       unsubSalesMethods();
       unsubClaims();
+      unsubGuideVideos();
     };
   }, [isAuthorizedAdmin]);
 
@@ -672,6 +711,123 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     }
   };
 
+  const resetVideoForm = () => {
+    setEditingVideoTarget(null);
+    setVidTitle('');
+    setVidUrl('');
+    setVidDescription('');
+    setVidAudience('all');
+    setVidLanguage('es');
+    setVidSortOrder(guideVideos.length + 1);
+    setVidActive(true);
+    setPreviewAdminVideoId(null);
+  };
+
+  const handleSaveGuideVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const extracted = extractYouTubeVideoId(vidUrl);
+    if (!extracted) {
+      setErrorNotice(
+        tr(
+          'Enlace o ID de YouTube inválido. Pega una URL válida (ej. https://www.youtube.com/watch?v=..., https://youtu.be/... o el ID de 11 caracteres).',
+          'Invalid YouTube link or ID. Paste a valid YouTube URL (watch?v=..., youtu.be/..., shorts/...) or 11-char ID.',
+          'YouTube 链接或 ID 无效，请粘贴有效的 YouTube 视频链接或 11 位视频 ID。'
+        )
+      );
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorNotice(null);
+    try {
+      await savePlatformGuideVideo(user, {
+        id: editingVideoTarget?.id,
+        title: vidTitle,
+        description: vidDescription,
+        youtubeUrl: vidUrl,
+        audience: vidAudience,
+        language: vidLanguage,
+        sortOrder: vidSortOrder,
+        isActive: vidActive,
+        existingCreatedAt: editingVideoTarget?.createdAt,
+      });
+      showNotice(
+        editingVideoTarget
+          ? tr(
+              `Video guía "${vidTitle}" actualizado correctamente.`,
+              `Guide video "${vidTitle}" updated successfully.`,
+              `视频教程“${vidTitle}”更新成功。`
+            )
+          : tr(
+              `Video guía "${vidTitle}" agregado y publicado para los usuarios.`,
+              `Guide video "${vidTitle}" added and published to users.`,
+              `视频教程“${vidTitle}”已添加并向用户发布。`
+            )
+      );
+      resetVideoForm();
+    } catch (err) {
+      setErrorNotice(
+        err instanceof Error
+          ? err.message
+          : tr('Error guardando video de YouTube.', 'Error saving YouTube video.', '保存 YouTube 视频失败。')
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleToggleGuideVideoActive = async (video: PlatformGuideVideo) => {
+    setIsBusy(true);
+    try {
+      await togglePlatformGuideVideoActive(video);
+      showNotice(
+        tr(
+          `Video "${video.title}" ${!video.isActive ? 'activado y visible' : 'pausado'}.`,
+          `Video "${video.title}" ${!video.isActive ? 'activated and visible' : 'paused'}.`,
+          `视频“${video.title}”已${!video.isActive ? '启用并对用户可见' : '暂停'}。`
+        )
+      );
+    } catch (err) {
+      setErrorNotice(
+        err instanceof Error
+          ? err.message
+          : tr('Error cambiando visibilidad del video.', 'Error changing video visibility.', '更新视频显示状态失败。')
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDeleteGuideVideo = async (video: PlatformGuideVideo) => {
+    setIsBusy(true);
+    try {
+      await deletePlatformGuideVideo(video.id);
+      setConfirmDeleteVideoId(null);
+      if (editingVideoTarget?.id === video.id) {
+        resetVideoForm();
+      }
+      if (previewAdminVideoId === video.youtubeId) {
+        setPreviewAdminVideoId(null);
+      }
+      showNotice(
+        tr(
+          `Video guía "${video.title}" eliminado.`,
+          `Guide video "${video.title}" deleted.`,
+          `视频教程“${video.title}”已删除。`
+        )
+      );
+    } catch (err) {
+      setErrorNotice(
+        err instanceof Error
+          ? err.message
+          : tr('Error eliminando video guía.', 'Error deleting guide video.', '删除视频教程失败。')
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const openCreateManualOwnerModal = () => {
     setEditingStoreTarget(null);
     setManualOwnerName('');
@@ -1035,6 +1191,17 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           <Wallet className="w-4 h-4 shrink-0" />
           <span>{tr('Métodos Pago Ventas', 'Sales Methods', '销售收款方式')} ({salesPaymentMethods.length})</span>
         </button>
+        <button
+          onClick={() => setActiveTab('videos')}
+          className={`px-4 py-2.5 min-h-[44px] whitespace-nowrap shrink-0 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 ${
+            activeTab === 'videos'
+              ? 'bg-amber-500 text-zinc-950'
+              : 'bg-[#111114] border border-white/[0.08] text-zinc-300'
+          }`}
+        >
+          <Video className="w-4 h-4 shrink-0" />
+          <span>{tr('Videos Guía', 'Video Guides', '视频指南')} ({guideVideos.length})</span>
+        </button>
       </div>
 
       {/* ADMIN TAB 1: MANUAL ACCOUNT ACTIVATION & MANUAL STORE OWNERS */}
@@ -1147,6 +1314,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <div className="text-xs text-zinc-400">
                           {t.merchant.ownerPrefix}: {store.registeredOwnerName} · RIF:{' '}
                           {store.rif || t.merchant.noRif} · WhatsApp: {store.businessWhatsapp}
+                          {store.category ? ` · ${translateCategoryLabel(store.category, lang)}` : ''}
                           {ownerEmailMap[store.id] ? ` · ${ownerEmailMap[store.id]}` : ''}
                         </div>
                         <div className="text-[11px] text-zinc-500 font-mono flex flex-wrap gap-2">
@@ -1505,7 +1673,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         key={`pay-banner-${m.id}`}
                         className="px-2 py-0.5 rounded-md bg-[#09090b] border border-emerald-500/35 text-emerald-300 font-semibold"
                       >
-                        {m.name} ({m.currency})
+                        {translatePaymentMethodLabel(m.name, lang)} ({m.currency})
                       </span>
                     ))
                 )}
@@ -1536,7 +1704,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-white text-sm">{pay.storeName}</span>
                     <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-mono font-bold">
-                      ${pay.amountUSD} USD · {pay.paymentMethod}
+                      ${pay.amountUSD} USD · {translatePaymentMethodLabel(pay.paymentMethod, lang)}
                     </span>
                     <span
                       className={`px-2 py-0.5 rounded font-bold ${
@@ -1561,7 +1729,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   </div>
                   {pay.couponCode && (
                     <div className="text-emerald-300 font-mono">
-                      🎟 Cupón: {pay.couponCode} (-${pay.discountUSD ?? 0} USD)
+                      🎟 {tr('Cupón:', 'Coupon:', '优惠券:')} {pay.couponCode} (-${pay.discountUSD ?? 0} USD)
                     </div>
                   )}
                   {pay.payerInfo && <div className="text-zinc-400">{pay.payerInfo}</div>}
@@ -1576,6 +1744,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <img
                           src={pay.proofImageUrl}
                           alt={tr('Captura de pago', 'Payment screenshot', '付款截图')}
+                          referrerPolicy="no-referrer"
                           className="w-6 h-6 rounded object-cover"
                         />
                         <span>{tr('Ver Captura Adjunta', 'View Attached Proof', '查看付款凭证')}</span>
@@ -1635,6 +1804,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <img
                   src={previewProofUrl}
                   alt={tr('Captura de pago completa', 'Full payment screenshot', '完整付款截图')}
+                  referrerPolicy="no-referrer"
                   className="w-full max-h-[70dvh] object-contain rounded-xl bg-[#09090b]"
                 />
               </div>
@@ -2403,7 +2573,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               <div className="space-y-1.5 text-xs min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-bold text-white text-sm">
-                                    {method.name}
+                                    {translatePaymentMethodLabel(method.name, lang)}
                                   </span>
                                   <span className="text-zinc-500" aria-hidden="true">
                                     ·
@@ -2438,7 +2608,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 </div>
                                 {method.instructions && (
                                   <div className="text-zinc-400 text-[11px]">
-                                    {method.instructions}
+                                    {translateCommonPaymentInstruction(method.instructions, lang)}
                                   </div>
                                 )}
                               </div>
@@ -2772,7 +2942,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       >
                         <div className="space-y-1.5 text-xs min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-white text-sm">{method.name}</span>
+                            <span className="font-bold text-white text-sm">
+                              {translatePaymentMethodLabel(method.name, lang)}
+                            </span>
                             <span className="text-zinc-500" aria-hidden="true">·</span>
                             <span className="text-amber-300 font-mono text-[11px] font-bold">
                               {method.currency}
@@ -2800,7 +2972,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             {method.accountDetails}
                           </div>
                           {method.instructions && (
-                            <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                            <div className="text-zinc-400 text-[11px]">
+                              {translateCommonPaymentInstruction(method.instructions, lang)}
+                            </div>
                           )}
                         </div>
 
@@ -2877,22 +3051,37 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
       {/* ADMIN TAB 5: PLATFORM SUBSCRIPTION BILLING SETTINGS (PRICE, SUPPORT WHATSAPP & BASE ACCOUNTS) */}
       {activeTab === 'billing' && (
         <div className="space-y-6">
+          <LanguageSettings variant="compact" />
           <div className="bg-[#111114] border border-amber-500/30 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
                 <Settings className="w-5 h-5 text-amber-400" />
-                <span>Parámetros de Suscripción SaaS (${billing.monthlyPriceUSD}/mes)</span>
+                <span>
+                  {tr(
+                    `Parámetros de Suscripción SaaS ($${billing.monthlyPriceUSD}/mes)`,
+                    `SaaS Subscription Parameters ($${billing.monthlyPriceUSD}/mo)`,
+                    `SaaS 订阅参数 ($${billing.monthlyPriceUSD}/月)`
+                  )}
+                </span>
               </h2>
               <p className="text-xs text-zinc-400">
-                Define el precio mensual, bono por referido y WhatsApp de soporte. Los métodos de pago manuales configurados en{' '}
+                {tr(
+                  'Define el precio mensual, bono por referido y WhatsApp de soporte. Los métodos de pago manuales configurados en',
+                  'Define the monthly price, referral bonus, and support WhatsApp. Manual payment methods configured in',
+                  '设置月度价格、推荐奖励和客服 WhatsApp。以下手动收款方式：'
+                )}{' '}
                 <button
                   type="button"
                   onClick={() => setActiveTab('sub_methods')}
                   className="text-amber-300 underline hover:text-amber-200 font-semibold"
                 >
-                  Métodos Suscripción ({customPaymentMethods.length})
+                  {tr('Métodos Suscripción', 'Sub. Methods', '订阅方式')} ({customPaymentMethods.length})
                 </button>{' '}
-                se muestran directamente a los dueños de tienda para pagar su suscripción.
+                {tr(
+                  'se muestran directamente a los dueños de tienda para pagar su suscripción.',
+                  'are shown directly to store owners when paying their subscription.',
+                  '会直接展示给店主用于支付订阅费。'
+                )}
               </p>
               {customPaymentMethods.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2905,7 +3094,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                           : 'bg-[#09090b] border-white/[0.08] text-zinc-400'
                       }`}
                     >
-                      {m.name} ({m.currency}) {m.isActive ? '' : '· Pausado'}
+                      {translatePaymentMethodLabel(m.name, lang)} ({m.currency}) {m.isActive ? '' : `· ${tr('Pausado', 'Paused', '已暂停')}`}
                     </span>
                   ))}
                 </div>
@@ -2918,7 +3107,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 className="px-4 py-2.5 min-h-[42px] rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold flex items-center gap-2 whitespace-nowrap"
               >
                 <Plus className="w-4 h-4" />
-                <span>Configurar Métodos Manuales ({customPaymentMethods.length})</span>
+                <span>{tr('Configurar Métodos Manuales', 'Configure Manual Methods', '配置手动方式')} ({customPaymentMethods.length})</span>
               </button>
             </div>
           </div>
@@ -2990,7 +3179,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 </label>
                 <textarea
                   rows={3}
-                  value={billing.bankTransfers}
+                  value={translateUnconfiguredBillingText(billing.bankTransfers, lang)}
                   onChange={(e) => setBilling({ ...billing, bankTransfers: e.target.value })}
                   className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
@@ -3002,7 +3191,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 </label>
                 <textarea
                   rows={3}
-                  value={billing.pagoMovil}
+                  value={translateUnconfiguredBillingText(billing.pagoMovil, lang)}
                   onChange={(e) => setBilling({ ...billing, pagoMovil: e.target.value })}
                   className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
@@ -3014,7 +3203,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 </label>
                 <textarea
                   rows={2}
-                  value={billing.binancePay}
+                  value={translateUnconfiguredBillingText(billing.binancePay, lang)}
                   onChange={(e) => setBilling({ ...billing, binancePay: e.target.value })}
                   className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
@@ -3026,7 +3215,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 </label>
                 <textarea
                   rows={2}
-                  value={billing.bybitPay}
+                  value={translateUnconfiguredBillingText(billing.bybitPay, lang)}
                   onChange={(e) => setBilling({ ...billing, bybitPay: e.target.value })}
                   className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
@@ -3052,10 +3241,20 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-white font-display flex items-center gap-2">
                 <Wallet className="w-5 h-5 text-emerald-400" />
-                <span>Métodos de Pago Personalizados para Registro de Ventas de Tiendas</span>
+                <span>
+                  {tr(
+                    'Métodos de Pago Personalizados para Registro de Ventas de Tiendas',
+                    'Custom Payment Methods for Store Sales Recording',
+                    '商店销售记录的自定义收款方式'
+                  )}
+                </span>
               </h2>
               <p className="text-xs text-zinc-400 mt-1">
-                Agrega, edita o elimina opciones globales (ej: Binance Pay, Zinli, Transferencia Banesco, Zelle, Wally, Cashea) para que los dueños de tiendas las seleccionen automáticamente en Caja POS y en Ventas Directas. Cada dueño además configura manualmente sus propios datos de cobro desde su portal.
+                {tr(
+                  'Agrega, edita o elimina opciones globales (ej: Binance Pay, Zinli, Transferencia Banesco, Zelle, Wally, Cashea) para que los dueños de tiendas las seleccionen automáticamente en Caja POS y en Ventas Directas. Cada dueño además configura manualmente sus propios datos de cobro desde su portal.',
+                  'Add, edit, or remove global options (e.g., Binance Pay, Zinli, Banesco Transfer, Zelle, Wally, Cashea) so store owners can select them automatically in POS Checkout and Direct Sales. Each owner can also configure their own receiving details in their portal.',
+                  '添加、编辑或删除全局选项（如 Binance Pay、Zinli、Banesco 转账、Zelle、Wally、Cashea），以便店主在 POS 收银和直接销售中自动选择。每位店主也可在其门户中手动配置收款信息。'
+                )}
               </p>
             </div>
           </div>
@@ -3071,12 +3270,16 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
                       {editingSalesMethodTarget
-                        ? `Editar Método: ${editingSalesMethodTarget.name}`
-                        : 'Agregar Método de Pago para Ventas'}
+                        ? `${tr('Editar Método:', 'Edit Method:', '编辑方式:')} ${editingSalesMethodTarget.name}`
+                        : tr('Agregar Método de Pago para Ventas', 'Add Sales Payment Method', '添加销售收款方式')}
                     </span>
                   </h3>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Define el nombre, moneda y si aplica IGTF 3% divisas para las ventas de los comercios.
+                    {tr(
+                      'Define el nombre, moneda y si aplica IGTF 3% divisas para las ventas de los comercios.',
+                      'Define the name, currency, and whether 3% foreign-currency IGTF applies to merchant sales.',
+                      '设置名称、币种以及商家销售是否适用 3% 外币 IGTF 税。'
+                    )}
                   </p>
                 </div>
                 {editingSalesMethodTarget && (
@@ -3085,22 +3288,52 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     onClick={resetSalesMethodForm}
                     className="text-xs text-zinc-400 hover:text-white px-2.5 py-1 rounded bg-[#09090b]"
                   >
-                    Cancelar
+                    {t.common.cancel}
                   </button>
                 )}
               </div>
 
               {!editingSalesMethodTarget && (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] text-zinc-400">Plantillas rápidas:</div>
+                  <div className="text-[11px] text-zinc-400">{tr('Plantillas rápidas:', 'Quick templates:', '快速模板：')}</div>
                   <div className="flex flex-wrap gap-1.5">
                     {[
-                      { name: 'Binance Pay', currency: 'USDT' as PlatformPaymentCurrency, igtf: false, desc: 'Pago cripto en USDT sin comisión bancaria' },
-                      { name: 'Zinli', currency: 'USD' as PlatformPaymentCurrency, igtf: true, desc: 'Billetera digital USD prepagada' },
-                      { name: 'Transferencia Banesco', currency: 'Bs' as PlatformPaymentCurrency, igtf: false, desc: 'Transferencia bancaria nacional en Bolívares' },
-                      { name: 'Zelle', currency: 'USD' as PlatformPaymentCurrency, igtf: true, desc: 'Transferencia instantánea en USD' },
-                      { name: 'Wally', currency: 'USD' as PlatformPaymentCurrency, igtf: true, desc: 'Billetera digital USD Banesco Panamá' },
-                      { name: 'Cashea', currency: 'USD' as PlatformPaymentCurrency, igtf: false, desc: 'Compra ahora y paga en cuotas' },
+                      {
+                        name: 'Binance Pay',
+                        currency: 'USDT' as PlatformPaymentCurrency,
+                        igtf: false,
+                        desc: tr('Pago cripto en USDT sin comisión bancaria', 'USDT crypto payment without bank fees', '无银行手续费的 USDT 加密货币支付'),
+                      },
+                      {
+                        name: 'Zinli',
+                        currency: 'USD' as PlatformPaymentCurrency,
+                        igtf: true,
+                        desc: tr('Billetera digital USD prepagada', 'Prepaid USD digital wallet', '预付美元电子钱包'),
+                      },
+                      {
+                        name: tr('Transferencia Banesco', 'Banesco Transfer', 'Banesco 转账'),
+                        currency: 'Bs' as PlatformPaymentCurrency,
+                        igtf: false,
+                        desc: tr('Transferencia bancaria nacional en Bolívares', 'National bank transfer in Bolívares', '国内玻利瓦尔银行转账'),
+                      },
+                      {
+                        name: 'Zelle',
+                        currency: 'USD' as PlatformPaymentCurrency,
+                        igtf: true,
+                        desc: tr('Transferencia instantánea en USD', 'Instant USD transfer', '即时美元转账'),
+                      },
+                      {
+                        name: 'Wally',
+                        currency: 'USD' as PlatformPaymentCurrency,
+                        igtf: true,
+                        desc: tr('Billetera digital USD Banesco Panamá', 'Banesco Panama USD digital wallet', 'Banesco Panama 美元钱包'),
+                      },
+                      {
+                        name: 'Cashea',
+                        currency: 'USD' as PlatformPaymentCurrency,
+                        igtf: false,
+                        desc: tr('Compra ahora y paga en cuotas', 'Buy now, pay in installments', '先买后分期付款'),
+                      },
                     ].map((preset) => (
                       <button
                         key={preset.name}
@@ -3122,19 +3355,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="text-xs text-zinc-300 block mb-1">Nombre del Método *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Nombre del Método *', 'Method Name *', '方式名称 *')}</label>
                   <input
                     required
                     type="text"
                     maxLength={80}
                     value={spName}
                     onChange={(e) => setSpName(e.target.value)}
-                    placeholder="Ej: Binance Pay / Zinli / Transferencia Banesco"
+                    placeholder={tr('Ej: Binance Pay / Zinli / Transferencia Banesco', 'e.g. Binance Pay / Zinli / Banesco Transfer', '例如：Binance Pay / Zinli / Banesco 转账')}
                     className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-300 block mb-1">Moneda *</label>
+                  <label className="text-xs text-zinc-300 block mb-1">{tr('Moneda *', 'Currency *', '币种 *')}</label>
                   <select
                     value={spCurrency}
                     onChange={(e) => setSpCurrency(e.target.value as PlatformPaymentCurrency)}
@@ -3144,21 +3377,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <option value="USDT">USDT</option>
                     <option value="Bs">Bs.</option>
                     <option value="EUR">EUR</option>
-                    <option value="Otro">Otro</option>
+                    <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <label className="text-xs text-zinc-300 block mb-1">
-                  Descripción / Nota Operativa (Opcional)
+                  {tr('Descripción / Nota Operativa (Opcional)', 'Description / Operational Note (Optional)', '描述 / 操作说明（可选）')}
                 </label>
                 <input
                   type="text"
                   maxLength={240}
                   value={spDescription}
                   onChange={(e) => setSpDescription(e.target.value)}
-                  placeholder="Ej: Acepta USDT TRC20 / correo de billetera o transferencia directa"
+                  placeholder={tr('Ej: Acepta USDT TRC20 / correo de billetera o transferencia directa', 'e.g. Accepts USDT TRC20 / wallet email or direct transfer', '例如：支持 USDT TRC20 / 钱包邮箱或直接转账')}
                   className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
               </div>
@@ -3171,7 +3404,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     onChange={(e) => setSpAppliesIgtf(e.target.checked)}
                     className="accent-amber-500 w-4 h-4"
                   />
-                  <span>Aplica IGTF 3% Divisas (SENIAT) por defecto en POS</span>
+                  <span>{tr('Aplica IGTF 3% Divisas (SENIAT) por defecto en POS', 'Apply 3% Foreign-Currency IGTF by default in POS', '默认在 POS 中适用 3% 外币 IGTF 税')}</span>
                 </label>
 
                 <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
@@ -3181,7 +3414,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     onChange={(e) => setSpActive(e.target.checked)}
                     className="accent-emerald-500 w-4 h-4"
                   />
-                  <span>Habilitado como opción para que las tiendas registren ventas</span>
+                  <span>{tr('Habilitado como opción para que las tiendas registren ventas', 'Enabled as an option for stores to record sales', '启用为商店记录销售的可选方式')}</span>
                 </label>
               </div>
 
@@ -3193,8 +3426,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <Save className="w-4 h-4" />
                 <span>
                   {editingSalesMethodTarget
-                    ? 'Actualizar Método de Venta'
-                    : 'Agregar Método de Venta'}
+                    ? tr('Actualizar Método de Venta', 'Update Sales Method', '更新销售收款方式')
+                    : tr('Agregar Método de Venta', 'Add Sales Method', '添加销售收款方式')}
                 </span>
               </button>
             </form>
@@ -3203,10 +3436,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
               <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-white font-display">
-                    Catálogo de Métodos Personalizados para Ventas ({salesPaymentMethods.length})
+                    {tr('Catálogo de Métodos Personalizados para Ventas', 'Custom Sales Payment Methods Catalog', '自定义销售收款方式目录')} ({salesPaymentMethods.length})
                   </h3>
                   <p className="text-xs text-zinc-400">
-                    Todos los métodos activos aparecen automáticamente al registrar ventas en POS y en Ventas Directas de cada tienda.
+                    {tr(
+                      'Todos los métodos activos aparecen automáticamente al registrar ventas en POS y en Ventas Directas de cada tienda.',
+                      'All active methods appear automatically when recording sales in POS and Direct Sales for every store.',
+                      '所有已启用的方式将自动出现在每家店铺的 POS 收银和直接销售中。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -3215,10 +3452,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-1.5">
                   <Wallet className="w-8 h-8 text-zinc-600 mx-auto" />
                   <p className="text-xs font-semibold text-zinc-300">
-                    No has agregado métodos personalizados para ventas aún
+                    {tr('No has agregado métodos personalizados para ventas aún', 'No custom sales payment methods added yet', '尚未添加自定义销售收款方式')}
                   </p>
                   <p className="text-[11px] text-zinc-500">
-                    Usa el formulario o las plantillas rápidas a la izquierda (Binance Pay, Zinli, Transferencia Banesco, Zelle).
+                    {tr(
+                      'Usa el formulario o las plantillas rápidas a la izquierda (Binance Pay, Zinli, Transferencia Banesco, Zelle).',
+                      'Use the form or quick templates on the left (Binance Pay, Zinli, Banesco Transfer, Zelle).',
+                      '请使用左侧表单或快速模板（Binance Pay、Zinli、Banesco 转账、Zelle）。'
+                    )}
                   </p>
                 </div>
               ) : (
@@ -3230,7 +3471,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     >
                       <div className="space-y-1 text-xs min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-white text-sm">{method.name}</span>
+                          <span className="font-bold text-white text-sm">
+                            {translatePaymentMethodLabel(method.name, lang)}
+                          </span>
                           <span className="text-amber-300 font-mono text-[11px] font-bold">
                             {method.currency}
                           </span>
@@ -3246,11 +3489,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 : 'bg-zinc-800 text-zinc-400'
                             }`}
                           >
-                            {method.isActive ? 'Activo' : 'Pausado'}
+                            {method.isActive ? tr('Activo', 'Active', '启用') : tr('Pausado', 'Paused', '已暂停')}
                           </span>
                         </div>
                         {method.description && (
-                          <div className="text-zinc-400 text-[11px]">{method.description}</div>
+                          <div className="text-zinc-400 text-[11px]">
+                            {translateCommonPaymentInstruction(method.description, lang)}
+                          </div>
                         )}
                       </div>
 
@@ -3265,7 +3510,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               : 'bg-[#111114] border-white/[0.1] text-zinc-300'
                           }`}
                         >
-                          {method.isActive ? 'Pausar' : 'Activar'}
+                          {method.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Activate', '启用')}
                         </button>
                         <button
                           type="button"
@@ -3278,7 +3523,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             setSpActive(method.isActive);
                           }}
                           className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                          title="Editar método"
+                          title={tr('Editar método', 'Edit method', '编辑方式')}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -3289,14 +3534,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                             onClick={() => handleDeleteSalesMethod(method)}
                             className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
                           >
-                            Confirmar
+                            {tr('Confirmar', 'Confirm', '确认')}
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteSalesMethodId(method.id)}
                             className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                            title="Eliminar método"
+                            title={tr('Eliminar método', 'Delete method', '删除方式')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -3321,6 +3566,404 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
         />
       )}
 
+      {/* ADMIN TAB: MANUAL YOUTUBE VIDEO GUIDES FOR USERS */}
+      {activeTab === 'videos' && (() => {
+        const resolvedYoutubeId = extractYouTubeVideoId(vidUrl);
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Add / Edit YouTube Tutorial Form */}
+              <form
+                onSubmit={handleSaveGuideVideo}
+                className="lg:col-span-5 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4"
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-white font-display flex items-center gap-2">
+                      <Video className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>
+                        {editingVideoTarget
+                          ? tr('Editar Video de YouTube', 'Edit YouTube Video', '编辑 YouTube 视频')
+                          : tr('Agregar Video de YouTube', 'Add YouTube Video', '手动添加 YouTube 视频')}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      {tr(
+                        'Pega cualquier enlace de YouTube (watch, youtu.be o Shorts) para crear la guía visual de los usuarios.',
+                        'Paste any YouTube link (watch, youtu.be, or Shorts) to publish visual guides for platform users.',
+                        '粘贴任意 YouTube 链接（标准视频、短链接或 Shorts），为用户提供视频操作指导。'
+                      )}
+                    </p>
+                  </div>
+                  {editingVideoTarget && (
+                    <button
+                      type="button"
+                      onClick={resetVideoForm}
+                      className="text-xs text-zinc-400 hover:text-white underline shrink-0"
+                    >
+                      {t.common.cancel}
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {tr('Título del Tutorial *', 'Tutorial Title *', '视频教程标题 *')}
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    maxLength={120}
+                    value={vidTitle}
+                    onChange={(e) => setVidTitle(e.target.value)}
+                    placeholder={tr(
+                      'Ej: Cómo comprar y descargar tu factura PDF paso a paso',
+                      'e.g. How to buy and download your PDF receipt step by step',
+                      '例如：分步演示如何下单购买并下载 PDF 发票'
+                    )}
+                    className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {tr('Enlace o ID de YouTube *', 'YouTube Link or Video ID *', 'YouTube 视频链接或 ID *')}
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    maxLength={300}
+                    value={vidUrl}
+                    onChange={(e) => setVidUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=... o https://youtu.be/..."
+                    className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white font-mono"
+                  />
+                  {vidUrl.trim() && (
+                    <div className="mt-1.5 text-[11px] font-mono">
+                      {resolvedYoutubeId ? (
+                        <span className="text-emerald-400">
+                          {tr(
+                            `Video detectado correctamente · ID: ${resolvedYoutubeId}`,
+                            `Valid YouTube video detected · ID: ${resolvedYoutubeId}`,
+                            `已识别有效视频 · ID: ${resolvedYoutubeId}`
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-red-400">
+                          {tr(
+                            'Formato no reconocido. Verifica que sea una URL de YouTube válida.',
+                            'Unrecognized format. Ensure this is a valid YouTube link.',
+                            '链接格式无效，请确认粘贴的是有效的 YouTube 视频地址。'
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Real-time Thumbnail & Player Preview */}
+                {resolvedYoutubeId && (
+                  <div className="rounded-xl bg-[#09090b] border border-white/[0.08] overflow-hidden">
+                    {previewAdminVideoId === resolvedYoutubeId ? (
+                      <div className="relative aspect-video w-full">
+                        <iframe
+                          src={buildYouTubeEmbedUrl(resolvedYoutubeId)}
+                          title={vidTitle || 'YouTube preview'}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="absolute inset-0 w-full h-full border-0"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 p-2.5">
+                        <img
+                          src={buildYouTubeThumbnailUrl(resolvedYoutubeId)}
+                          alt={vidTitle || resolvedYoutubeId}
+                          referrerPolicy="no-referrer"
+                          className="w-24 aspect-video rounded-lg object-cover bg-zinc-900 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="text-[11px] text-zinc-300 font-medium truncate">
+                            {vidTitle || tr('Vista previa lista', 'Preview ready', '预览已就绪')}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewAdminVideoId(resolvedYoutubeId)}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 hover:text-amber-300"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>{tr('Probar reproducción aquí', 'Test playback here', '在此测试播放')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-zinc-300 block mb-1">
+                      {tr('Dirigido a', 'Target Audience', '适用人群')}
+                    </label>
+                    <select
+                      value={vidAudience}
+                      onChange={(e) => setVidAudience(e.target.value as GuideVideoAudience)}
+                      className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                    >
+                      <option value="all">{tr('Todos / General', 'All / General', '综合 / 全部')}</option>
+                      <option value="buyers">{tr('Compradores', 'Buyers', '买家用户')}</option>
+                      <option value="sellers">{tr('Dueños de Tienda', 'Store Owners', '商家店主')}</option>
+                      <option value="warehouse">{tr('Almacén & POS', 'Warehouse & POS', '仓库与收银')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-zinc-300 block mb-1">
+                      {tr('Idioma del Video', 'Video Language', '视频语言')}
+                    </label>
+                    <select
+                      value={vidLanguage}
+                      onChange={(e) => setVidLanguage(e.target.value as GuideVideoLanguage)}
+                      className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                    >
+                      <option value="es">Español</option>
+                      <option value="en">English</option>
+                      <option value="zh">{tr('中文 (Chino)', '中文 (Chinese)', '中文')}</option>
+                      <option value="all">{tr('Multilingüe', 'Multilingual', '多语言')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-zinc-300 block mb-1">
+                      {tr('Orden', 'Order', '排序序号')}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={vidSortOrder}
+                      onChange={(e) => setVidSortOrder(Math.max(1, Number(e.target.value) || 1))}
+                      className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {tr('Descripción breve (Opcional)', 'Short description (Optional)', '简短说明（可选）')}
+                  </label>
+                  <textarea
+                    rows={3}
+                    maxLength={400}
+                    value={vidDescription}
+                    onChange={(e) => setVidDescription(e.target.value)}
+                    placeholder={tr(
+                      'Explica qué aprenderá el usuario en este video (ej. registro de tienda, catálogo de ropa por tallas, verificación de pagos).',
+                      'Summarize what users will learn in this video (e.g. store registration, apparel sizes, payment review).',
+                      '简要介绍视频内容（例如：注册店铺、设置服装尺码、验证收款凭证）。'
+                    )}
+                    className="w-full px-3 py-2.5 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={vidActive}
+                    onChange={(e) => setVidActive(e.target.checked)}
+                    className="accent-emerald-500 w-4 h-4"
+                  />
+                  <span>
+                    {tr(
+                      'Publicar inmediatamente en la plataforma para usuarios',
+                      'Publish immediately on platform for users',
+                      '立即发布并在用户端展示此视频教程'
+                    )}
+                  </span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isBusy || !resolvedYoutubeId}
+                  className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 min-h-[44px] disabled:opacity-50 text-center"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>
+                    {editingVideoTarget
+                      ? tr('Actualizar Video Guía', 'Update Guide Video', '更新视频指南')
+                      : tr('Publicar Video en la Plataforma', 'Publish Video to Platform', '发布视频到平台')}
+                  </span>
+                </button>
+              </form>
+
+              {/* Published & Paused Guide Videos Catalog */}
+              <div className="lg:col-span-7 min-w-0 bg-[#111114] border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-white font-display">
+                      {tr('Catálogo de Videos Guía en la Plataforma', 'Platform Video Guides Catalog', '平台视频教程列表')} ({guideVideos.length})
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      {tr(
+                        'Los videos activos aparecen automáticamente en la sección de Video Guías del Inicio, Menú, Directorio de Tiendas y Portal Dueño.',
+                        'Active videos appear automatically in Video Guides across Landing, Menu, Store Directory, and Merchant Portal.',
+                        '已启用的视频将自动展示在首页、导航菜单、店铺目录及商家后台的视频指南区。'
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {guideVideos.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-1.5">
+                    <Video className="w-8 h-8 text-zinc-600 mx-auto" />
+                    <p className="text-xs font-semibold text-zinc-300">
+                      {tr('Aún no has agregado videos de YouTube', 'No YouTube videos added yet', '尚未添加任何 YouTube 视频教程')}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      {tr(
+                        'Usa el formulario a la izquierda para pegar enlaces de tus tutoriales de YouTube.',
+                        'Use the form on the left to paste your YouTube tutorial links.',
+                        '请使用左侧表单粘贴您的 YouTube 教学视频链接。'
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {guideVideos.map((vid) => {
+                      const audienceLabel =
+                        vid.audience === 'buyers'
+                          ? tr('Compradores', 'Buyers', '买家')
+                          : vid.audience === 'sellers'
+                            ? tr('Dueños de Tienda', 'Store Owners', '商家')
+                            : vid.audience === 'warehouse'
+                              ? tr('Almacén & POS', 'Warehouse & POS', '仓库 POS')
+                              : tr('General', 'General', '综合');
+                      const langLabel =
+                        vid.language === 'es'
+                          ? 'ES'
+                          : vid.language === 'en'
+                            ? 'EN'
+                            : vid.language === 'zh'
+                              ? 'ZH'
+                              : 'ES/EN/ZH';
+
+                      return (
+                        <div
+                          key={vid.id}
+                          className="p-3.5 rounded-xl bg-[#09090b] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
+                            <div className="w-28 aspect-video rounded-lg overflow-hidden bg-zinc-900 border border-white/[0.08] shrink-0 relative">
+                              <img
+                                src={buildYouTubeThumbnailUrl(vid.youtubeId)}
+                                alt={vid.title}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-mono text-amber-300 font-bold">
+                                #{vid.sortOrder}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1 text-xs min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-white text-sm truncate max-w-full">
+                                  {vid.title}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                                    vid.isActive
+                                      ? 'bg-emerald-500/15 text-emerald-300'
+                                      : 'bg-zinc-800 text-zinc-400'
+                                  }`}
+                                >
+                                  {vid.isActive ? tr('Activo', 'Active', '已发布') : tr('Pausado', 'Paused', '已暂停')}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-400">
+                                <span className="text-amber-300 font-semibold">{audienceLabel}</span>
+                                <span aria-hidden="true">·</span>
+                                <span>{langLabel}</span>
+                                <span aria-hidden="true">·</span>
+                                <span className="truncate">ID: {vid.youtubeId}</span>
+                              </div>
+                              {vid.description && (
+                                <p className="text-[11px] text-zinc-400 line-clamp-2">{vid.description}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                            <a
+                              href={buildYouTubeWatchUrl(vid.youtubeId)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
+                              title={tr('Ver en YouTube', 'Open in YouTube', '在 YouTube 查看')}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => handleToggleGuideVideoActive(vid)}
+                              className={`px-3 py-2 min-h-[38px] rounded-lg text-[11px] font-bold border whitespace-nowrap ${
+                                vid.isActive
+                                  ? 'bg-emerald-950/50 border-emerald-500/35 text-emerald-300'
+                                  : 'bg-[#111114] border-white/[0.1] text-zinc-300'
+                              }`}
+                            >
+                              {vid.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Activate', '启用')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingVideoTarget(vid);
+                                setVidTitle(vid.title);
+                                setVidUrl(vid.youtubeUrl || buildYouTubeWatchUrl(vid.youtubeId));
+                                setVidDescription(vid.description || '');
+                                setVidAudience(vid.audience);
+                                setVidLanguage(vid.language);
+                                setVidSortOrder(vid.sortOrder);
+                                setVidActive(vid.isActive);
+                                setPreviewAdminVideoId(vid.youtubeId);
+                              }}
+                              className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
+                              title={tr('Editar video', 'Edit video', '编辑视频')}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            {confirmDeleteVideoId === vid.id ? (
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleDeleteGuideVideo(vid)}
+                                className="px-2.5 py-2 min-h-[38px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold whitespace-nowrap"
+                              >
+                                {tr('Confirmar', 'Confirm', '确认删除')}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteVideoId(vid.id)}
+                                className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
+                                title={tr('Eliminar video', 'Delete video', '删除视频')}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Per-Store Subscription Payment Methods Modal */}
       {showStoreSubMethodsModal && (() => {
         const modalStore = stores.find((s) => s.id === selectedSubStoreId);
@@ -3335,38 +3978,70 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           {
             name: 'Pago Móvil',
             currency: 'Bs',
-            detailsPlaceholder: 'Banco: Banesco (0134) · RIF/CI · Teléfono: 04XX-XXXXXXX',
-            instructions: 'Calcular al cambio oficial BCV del día e indicar referencia.',
+            detailsPlaceholder: tr(
+              'Banco: Banesco (0134) · RIF/CI · Teléfono: 04XX-XXXXXXX',
+              'Bank: Banesco (0134) · ID/RIF · Phone: 04XX-XXXXXXX',
+              '银行: Banesco (0134) · 证件/税号 · 电话: 04XX-XXXXXXX'
+            ),
+            instructions: tr(
+              'Calcular al cambio oficial BCV del día e indicar referencia.',
+              'Calculate at the official daily BCV rate and indicate reference.',
+              '按当日 BCV 官方汇率计算金额并注明参考号。'
+            ),
           },
           {
-            name: 'Transferencia Banesco',
+            name: tr('Transferencia Banesco', 'Banesco Transfer', 'Banesco 银行转账'),
             currency: 'Bs',
-            detailsPlaceholder: 'Banesco · Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX',
-            instructions: 'Colocar el nombre de la tienda en el concepto.',
+            detailsPlaceholder: tr(
+              'Banesco · Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX',
+              'Banesco · Checking Account: 0134-XXXX-XX-XXXXXXXXXX',
+              'Banesco · 支票账户: 0134-XXXX-XX-XXXXXXXXXX'
+            ),
+            instructions: tr(
+              'Colocar el nombre de la tienda en el concepto.',
+              'Include the store name in the transfer memo.',
+              '请在转账备注中填写店铺名称。'
+            ),
           },
           {
             name: 'Binance Pay',
             currency: 'USDT',
-            detailsPlaceholder: 'Binance Pay ID / Correo USDT (BEP20/TRC20)',
-            instructions: 'Reportar Order ID o correo Binance al finalizar.',
+            detailsPlaceholder: tr(
+              'Binance Pay ID / Correo USDT (BEP20/TRC20)',
+              'Binance Pay ID / USDT Email (BEP20/TRC20)',
+              'Binance Pay ID / USDT 邮箱 (BEP20/TRC20)'
+            ),
+            instructions: tr(
+              'Reportar Order ID o correo Binance al finalizar.',
+              'Submit Order ID or Binance email when finished.',
+              '完成后请提交订单号或币安邮箱。'
+            ),
           },
           {
             name: 'Zelle',
             currency: 'USD',
-            detailsPlaceholder: 'Correo Zelle asignado a esta tienda',
-            instructions: 'Indicar nombre de tu tienda en el concepto del Zelle.',
+            detailsPlaceholder: tr(
+              'Correo Zelle asignado a esta tienda',
+              'Zelle email assigned to this store',
+              '分配给此店铺的 Zelle 邮箱'
+            ),
+            instructions: tr(
+              'Indicar nombre de tu tienda en el concepto del Zelle.',
+              'Include your store name in the Zelle memo.',
+              '请在 Zelle 备注栏填写您的店铺名称。'
+            ),
           },
           {
             name: 'Zinli',
             currency: 'USD',
-            detailsPlaceholder: 'Correo Zinli receptor',
-            instructions: 'Adjuntar comprobante de transacción.',
+            detailsPlaceholder: tr('Correo Zinli receptor', 'Receiving Zinli email', '收款 Zinli 邮箱'),
+            instructions: tr('Adjuntar comprobante de transacción.', 'Attach transaction receipt.', '请附上交易凭证。'),
           },
           {
-            name: 'Efectivo USD',
+            name: tr('Efectivo USD', 'USD Cash', '美元现金'),
             currency: 'USD',
-            detailsPlaceholder: 'Cobro presencial autorizado',
-            instructions: 'Coordinar entrega previa por WhatsApp.',
+            detailsPlaceholder: tr('Cobro presencial autorizado', 'Authorized in-person payment', '授权当面付款'),
+            instructions: tr('Coordinar entrega previa por WhatsApp.', 'Coordinate handover in advance via WhatsApp.', '请提前通过 WhatsApp 预约交接。'),
           },
         ];
 
@@ -3386,11 +4061,11 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-base font-bold text-white font-display truncate">
-                      Cobro de Suscripción · {modalStore.storeName}
+                      {tr('Cobro de Suscripción', 'Subscription Billing', '订阅收款')} · {modalStore.storeName}
                     </h3>
                     <p className="text-xs text-zinc-400 truncate">
-                      Dueño: {modalStore.registeredOwnerName}
-                      {ownerEmailMap[modalStore.id] ? ` · ${ownerEmailMap[modalStore.id]}` : ''} · ${modalStore.subscriptionPriceUSD}/mes
+                      {tr('Dueño:', 'Owner:', '店主:')} {modalStore.registeredOwnerName}
+                      {ownerEmailMap[modalStore.id] ? ` · ${ownerEmailMap[modalStore.id]}` : ''} · ${modalStore.subscriptionPriceUSD}{tr('/mes', '/mo', '/月')}
                     </p>
                   </div>
                 </div>
@@ -3398,7 +4073,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   type="button"
                   onClick={() => setShowStoreSubMethodsModal(false)}
                   className="min-h-[40px] min-w-[40px] rounded-lg bg-[#09090b] border border-white/[0.1] text-zinc-400 hover:text-white flex items-center justify-center shrink-0"
-                  aria-label="Cerrar modal"
+                  aria-label={tr('Cerrar modal', 'Close modal', '关闭弹窗')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -3414,8 +4089,8 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>
                         {editingStoreSubTarget
-                          ? `Editar: ${editingStoreSubTarget.name}`
-                          : 'Agregar Método Manual'}
+                          ? `${tr('Editar:', 'Edit:', '编辑:')} ${editingStoreSubTarget.name}`
+                          : tr('Agregar Método Manual', 'Add Manual Method', '添加手动方式')}
                       </span>
                     </h4>
                     {editingStoreSubTarget && (
@@ -3424,7 +4099,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         onClick={resetStoreSubMethodForm}
                         className="text-[11px] text-zinc-400 hover:text-white"
                       >
-                        Cancelar
+                        {t.common.cancel}
                       </button>
                     )}
                   </div>
@@ -3461,19 +4136,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
 
                   <div className="grid grid-cols-3 gap-2.5">
                     <div className="col-span-2">
-                      <label className="text-[11px] text-zinc-300 block mb-1">Método *</label>
+                      <label className="text-[11px] text-zinc-300 block mb-1">{tr('Método *', 'Method *', '方式 *')}</label>
                       <input
                         required
                         type="text"
                         maxLength={80}
                         value={ssPmName}
                         onChange={(e) => setSsPmName(e.target.value)}
-                        placeholder="Zelle / Pago Móvil / Binance"
+                        placeholder={tr('Zelle / Pago Móvil / Binance', 'Zelle / Pago Móvil / Binance', 'Zelle / Pago Móvil / Binance')}
                         className="w-full px-3 py-2 min-h-[40px] bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-zinc-300 block mb-1">Moneda *</label>
+                      <label className="text-[11px] text-zinc-300 block mb-1">{tr('Moneda *', 'Currency *', '币种 *')}</label>
                       <select
                         value={ssPmCurrency}
                         onChange={(e) =>
@@ -3485,28 +4160,28 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         <option value="USDT">USDT</option>
                         <option value="Bs">Bs.</option>
                         <option value="EUR">EUR</option>
-                        <option value="Otro">Otro</option>
+                        <option value="Otro">{tr('Otro', 'Other', '其他')}</option>
                       </select>
                     </div>
                   </div>
 
                   <div>
                     <label className="text-[11px] text-zinc-300 block mb-1">
-                      Titular / Beneficiario
+                      {tr('Titular / Beneficiario', 'Account Holder / Beneficiary', '持有人 / 收款人')}
                     </label>
                     <input
                       type="text"
                       maxLength={120}
                       value={ssPmHolder}
                       onChange={(e) => setSsPmHolder(e.target.value)}
-                      placeholder="Nombre o razón social receptora"
+                      placeholder={tr('Nombre o razón social receptora', 'Receiving person or legal entity name', '收款人姓名或公司名称')}
                       className="w-full px-3 py-2 min-h-[40px] bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white"
                     />
                   </div>
 
                   <div>
                     <label className="text-[11px] text-zinc-300 block mb-1">
-                      Datos de Cobro *
+                      {tr('Datos de Cobro *', 'Billing Details *', '收款信息 *')}
                     </label>
                     <textarea
                       required
@@ -3514,21 +4189,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       maxLength={300}
                       value={ssPmDetails}
                       onChange={(e) => setSsPmDetails(e.target.value)}
-                      placeholder="Cuenta, teléfono, correo Zelle o Binance Pay ID"
+                      placeholder={tr('Cuenta, teléfono, correo Zelle o Binance Pay ID', 'Account, phone, Zelle email, or Binance Pay ID', '银行账号、电话、Zelle 邮箱或 Binance Pay ID')}
                       className="w-full px-3 py-2 bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white font-mono"
                     />
                   </div>
 
                   <div>
                     <label className="text-[11px] text-zinc-300 block mb-1">
-                      Instrucciones (Opcional)
+                      {tr('Instrucciones (Opcional)', 'Instructions (Optional)', '付款说明（可选）')}
                     </label>
                     <input
                       type="text"
                       maxLength={400}
                       value={ssPmInstructions}
                       onChange={(e) => setSsPmInstructions(e.target.value)}
-                      placeholder="Indicar referencia o concepto al pagar"
+                      placeholder={tr('Indicar referencia o concepto al pagar', 'Include reference or memo when paying', '付款时请注明参考号或备注')}
                       className="w-full px-3 py-2 min-h-[40px] bg-[#111114] border border-white/[0.1] rounded-lg text-xs text-white"
                     />
                   </div>
@@ -3540,7 +4215,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                       onChange={(e) => setSsPmActive(e.target.checked)}
                       className="accent-amber-500 w-4 h-4"
                     />
-                    <span>Activo para esta tienda</span>
+                    <span>{tr('Activo para esta tienda', 'Active for this store', '对此店铺启用')}</span>
                   </label>
 
                   <button
@@ -3550,7 +4225,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   >
                     <Save className="w-4 h-4" />
                     <span>
-                      {editingStoreSubTarget ? 'Actualizar Método' : 'Guardar Método para Tienda'}
+                      {editingStoreSubTarget
+                        ? tr('Actualizar Método', 'Update Method', '更新方式')
+                        : tr('Guardar Método para Tienda', 'Save Method for Store', '为店铺保存方式')}
                     </span>
                   </button>
                 </form>
@@ -3558,10 +4235,10 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 <div className="lg:col-span-7 min-w-0 space-y-3">
                   <div className="text-xs font-bold text-zinc-200 flex items-center justify-between">
                     <span>
-                      Métodos configurados para esta tienda ({modalMethods.length})
+                      {tr('Métodos configurados para esta tienda', 'Methods configured for this store', '已为此店铺配置的方式')} ({modalMethods.length})
                     </span>
                     <span className="text-[11px] font-normal text-zinc-400">
-                      Sincronizado con Firestore
+                      {tr('Sincronizado con Firestore', 'Synced with Firestore', '已与云端同步')}
                     </span>
                   </div>
 
@@ -3569,10 +4246,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     <div className="p-6 rounded-xl bg-[#09090b] border border-white/[0.06] text-center space-y-1.5">
                       <CreditCard className="w-7 h-7 text-zinc-600 mx-auto" />
                       <p className="text-xs font-semibold text-zinc-300">
-                        Sin métodos exclusivos asignados todavía
+                        {tr('Sin métodos exclusivos asignados todavía', 'No exclusive methods assigned yet', '尚未分配专属方式')}
                       </p>
                       <p className="text-[11px] text-zinc-500">
-                        Agrega manualmente un método a la izquierda para cobrar la suscripción específicamente a {modalStore.storeName}.
+                        {tr(
+                          `Agrega manualmente un método a la izquierda para cobrar la suscripción específicamente a ${modalStore.storeName}.`,
+                          `Manually add a method on the left to bill the subscription specifically to ${modalStore.storeName}.`,
+                          `请在左侧手动添加方式，以专门向 ${modalStore.storeName} 收取订阅费。`
+                        )}
                       </p>
                     </div>
                   ) : (
@@ -3584,7 +4265,9 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         >
                           <div className="space-y-1 text-xs min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-white">{method.name}</span>
+                              <span className="font-bold text-white">
+                                {translatePaymentMethodLabel(method.name, lang)}
+                              </span>
                               <span className="text-zinc-500" aria-hidden="true">
                                 ·
                               </span>
@@ -3599,19 +4282,21 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                   method.isActive ? 'text-emerald-300' : 'text-zinc-400'
                                 }`}
                               >
-                                {method.isActive ? 'Activo' : 'Pausado'}
+                                {method.isActive ? tr('Activo', 'Active', '启用') : tr('Pausado', 'Paused', '已暂停')}
                               </span>
                             </div>
                             {method.accountHolder && (
                               <div className="text-zinc-400 text-[11px]">
-                                Titular: <span className="text-zinc-200">{method.accountHolder}</span>
+                                {tr('Titular:', 'Holder:', '持有人:')} <span className="text-zinc-200">{method.accountHolder}</span>
                               </div>
                             )}
                             <div className="text-zinc-200 font-mono text-[11px] whitespace-pre-line">
                               {method.accountDetails}
                             </div>
                             {method.instructions && (
-                              <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                              <div className="text-zinc-400 text-[11px]">
+                                {translateCommonPaymentInstruction(method.instructions, lang)}
+                              </div>
                             )}
                           </div>
 
@@ -3628,7 +4313,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                   : 'bg-[#111114] border-white/[0.1] text-zinc-300'
                               }`}
                             >
-                              {method.isActive ? 'Pausar' : 'Activar'}
+                              {method.isActive ? tr('Pausar', 'Pause', '暂停') : tr('Activar', 'Activate', '启用')}
                             </button>
                             <button
                               type="button"
@@ -3642,7 +4327,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 setSsPmActive(method.isActive);
                               }}
                               className="p-1.5 min-h-[34px] min-w-[34px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
-                              title="Editar"
+                              title={tr('Editar', 'Edit', '编辑')}
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
@@ -3656,14 +4341,14 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                   }
                                   className="px-2 py-1.5 min-h-[34px] rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold"
                                 >
-                                  Confirmar
+                                  {tr('Confirmar', 'Confirm', '确认')}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setConfirmDeleteStoreSubId(null)}
                                   className="px-2 py-1.5 min-h-[34px] rounded-lg bg-[#111114] border border-white/[0.1] text-zinc-400 text-[11px]"
                                 >
-                                  No
+                                  {tr('No', 'No', '否')}
                                 </button>
                               </div>
                             ) : (
@@ -3671,7 +4356,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 type="button"
                                 onClick={() => setConfirmDeleteStoreSubId(method.id)}
                                 className="p-1.5 min-h-[34px] min-w-[34px] rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/60 text-red-300 flex items-center justify-center"
-                                title="Eliminar"
+                                title={tr('Eliminar', 'Delete', '删除')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

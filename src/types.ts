@@ -25,11 +25,14 @@ export interface Product {
     | 'Depósito Seco';
   expirationDate?: string;
   storefrontProductId?: string;
+  availableSizes?: string[];
+  sizeGuide?: string;
 }
 
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedSize?: string;
 }
 
 export type PaymentMethod =
@@ -375,6 +378,8 @@ export interface StoreTenant {
   localDeliveryZone?: string;
   pickupEnabled: boolean;
   warehousePosEnabled?: boolean;
+  clothingSizesEnabled?: boolean;
+  defaultClothingSizes?: string[];
   referralCode?: string;
   referredByCode?: string;
   referredByStoreId?: string;
@@ -509,6 +514,8 @@ export interface StoreProduct {
   stock: number;
   minStock?: number;
   unit?: string;
+  availableSizes?: string[];
+  sizeGuide?: string;
   isActive: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -519,6 +526,7 @@ export type ShippingType = 'Envío Nacional' | 'Delivery Local' | 'Retiro en Tie
 export interface StoreCartItem {
   product: StoreProduct;
   quantity: number;
+  selectedSize?: string;
 }
 
 export interface StoreOrderItem {
@@ -531,6 +539,7 @@ export interface StoreOrderItem {
   productName: string;
   sku?: string;
   unit?: string;
+  selectedSize?: string;
   quantity: number;
   unitPriceUSD: number;
   unitCostUSD?: number;
@@ -764,6 +773,24 @@ export interface VectorChatMessage {
   adminReportText?: string;
   handoffPacketText?: string;
   blockedSecurityNotice?: boolean;
+}
+
+export type GuideVideoAudience = 'all' | 'buyers' | 'sellers' | 'warehouse';
+export type GuideVideoLanguage = 'es' | 'en' | 'zh' | 'all';
+
+export interface PlatformGuideVideo {
+  id: string;
+  title: string;
+  description?: string;
+  youtubeUrl: string;
+  youtubeId: string;
+  audience: GuideVideoAudience;
+  language: GuideVideoLanguage;
+  sortOrder: number;
+  isActive: boolean;
+  createdByEmail: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
 }
 
 

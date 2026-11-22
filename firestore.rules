@@ -208,7 +208,7 @@ service cloud.firestore {
           'status', 'subscriptionPriceUSD',
           'nationalShippingEnabled', 'nationalCouriers',
           'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
-          'pickupEnabled', 'warehousePosEnabled',
+          'pickupEnabled', 'warehousePosEnabled', 'clothingSizesEnabled', 'defaultClothingSizes',
           'referralCode', 'referredByCode', 'referredByStoreId', 'referredByStoreName', 'referralRewardGranted',
           'createdAt', 'updatedAt'
         ]) &&
@@ -232,6 +232,8 @@ service cloud.firestore {
         (!('localDeliveryZone' in data) || (data.localDeliveryZone is string && data.localDeliveryZone.size() <= 150)) &&
         data.pickupEnabled is bool &&
         (!('warehousePosEnabled' in data) || data.warehousePosEnabled is bool) &&
+        (!('clothingSizesEnabled' in data) || data.clothingSizesEnabled is bool) &&
+        (!('defaultClothingSizes' in data) || (data.defaultClothingSizes is list && data.defaultClothingSizes.size() <= 40 && (data.defaultClothingSizes.size() == 0 || (data.defaultClothingSizes[0] is string && data.defaultClothingSizes[0].size() <= 24)))) &&
         (!('referralCode' in data) || isValidReferralCode(data.referralCode)) &&
         (!('referredByCode' in data) || isValidReferralCode(data.referredByCode)) &&
         (!('referredByStoreId' in data) || isValidId(data.referredByStoreId)) &&
@@ -334,6 +336,7 @@ service cloud.firestore {
           'id', 'storeId', 'ownerUid', 'name', 'description',
           'priceUSD', 'costUSD', 'rating', 'reviewCount', 'imageUrl',
           'category', 'sku', 'stock', 'minStock', 'unit',
+          'availableSizes', 'sizeGuide',
           'isActive', 'createdAt', 'updatedAt'
         ]) &&
         data.id == productId &&
@@ -353,6 +356,8 @@ service cloud.firestore {
         data.stock is number && data.stock >= 0 && data.stock <= 1000000 &&
         (!('minStock' in data) || (data.minStock is number && data.minStock >= 0 && data.minStock <= 1000000)) &&
         (!('unit' in data) || (data.unit is string && data.unit.size() <= 30)) &&
+        (!('availableSizes' in data) || (data.availableSizes is list && data.availableSizes.size() <= 40 && (data.availableSizes.size() == 0 || (data.availableSizes[0] is string && data.availableSizes[0].size() <= 24)))) &&
+        (!('sizeGuide' in data) || (data.sizeGuide is string && data.sizeGuide.size() <= 300)) &&
         data.isActive is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -410,7 +415,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'id', 'orderId', 'storeId', 'storeOwnerUid', 'customerUid',
-          'productId', 'productName', 'sku', 'unit',
+          'productId', 'productName', 'sku', 'unit', 'selectedSize',
           'quantity', 'unitPriceUSD', 'unitCostUSD', 'subtotalUSD'
         ]) &&
         data.id == itemId &&
@@ -425,6 +430,7 @@ service cloud.firestore {
         data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 140 &&
         (!('sku' in data) || (data.sku is string && data.sku.size() <= 60)) &&
         (!('unit' in data) || (data.unit is string && data.unit.size() <= 30)) &&
+        (!('selectedSize' in data) || (data.selectedSize is string && data.selectedSize.size() <= 40)) &&
         data.quantity is number && data.quantity > 0 && data.quantity <= 100000 &&
         data.unitPriceUSD is number && data.unitPriceUSD >= 0 && data.unitPriceUSD <= 1000000 &&
         (!('unitCostUSD' in data) || (data.unitCostUSD is number && data.unitCostUSD >= 0 && data.unitCostUSD <= 1000000)) &&
@@ -724,6 +730,30 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidPlatformGuideVideo(data, videoId) {
+      return data.keys().hasAll([
+          'id', 'title', 'youtubeUrl', 'youtubeId', 'audience',
+          'language', 'sortOrder', 'isActive', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'title', 'description', 'youtubeUrl', 'youtubeId', 'audience',
+          'language', 'sortOrder', 'isActive', 'createdByEmail', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id == videoId &&
+        isValidId(data.id) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 400)) &&
+        data.youtubeUrl is string && data.youtubeUrl.size() >= 8 && data.youtubeUrl.size() <= 300 &&
+        data.youtubeId is string && data.youtubeId.size() == 11 && data.youtubeId.matches('^[a-zA-Z0-9_\\-]{11}$') &&
+        data.audience in ['all', 'buyers', 'sellers', 'warehouse'] &&
+        data.language in ['es', 'en', 'zh', 'all'] &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 9999 &&
+        data.isActive is bool &&
+        data.createdByEmail is string && data.createdByEmail.size() >= 5 && data.createdByEmail.size() <= 160 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     function isValidWarehouseProduct(data, storeId, productId) {
       return data.keys().hasAll([
           'id', 'storeId', 'ownerUid', 'name', 'category', 'sku',
@@ -735,6 +765,7 @@ service cloud.firestore {
           'stock', 'minStock', 'costUSD', 'priceUSD', 'unit', 'barcode',
           'image', 'description', 'rating', 'turnoverRate', 'batchNumber',
           'supplier', 'location', 'expirationDate', 'storefrontProductId',
+          'availableSizes', 'sizeGuide',
           'createdAt', 'updatedAt'
         ]) &&
         data.id == productId &&
@@ -760,6 +791,8 @@ service cloud.firestore {
         (!('location' in data) || (data.location is string && data.location.size() <= 60)) &&
         (!('expirationDate' in data) || (data.expirationDate is string && data.expirationDate.size() <= 30)) &&
         (!('storefrontProductId' in data) || isValidId(data.storefrontProductId)) &&
+        (!('availableSizes' in data) || (data.availableSizes is list && data.availableSizes.size() <= 40 && (data.availableSizes.size() == 0 || (data.availableSizes[0] is string && data.availableSizes[0].size() <= 24)))) &&
+        (!('sizeGuide' in data) || (data.sizeGuide is string && data.sizeGuide.size() <= 300)) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -942,7 +975,8 @@ service cloud.firestore {
               'businessWhatsapp', 'category', 'description',
               'nationalShippingEnabled', 'nationalCouriers',
               'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
-              'pickupEnabled', 'referralCode', 'updatedAt'
+              'pickupEnabled', 'clothingSizesEnabled', 'defaultClothingSizes',
+              'referralCode', 'updatedAt'
             ])
           ) ||
           (
@@ -1216,7 +1250,8 @@ service cloud.firestore {
               incoming().diff(existing()).affectedKeys().hasOnly([
                 'name', 'description', 'priceUSD', 'costUSD', 'rating',
                 'reviewCount', 'imageUrl', 'category', 'sku', 'stock',
-                'minStock', 'unit', 'isActive', 'updatedAt'
+                'minStock', 'unit', 'availableSizes', 'sizeGuide',
+                'isActive', 'updatedAt'
               ])
             )
           );
@@ -1700,6 +1735,22 @@ service cloud.firestore {
         incoming().uid == existing().uid &&
         incoming().updatedAt == request.time;
       allow delete: if isValidId(uid) && isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    // Platform Tutorial YouTube Videos (Admin managed, public active guide playback)
+    match /platformGuideVideos/{videoId} {
+      allow get: if isValidId(videoId) && ((resource != null && existing().isActive == true) || isAdmin());
+      allow list: if resource.data.isActive == true || isSuperAdminEmail();
+      allow create: if isValidId(videoId) && isAdmin() &&
+        isValidPlatformGuideVideo(incoming(), videoId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(videoId) && isAdmin() &&
+        isValidPlatformGuideVideo(incoming(), videoId) &&
+        incoming().id == existing().id &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+      allow delete: if isValidId(videoId) && isAdmin();
     }
   }
 }

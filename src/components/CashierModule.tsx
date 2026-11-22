@@ -7,7 +7,12 @@ import {
   FiscalPrinterConfig, 
   PaymentMethod 
 } from '../types';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
+import {
+  translateCashOrPurchaseCategoryLabel,
+  translateClosingStatusLabel,
+  translatePaymentMethodLabel,
+} from '../utils/platformLabelsI18n';
 import { 
   Coins, 
   TrendingUp, 
@@ -86,7 +91,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   onClosingsChange,
   onClosingCompleted,
 }) => {
-  const { tr } = useLanguage();
+  const { lang, tr } = useSubsectionTranslation('warehouse');
   const [subTab, setSubTab] = useState<'closing' | 'fiscal_printers' | 'seniat_books' | 'petty_cash'>('closing');
 
   // Fiscal Printer Config
@@ -132,12 +137,20 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const [closingNotes, setClosingNotes] = useState('');
   const [closingSuccessToast, setClosingSuccessToast] = useState<string | null>(null);
 
-  // Terminal / Command Log for Fiscal Printer
-  const [fiscalLogs, setFiscalLogs] = useState<string[]>(() => [
-    `[${formatCaracasClock()}] ${tr('Impresora fiscal detectada', 'Fiscal printer detected', '检测到税控打印机')}: ${fiscalConfig.brand} (${fiscalConfig.model}) · ${fiscalConfig.port}`,
-    `[${formatCaracasClock()}] ${tr('Memoria fiscal activa', 'Active fiscal memory', '已激活税控存储')}: ${fiscalConfig.serialNumber} • Z: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
-    `[${formatCaracasClock()}] ${tr('Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G', 'SENIAT approved protocol: OK • 3% IGTF configured on tier G', 'SENIAT 认证协议：正常 • IGTF 3% 已配置')}`,
-  ]);
+  // Terminal / Command Log for Fiscal Printer (appended actions + reactive initial boot lines)
+  const [fiscalLogs, setFiscalLogs] = useState<string[]>([]);
+  const initialFiscalBootLogs = useMemo(
+    () => [
+      `[${formatCaracasClock()}] ${tr('Impresora fiscal detectada', 'Fiscal printer detected', '检测到税控打印机')}: ${fiscalConfig.brand} (${fiscalConfig.model}) · ${fiscalConfig.port}`,
+      `[${formatCaracasClock()}] ${tr('Memoria fiscal activa', 'Active fiscal memory', '已激活税控存储')}: ${fiscalConfig.serialNumber} • Z: Z-${String(fiscalConfig.currentZReport).padStart(4, '0')}`,
+      `[${formatCaracasClock()}] ${tr('Protocolo homologado SENIAT: OK • IGTF 3% configurado en alícuota G', 'SENIAT approved protocol: OK • 3% IGTF configured on tier G', 'SENIAT 认证协议：正常 • IGTF 3% 已配置')}`,
+    ],
+    [fiscalConfig.brand, fiscalConfig.model, fiscalConfig.port, fiscalConfig.serialNumber, fiscalConfig.currentZReport, lang]
+  );
+  const combinedFiscalLogs = useMemo(
+    () => [...fiscalLogs, ...initialFiscalBootLogs],
+    [fiscalLogs, initialFiscalBootLogs]
+  );
 
   // Petty Cash Movement Modal
   const [showAddMovementModal, setShowAddMovementModal] = useState(false);
@@ -238,7 +251,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
       closingNumber: nextClosingNum,
       date: getCaracasDateString(),
       timestamp: getCaracasDateTimeStamp(),
-      cashierName: 'Administración Smith Solutions',
+      cashierName: tr('Administración Central', 'Central Administration', '总管理处'),
       exchangeRate,
       zReportNumber: zReportStr,
       byPaymentMethod: paymentMethodStats.byMethod,
@@ -366,18 +379,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const totalRetencionesBs = purchases.reduce((acc, p) => acc + p.retentionAmountUSD, 0) * exchangeRate;
   const saldoIVABs = totalDebitoFiscalBs - totalCreditoFiscalBs;
 
-  const methodLabel = (method: string) => {
-    const map: Record<string, string> = {
-      'Efectivo USD': tr('Efectivo USD', 'Cash USD', '美元现金'),
-      'Efectivo Bs': tr('Efectivo Bs', 'Cash Bs', '玻利瓦尔现金'),
-      'Pago Móvil': tr('Pago Móvil', 'Pago Móvil', '移动支付 Pago Móvil'),
-      'Punto de Venta': tr('Punto de Venta', 'POS Card', 'POS 刷卡'),
-      'Zelle': 'Zelle',
-      'Fiado (Crédito)': tr('Fiado (Crédito)', 'Store Credit', '赊账 (信用)'),
-      'Otro': tr('Otro', 'Other', '其他'),
-    };
-    return map[method] || method;
-  };
+  const methodLabel = (method: string) => translatePaymentMethodLabel(method, lang);
 
   return (
     <div className="space-y-6">
@@ -776,13 +778,13 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                             : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                         }`}>
-                          {c.status === 'Cuadrada' ? tr('Cuadrada', 'Balanced', '已平账') : tr('Con Diferencia', 'Discrepancy', '存在差额')}
+                          {translateClosingStatusLabel(c.status, lang)}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
                         <button
                           type="button"
-                          onClick={() => exportCashClosingPDF(c)}
+                          onClick={() => exportCashClosingPDF(c, lang)}
                           className="px-2.5 py-1.5 bg-[#09090b] hover:bg-zinc-800/80 border border-white/[0.08] text-amber-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 mx-auto transition-colors"
                           title={tr('Descargar comprobante en PDF', 'Download PDF receipt', '下载 PDF 凭证')}
                         >
@@ -941,7 +943,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => downloadFiscalSpoolerFile(fiscalLogs.join('\n'), 'Trama_Spooler_HKA.txt')}
+                  onClick={() => downloadFiscalSpoolerFile(combinedFiscalLogs.join('\n'), 'Trama_Spooler_HKA.txt')}
                   className="px-4 py-2.5 bg-[#09090b] hover:bg-zinc-800/80 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-2 min-h-[44px] ml-auto"
                 >
                   <Download className="w-4 h-4" />
@@ -1056,7 +1058,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               </div>
 
               <div className="bg-black/60 p-3 rounded-lg border border-white/[0.06] overflow-y-auto max-h-[260px] space-y-1.5 text-[11px] text-zinc-300">
-                {fiscalLogs.map((log, i) => (
+                {combinedFiscalLogs.map((log, i) => (
                   <div key={i} className="leading-relaxed font-mono">
                     {log}
                   </div>
@@ -1136,7 +1138,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => exportLibroVentasCSV(sales, exchangeRate)}
+                  onClick={() => exportLibroVentasCSV(sales, exchangeRate, undefined, lang)}
                   className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-white/[0.1] min-h-[40px]"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
@@ -1145,7 +1147,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => exportLibroVentasPDF(sales, exchangeRate)}
+                  onClick={() => exportLibroVentasPDF(sales, exchangeRate, undefined, lang)}
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-zinc-950 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm min-h-[40px]"
                 >
                   <Download className="w-4 h-4" />
@@ -1223,7 +1225,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => exportLibroComprasCSV(purchases, exchangeRate)}
+                  onClick={() => exportLibroComprasCSV(purchases, exchangeRate, undefined, lang)}
                   className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-white/[0.1] min-h-[40px]"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
@@ -1232,7 +1234,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => exportLibroComprasPDF(purchases, exchangeRate)}
+                  onClick={() => exportLibroComprasPDF(purchases, exchangeRate, undefined, lang)}
                   className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-amber-400 rounded-xl text-xs font-bold flex items-center gap-1.5 border border-white/[0.1] min-h-[40px]"
                 >
                   <Download className="w-4 h-4" />
@@ -1367,7 +1369,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
                           {m.type === 'ingreso' ? `+ ${tr('INGRESO', 'INCOME', '收入')}` : `- ${tr('GASTO', 'EXPENSE', '支出')}`}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-zinc-300">{m.category}</td>
+                      <td className="py-3 px-4 text-zinc-300">{translateCashOrPurchaseCategoryLabel(m.category, lang)}</td>
                       <td className="py-3 px-4 text-white font-medium">{m.description}</td>
                       <td className="py-3 px-4 text-right font-mono font-bold tabular-nums">
                         ${m.amountUSD.toFixed(2)}

@@ -43,7 +43,10 @@ import {
   Bell,
   BellOff,
 } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
+import {
+  GranularTranslationScopeProvider,
+  useSubsectionTranslation,
+} from './LanguageSettings';
 import {
   BrowserNotificationPermissionState,
   BrowserNotificationPrefs,
@@ -127,7 +130,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
   onSyncAllToStore,
   isSyncingToStore = false,
 }) => {
-  const { t, tr } = useLanguage();
+  const { section: warehouseSection, tr } = useSubsectionTranslation('warehouse');
   const [internalTab, setInternalTab] = useState<'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales'>(initialTab);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
   const [emailSubTab, setEmailSubTab] = useState<'config' | 'payment_methods' | 'history'>('config');
@@ -257,9 +260,9 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
       storeName,
       exchangeRate,
       config: cfg,
-      triggerEvent: `Cierre de Caja Z (${closing.closingNumber} · ${closing.zReportNumber})`,
+      triggerEvent: `${tr('Cierre de Caja Z', 'Cash Closing Z-Report', '收银日结 Z 报表')} (${closing.closingNumber} · ${closing.zReportNumber})`,
       salesSummary: {
-        periodLabel: `Cierre Diario ${closing.date} (${closing.closingNumber})`,
+        periodLabel: `${tr('Cierre Diario', 'Daily Closing', '日结')} ${closing.date} (${closing.closingNumber})`,
         totalOrders: closing.totalTransactions,
         grossRevenueUSD: closing.totalSalesUSD,
         paymentBreakdown: Object.entries(closing.byPaymentMethod)
@@ -294,13 +297,13 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               className="px-3 py-1.5 min-h-[40px] rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium shrink-0"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>{t.warehouse.backToWeb}</span>
+              <span>{warehouseSection.backToWeb}</span>
             </button>
             <div className="h-4 w-px bg-white/[0.1] hidden sm:block" />
             <span className="font-semibold text-zinc-100 text-sm font-display flex items-center gap-1.5 min-w-0">
               <Store className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="truncate max-w-[200px] sm:max-w-none">
-                {activeStore ? activeStore.storeName : `${t.warehouse.panelTitle} (Individual)`}
+                {activeStore ? activeStore.storeName : `${warehouseSection.panelTitle} (${tr('Individual', 'Standalone', '独立模式')})`}
               </span>
             </span>
 
@@ -354,12 +357,12 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
                 </span>
               </button>
             )}
-            <span className="text-zinc-400">{t.warehouse.rateLabel}</span>
+            <span className="text-zinc-400">{warehouseSection.rateLabel}</span>
             <span className="font-mono font-semibold text-amber-400 tabular-nums">
               {exchangeRate.toFixed(2)} Bs / USD
             </span>
             <span className="text-zinc-700" aria-hidden="true">|</span>
-            <span className="text-zinc-400">{t.warehouse.salesToday}</span>
+            <span className="text-zinc-400">{warehouseSection.salesToday}</span>
             <span className="font-mono font-semibold text-emerald-400 tabular-nums">
               ${totalSalesUSD.toFixed(2)} USD
             </span>
@@ -372,7 +375,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 border-b border-white/[0.08]">
           <button onClick={() => handleTabSelect('inventory')} className={tabClass(!showEmailPanel && activeTab === 'inventory')}>
             <Package className="w-4 h-4" />
-            <span>{t.warehouse.tabInventory}</span>
+            <span>{warehouseSection.tabInventory}</span>
             {lowStockCount > 0 && (
               <span
                 className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold rounded-full tabular-nums ${
@@ -388,22 +391,22 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
 
           <button onClick={() => handleTabSelect('pos')} className={tabClass(!showEmailPanel && activeTab === 'pos')}>
             <Receipt className="w-4 h-4" />
-            <span>{t.warehouse.tabPos}</span>
+            <span>{warehouseSection.tabPos}</span>
           </button>
 
           <button onClick={() => handleTabSelect('debtors')} className={tabClass(!showEmailPanel && activeTab === 'debtors')}>
             <BookOpen className="w-4 h-4" />
-            <span>{t.warehouse.tabDebtors}</span>
+            <span>{warehouseSection.tabDebtors}</span>
           </button>
 
           <button onClick={() => handleTabSelect('cashier')} className={tabClass(!showEmailPanel && activeTab === 'cashier')}>
             <Coins className="w-4 h-4" />
-            <span>{t.warehouse.tabCashier}</span>
+            <span>{warehouseSection.tabCashier}</span>
           </button>
 
           <button onClick={() => handleTabSelect('sales')} className={tabClass(!showEmailPanel && activeTab === 'sales')}>
             <TrendingUp className="w-4 h-4" />
-            <span>{t.warehouse.tabSales}</span>
+            <span>{warehouseSection.tabSales}</span>
           </button>
 
           <button
@@ -420,15 +423,16 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
           <button
             onClick={onOpenScanner}
             className="px-3.5 py-2 min-h-[42px] rounded-lg font-semibold text-xs sm:text-sm flex items-center gap-2 whitespace-nowrap bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-400/25 transition-colors shrink-0 ml-auto"
-            title={t.header.scannerTitle}
+            title={tr('Lector de código de barras con cámara', 'Camera barcode scanner', '相机条码扫描')}
           >
             <Camera className="w-4 h-4" />
-            <span className="hidden sm:inline">{t.warehouse.scanCamera}</span>
+            <span className="hidden sm:inline">{warehouseSection.scanCamera}</span>
           </button>
         </div>
 
-        {/* Tab Body */}
-        <div className="pt-6 min-w-0">
+        {/* Tab Body wrapped in reactive GranularTranslationScopeProvider */}
+        <GranularTranslationScopeProvider section="warehouse">
+          <div className="pt-6 min-w-0">
           {showEmailPanel ? (
             <EmailProviderConfigPanel
               storeId={activeStore?.id || 'default-warehouse'}
@@ -515,7 +519,8 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               )}
             </>
           )}
-        </div>
+          </div>
+        </GranularTranslationScopeProvider>
       </div>
     </div>
   );

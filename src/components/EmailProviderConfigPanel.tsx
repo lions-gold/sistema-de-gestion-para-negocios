@@ -26,6 +26,10 @@ import {
 } from 'lucide-react';
 import { auth } from '../firebase';
 import {
+  translateCommonPaymentInstruction,
+  translatePaymentMethodLabel,
+} from '../utils/platformLabelsI18n';
+import {
   BrowserNotificationPermissionState,
   BrowserNotificationPrefs,
   getBrowserNotificationPermission,
@@ -70,7 +74,7 @@ import {
   loadCachedStorePaymentMethods,
   saveCachedStorePaymentMethods,
 } from '../services/offlineSyncService';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
 
 interface EmailProviderConfigPanelProps {
   storeId: string;
@@ -112,7 +116,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
   onLogsUpdated,
   onStorePaymentMethodsChange,
 }) => {
-  const { tr } = useLanguage();
+  const { lang, tr } = useSubsectionTranslation('merchant');
   const trRef = React.useRef(tr);
   trRef.current = tr;
   const [subTab, setSubTab] = useState<'config' | 'payment_methods' | 'history'>(initialSubTab);
@@ -513,6 +517,29 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       smtpPingAbortRef.current?.abort();
     };
   }, []);
+
+  // Keep SMTP validation / checking copy synchronized immediately when language switches without page reload
+  useEffect(() => {
+    setSmtpPingState((prev) => {
+      if (prev.status === 'incomplete') {
+        const refreshedIssue = getSmtpSyntaxIssue(config);
+        if (refreshedIssue && refreshedIssue !== prev.message) {
+          return { ...prev, message: refreshedIssue };
+        }
+      }
+      if (prev.status === 'checking') {
+        const nextMsg = tr(
+          `Haciendo ping SMTP a ${(config.smtpHost || '').trim()}:${Number(config.smtpPort || 587)}...`,
+          `Pinging SMTP ${(config.smtpHost || '').trim()}:${Number(config.smtpPort || 587)}...`,
+          `正在测试 SMTP 连接 ${(config.smtpHost || '').trim()}:${Number(config.smtpPort || 587)}...`
+        );
+        if (nextMsg !== prev.message) {
+          return { ...prev, message: nextMsg };
+        }
+      }
+      return prev;
+    });
+  }, [lang, tr]);
 
   const persistEmailConfig = async (bypassPingCheck = false) => {
     setIsSaving(true);
@@ -1009,7 +1036,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       instructions: tr('Calcular monto a la tasa BCV vigente y mostrar referencia.', 'Calculate amount at current BCV rate and show reference.', '按当前 BCV 汇率计算金额并出示参考号。'),
     },
     {
-      name: tr('Transferencia Bancaria', 'Bank Transfer', '银行转账'),
+      name: 'Transferencia Bancaria',
       currency: 'Bs',
       igtf: false,
       detailsPlaceholder: tr('Banesco Cuenta Corriente: 0134-XXXX-XX-XXXXXXXXXX · RIF: J-XXXXXXXX-X', 'Banesco Checking Account: 0134-XXXX-XX-XXXXXXXXXX · Tax ID: J-XXXXXXXX-X', 'Banesco 支票账户：0134-XXXX-XX-XXXXXXXXXX · 税号：J-XXXXXXXX-X'),
@@ -1023,7 +1050,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       instructions: tr('Transferencia en USDT sin comisión bancaria.', 'USDT transfer with zero bank fees.', 'USDT 转账零银行手续费。'),
     },
     {
-      name: tr('Efectivo USD', 'Cash USD', '美元现金'),
+      name: 'Efectivo USD',
       currency: 'USD',
       igtf: true,
       detailsPlaceholder: tr('Pago en efectivo divisas USD en caja principal', 'USD foreign currency cash payment at main register', '主收银台美元现金付款'),
@@ -1902,7 +1929,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     <Plus className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
                       {editingStoreMethod
-                        ? `${tr('Editar:', 'Edit:', '编辑：')} ${editingStoreMethod.name}`
+                        ? `${tr('Editar:', 'Edit:', '编辑：')} ${translatePaymentMethodLabel(editingStoreMethod.name, lang)}`
                         : tr('Agregar Método de Cobro', 'Add Payment Method', '添加收款方式')}
                     </span>
                   </h4>
@@ -1939,7 +1966,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                         }}
                         className="px-2.5 py-1.5 rounded-lg bg-[#111114] hover:bg-zinc-900 border border-white/[0.1] hover:border-amber-400/40 text-[11px] text-zinc-200 font-medium transition-colors whitespace-nowrap"
                       >
-                        + {preset.name}
+                        + {translatePaymentMethodLabel(preset.name, lang)}
                       </button>
                     ))}
                   </div>
@@ -2104,7 +2131,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                     >
                       <div className="space-y-1 text-xs min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-white text-sm">{method.name}</span>
+                          <span className="font-bold text-white text-sm">{translatePaymentMethodLabel(method.name, lang)}</span>
                           <span className="text-zinc-500" aria-hidden="true">·</span>
                           <span className="font-mono text-[11px] font-bold text-amber-300">
                             {method.currency}
@@ -2139,7 +2166,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                           {method.accountDetails}
                         </div>
                         {method.instructions && (
-                          <div className="text-zinc-400 text-[11px]">{method.instructions}</div>
+                          <div className="text-zinc-400 text-[11px]">{translateCommonPaymentInstruction(method.instructions, lang)}</div>
                         )}
                       </div>
 

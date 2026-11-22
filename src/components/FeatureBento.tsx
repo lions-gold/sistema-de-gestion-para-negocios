@@ -6,10 +6,13 @@ import {
   ArrowRight,
   MessageCircle,
   Coins,
+  Ruler,
+  Store,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import inventoryShowcaseImg from '../assets/images/inventory_bottles_showcase_1793999560657.jpg';
 import posCellarImg from '../assets/images/pos_retail_cellar_1793999560459.jpg';
+import fashionBoutiqueImg from '../assets/images/fashion_boutique_showcase_1795218110948.jpg';
 
 interface FeatureBentoProps {
   onOpenApp: (module?: 'inventory' | 'pos' | 'debtors' | 'cashier') => void;
@@ -17,9 +20,10 @@ interface FeatureBentoProps {
 }
 
 export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeRate }) => {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const [invImgError, setInvImgError] = useState(false);
   const [posImgError, setPosImgError] = useState(false);
+  const [fashionImgError, setFashionImgError] = useState(false);
   const bsFormatted = (145 * exchangeRate).toLocaleString('es-VE', {
     minimumFractionDigits: 2,
   });
@@ -35,6 +39,100 @@ export const FeatureBento: React.FC<FeatureBentoProps> = ({ onOpenApp, exchangeR
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Featured Boutique & Storefront Spotlight */}
+        <div className="md:col-span-12 min-w-0 obsidian-surface rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 hover:border-amber-400/35 transition-colors">
+          <div className="lg:col-span-6 p-5 sm:p-8 flex flex-col justify-between gap-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-white/[0.08] flex items-center justify-center text-amber-400">
+                  <Store className="w-5 h-5" />
+                </div>
+                <span className="text-xs font-mono text-zinc-400">
+                  {tr('Storefronts & Moda', 'Storefronts & Apparel', '品牌商城与服饰尺码')}
+                </span>
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-bold text-zinc-50 font-display">
+                {tr(
+                  'Vitrinas Multi-Rubro con Configurador de Tallas de Ropa y Calzado',
+                  'Multi-Category Storefronts with Apparel & Footwear Size Configurator',
+                  '全品类旗舰店面：内置服装、鞋靴自定义尺码体系'
+                )}
+              </h3>
+
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                {tr(
+                  'Sin importar la categoría de tu tienda, habilita al instante tallas alfabéticas (XS–3XL), pantalones (26–42), calzado (35–44) o medidas personalizadas con guía de tallas, selector directo en vitrina y descuento exacto de inventario.',
+                  'Regardless of your store category, instantly enable alpha sizes (XS–3XL), numeric pants (26–42), footwear (35–44), or custom tags with fit guides, direct storefront pickers, and accurate multi-size stock deduction.',
+                  '无论您的店铺属于何种品类，均可一键启用字母尺码 (XS–3XL)、裤装码 (26–42)、鞋码 (35–44) 或自定义尺码，配备尺码表指南、前台直观选码与精准库存扣减。'
+                )}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300 mr-1">
+                  <Ruler className="w-3.5 h-3.5" />
+                  {tr('Tallas:', 'Sizes:', '尺码预设:')}
+                </span>
+                {['XS', 'S', 'M', 'L', 'XL', '38', '40', '42'].map((sz) => (
+                  <span
+                    key={sz}
+                    className="px-2.5 py-1 rounded-md bg-[#09090b] border border-white/[0.1] text-[11px] font-mono font-semibold text-zinc-200"
+                  >
+                    {sz}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/[0.08] text-xs">
+              <span className="text-zinc-400">
+                {tr(
+                  'Incluye vista rápida de producto y factura dual PDF con talla seleccionada',
+                  'Includes product quick-view modal and dual PDF invoice with chosen size',
+                  '含商品快速预览弹窗与带已选尺码的双联 PDF 发票'
+                )}
+              </span>
+              <button
+                onClick={() => onOpenApp('inventory')}
+                className="px-4 py-2 min-h-[40px] bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <span>{tr('Explorar Catálogo', 'Explore Catalog', '查看目录模块')}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-6 relative min-h-[220px] sm:min-h-[260px] bg-[#09090b] overflow-hidden border-t lg:border-t-0 lg:border-l border-white/[0.08] group">
+            {!fashionImgError ? (
+              <img
+                src={fashionBoutiqueImg}
+                alt={tr(
+                  'Exhibición de tienda de ropa y vitrina boutique',
+                  'Boutique apparel showcase and storefront display',
+                  '精品服装店与橱窗展示'
+                )}
+                referrerPolicy="no-referrer"
+                onError={() => setFashionImgError(true)}
+                className="w-full h-full object-cover object-center group-hover:scale-[1.03] transition-transform duration-500"
+              />
+            ) : (
+              <div className="w-full h-full bg-zinc-900/90 flex items-center justify-center text-zinc-500">
+                <Store className="w-10 h-10 text-amber-400/50" />
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#09090b] via-[#09090b]/25 to-transparent flex items-end p-4 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full text-xs">
+                <span className="text-zinc-100 font-semibold">
+                  {tr('Boutiques, Calzado y Comercio Multi-Talla', 'Boutiques, Footwear & Multi-Size Retail', '精品服饰、鞋靴与多尺码零售')}
+                </span>
+                <span className="font-mono text-amber-400 font-semibold tabular-nums">
+                  {exchangeRate.toFixed(2)} Bs/USD
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Card 1 */}
         <div className="md:col-span-7 min-w-0 obsidian-surface rounded-2xl p-5 sm:p-8 flex flex-col justify-between hover:border-amber-400/30 transition-colors">
           <div>

@@ -1,11 +1,29 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Sale, StoreCartItem, StoreOrder, StoreOrderItem, StoreTenant } from '../types';
+import { SupportedLanguage } from '../i18n/translations';
+import {
+  translateOrderStatusLabel,
+  translatePaymentMethodLabel,
+  translateSaleChannelLabel,
+  translateSaleStatusLabel,
+  translateShippingTypeLabel,
+  translateSizeTokenLabel,
+  translateUnitLabel,
+} from './platformLabelsI18n';
 import {
   VENEZUELA_LOCALE,
   VENEZUELA_TIMEZONE,
   getCaracasDateString,
 } from './venezuelaTime';
+
+function resolvePdfLang(lang: SupportedLanguage = 'es'): 'es' | 'en' {
+  return lang === 'en' || lang === 'zh' ? 'en' : 'es';
+}
+
+function pdfText(pdfLang: 'es' | 'en', es: string, en: string): string {
+  return pdfLang === 'en' ? en : es;
+}
 
 function isIOSStandalonePWA(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -84,7 +102,13 @@ export function savePdfResilient(doc: jsPDF, filename: string): void {
 /**
  * Exports full batch sales report to PDF
  */
-export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void {
+export function exportSalesReportPDF(
+  sales: Sale[],
+  exchangeRate: number,
+  lang: SupportedLanguage = 'es'
+): void {
+  const pdfLang = resolvePdfLang(lang);
+  const tPdf = (es: string, en: string) => pdfText(pdfLang, es, en);
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -124,25 +148,46 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(217, 119, 6);
-  doc.text('E-Commerce, Almacenes & Punto de Venta Multidivisa', 14, 21);
+  doc.text(
+    tPdf(
+      'E-Commerce, Almacenes & Punto de Venta Multidivisa',
+      'E-Commerce, Warehouses & Multi-Currency POS'
+    ),
+    14,
+    21
+  );
 
   doc.setTextColor(148, 163, 184); // slate-400
   doc.setFontSize(8.5);
-  doc.text(`Software por Smith Bussines Solutions 2026 | +58 422 027 3766`, 14, 27);
-  doc.text(`Correo: empresaalhadiqainvest@gmail.com | Venezuela`, 14, 32);
+  doc.text(
+    tPdf(
+      'Software por Smith Bussines Solutions 2026 | +58 422 027 3766',
+      'Software by Smith Bussines Solutions 2026 | +58 422 027 3766'
+    ),
+    14,
+    27
+  );
+  doc.text(
+    tPdf(
+      'Correo: empresaalhadiqainvest@gmail.com | Venezuela',
+      'Email: empresaalhadiqainvest@gmail.com | Venezuela'
+    ),
+    14,
+    32
+  );
 
   // Date and Rate in top right
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text(`Fecha: ${dateFormatted} - ${timeFormatted}`, 196, 16, { align: 'right' });
+  doc.text(`${tPdf('Fecha', 'Date')}: ${dateFormatted} - ${timeFormatted}`, 196, 16, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(251, 191, 36); // amber-400
-  doc.text(`Tasa BCV Aplicada: ${exchangeRate.toFixed(2)} Bs/USD`, 196, 23, { align: 'right' });
+  doc.text(`${tPdf('Tasa BCV Aplicada', 'Applied BCV Rate')}: ${exchangeRate.toFixed(2)} Bs/USD`, 196, 23, { align: 'right' });
 
   doc.setTextColor(148, 163, 184);
-  doc.text(`Total Órdenes: ${sales.length}`, 196, 30, { align: 'right' });
+  doc.text(`${tPdf('Total Órdenes', 'Total Orders')}: ${sales.length}`, 196, 30, { align: 'right' });
 
   // Summary Metrics Cards Area
   doc.setFillColor(248, 250, 252); // slate-50
@@ -151,30 +196,64 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139); // slate-500
-  doc.text('REPORTE GENERAL DE FACTURACIÓN Y VENTAS REGISTRADAS', 18, 52);
+  doc.text(
+    tPdf(
+      'REPORTE GENERAL DE FACTURACIÓN Y VENTAS REGISTRADAS',
+      'GENERAL BILLING & RECORDED SALES REPORT'
+    ),
+    18,
+    52
+  );
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`Total Facturado USD: $${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`, 18, 61);
+  doc.text(
+    `${tPdf('Total Facturado USD', 'Total Billed USD')}: $${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2 })} USD`,
+    18,
+    61
+  );
 
   doc.setTextColor(180, 83, 9); // amber-700
-  doc.text(`Total en Bolívares: ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`, 110, 61);
+  doc.text(
+    `${tPdf('Total en Bolívares', 'Total in Bs.')}: ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
+    110,
+    61
+  );
 
   // Table Body using autoTable
   const tableData = sales.map((sale) => [
     sale.receiptNumber,
     sale.date,
     sale.customerName,
-    sale.items.map((i) => `${i.quantity}x ${i.product.name}`).join('\n'),
-    sale.paymentMethod,
+    sale.items
+      .map(
+        (i) =>
+          `${i.quantity}x ${i.product.name}${
+            i.selectedSize
+              ? ` [${tPdf('Talla', 'Size')}: ${translateSizeTokenLabel(i.selectedSize, pdfLang)}]`
+              : ''
+          }`
+      )
+      .join('\n'),
+    translatePaymentMethodLabel(sale.paymentMethod, pdfLang),
     `$${sale.subtotalUSD.toFixed(2)}`,
     `${sale.subtotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
   ]);
 
   autoTable(doc, {
     startY: 72,
-    head: [['Recibo #', 'Fecha', 'Cliente', 'Productos Vendidos', 'Método', 'Total USD', 'Total Bs.']],
+    head: [
+      [
+        tPdf('Recibo #', 'Receipt #'),
+        tPdf('Fecha', 'Date'),
+        tPdf('Cliente', 'Customer'),
+        tPdf('Productos Vendidos', 'Items Sold'),
+        tPdf('Método', 'Method'),
+        'Total USD',
+        'Total Bs.',
+      ],
+    ],
     body: tableData,
     theme: 'grid',
     headStyles: {
@@ -203,7 +282,15 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
       fillColor: [248, 250, 252],
     },
     foot: [
-      ['TOTAL GENERAL', '', '', `${sales.length} órdenes`, '', `$${totalUSD.toFixed(2)}`, `${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`]
+      [
+        tPdf('TOTAL GENERAL', 'GRAND TOTAL'),
+        '',
+        '',
+        `${sales.length} ${tPdf('órdenes', 'orders')}`,
+        '',
+        `$${totalUSD.toFixed(2)}`,
+        `${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
+      ],
     ],
     footStyles: {
       fillColor: [241, 245, 249],
@@ -219,7 +306,10 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Página ${i} de ${pageCount} · Documento emitido por Smith Solutions E-Commerce · Por Smith Bussines Solutions 2026`,
+      tPdf(
+        `Página ${i} de ${pageCount} · Documento emitido por Smith Solutions E-Commerce · Por Smith Bussines Solutions 2026`,
+        `Page ${i} of ${pageCount} · Issued by Smith Solutions E-Commerce · By Smith Bussines Solutions 2026`
+      ),
       105,
       290,
       { align: 'center' }
@@ -233,7 +323,12 @@ export function exportSalesReportPDF(sales: Sale[], exchangeRate: number): void 
 /**
  * Exports a single commercial receipt / invoice to PDF
  */
-export function exportSingleReceiptPDF(sale: Sale): void {
+export function exportSingleReceiptPDF(
+  sale: Sale,
+  lang: SupportedLanguage = 'es'
+): void {
+  const pdfLang = resolvePdfLang(lang);
+  const tPdf = (es: string, en: string) => pdfText(pdfLang, es, en);
   // A5 format for compact, elegant commercial invoice/receipt
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -258,11 +353,18 @@ export function exportSingleReceiptPDF(sale: Sale): void {
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(251, 191, 36);
-  doc.text('COMPROBANTE DE VENTA OFICIAL', 12, 19);
+  doc.text(tPdf('COMPROBANTE DE VENTA OFICIAL', 'OFFICIAL SALES RECEIPT'), 12, 19);
 
   doc.setTextColor(148, 163, 184);
   doc.setFontSize(7.5);
-  doc.text('E-Commerce & Punto de Venta | Smith Bussines Solutions 2026', 12, 25);
+  doc.text(
+    tPdf(
+      'E-Commerce & Punto de Venta | Smith Bussines Solutions 2026',
+      'E-Commerce & POS | Smith Bussines Solutions 2026'
+    ),
+    12,
+    25
+  );
 
   // Receipt Number & Date top right
   doc.setTextColor(255, 255, 255);
@@ -276,7 +378,7 @@ export function exportSingleReceiptPDF(sale: Sale): void {
   doc.text(sale.date, 136, 19, { align: 'right' });
 
   doc.setTextColor(251, 191, 36);
-  doc.text(`Tasa: ${sale.exchangeRate.toFixed(2)} Bs/USD`, 136, 25, { align: 'right' });
+  doc.text(`${tPdf('Tasa', 'Rate')}: ${sale.exchangeRate.toFixed(2)} Bs/USD`, 136, 25, { align: 'right' });
 
   // Customer Details Box
   doc.setFillColor(248, 250, 252);
@@ -285,43 +387,54 @@ export function exportSingleReceiptPDF(sale: Sale): void {
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('CLIENTE:', 16, 44);
+  doc.text(tPdf('CLIENTE:', 'CUSTOMER:'), 16, 44);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(sale.customerName, 32, 44);
+  doc.text(sale.customerName, 34, 44);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('RIF / CI:', 80, 44);
+  doc.text(tPdf('RIF / CI:', 'TAX ID:'), 80, 44);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(217, 119, 6);
   doc.text(sale.customerRIF || 'V-00000000-0', 94, 44);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('MÉTODO:', 16, 51);
+  doc.text(tPdf('MÉTODO:', 'METHOD:'), 16, 51);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(180, 83, 9);
-  doc.text(sale.paymentMethod, 32, 51);
+  doc.text(translatePaymentMethodLabel(sale.paymentMethod, pdfLang), 34, 51);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('ESTADO:', 80, 51);
+  doc.text(tPdf('ESTADO:', 'STATUS:'), 80, 51);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(16, 185, 129); // emerald-500
-  doc.text(sale.status, 94, 51);
+  doc.text(translateSaleStatusLabel(sale.status, pdfLang), 94, 51);
 
   // Items Table
   const itemsRows = sale.items.map((i) => [
-    i.product.name,
-    `${i.quantity} ${i.product.unit || 'und'}`,
+    `${i.product.name}${
+      i.selectedSize
+        ? ` (${tPdf('Talla', 'Size')}: ${translateSizeTokenLabel(i.selectedSize, pdfLang)})`
+        : ''
+    }`,
+    `${i.quantity} ${translateUnitLabel(i.product.unit || 'und', pdfLang, i.quantity > 1)}`,
     `$${i.product.priceUSD.toFixed(2)}`,
     `$${(i.quantity * i.product.priceUSD).toFixed(2)}`,
   ]);
 
   autoTable(doc, {
     startY: 60,
-    head: [['Descripción del Producto', 'Cant.', 'Precio', 'Subtotal']],
+    head: [
+      [
+        tPdf('Descripción del Producto', 'Product Description'),
+        tPdf('Cant.', 'Qty'),
+        tPdf('Precio', 'Price'),
+        'Subtotal',
+      ],
+    ],
     body: itemsRows,
     theme: 'grid',
     headStyles: {
@@ -361,14 +474,14 @@ export function exportSingleReceiptPDF(sale: Sale): void {
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text('Base Imponible (16%):', 72, finalY + 6);
+    doc.text(tPdf('Base Imponible (16%):', 'Taxable Base (16%):'), 72, finalY + 6);
     doc.text(`$${(sale.baseAmountUSD || (sale.subtotalUSD / 1.16)).toFixed(2)}`, 132, finalY + 6, { align: 'right' });
 
-    doc.text('IVA 16%:', 72, finalY + 11);
+    doc.text(tPdf('IVA 16%:', 'VAT 16%:'), 72, finalY + 11);
     doc.text(`$${(sale.ivaUSD || (sale.subtotalUSD - sale.subtotalUSD / 1.16)).toFixed(2)}`, 132, finalY + 11, { align: 'right' });
 
     doc.setTextColor(217, 119, 6);
-    doc.text('IGTF 3% Divisas:', 72, finalY + 16);
+    doc.text(tPdf('IGTF 3% Divisas:', '3% FX IGTF:'), 72, finalY + 16);
     doc.text(`+$${(sale.igtfAmountUSD || 0).toFixed(2)}`, 132, finalY + 16, { align: 'right' });
 
     doc.setFontSize(8.5);
@@ -397,7 +510,7 @@ export function exportSingleReceiptPDF(sale: Sale): void {
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text('TOTAL BOLÍVARES:', 72, finalY + 16);
+    doc.text(tPdf('TOTAL BOLÍVARES:', 'TOTAL BS:'), 72, finalY + 16);
     doc.setFont('helvetica', 'bold');
     doc.text(`${sale.subtotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`, 132, finalY + 16, { align: 'right' });
   }
@@ -406,13 +519,37 @@ export function exportSingleReceiptPDF(sale: Sale): void {
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'italic');
   doc.setTextColor(100, 116, 139);
-  doc.text('¡Gracias por su preferencia en Smith Solutions E-Commerce!', 74, finalY + 34, { align: 'center' });
+  doc.text(
+    tPdf(
+      '¡Gracias por su preferencia en Smith Solutions E-Commerce!',
+      'Thank you for shopping with Smith Solutions E-Commerce!'
+    ),
+    74,
+    finalY + 34,
+    { align: 'center' }
+  );
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(148, 163, 184);
-  doc.text('Desarrollado con excelencia por Smith Bussines Solutions 2026', 74, finalY + 39, { align: 'center' });
-  doc.text('Contacto: empresaalhadiqainvest@gmail.com | +58 422 027 3766', 74, finalY + 43, { align: 'center' });
+  doc.text(
+    tPdf(
+      'Desarrollado con excelencia por Smith Bussines Solutions 2026',
+      'Built with excellence by Smith Bussines Solutions 2026'
+    ),
+    74,
+    finalY + 39,
+    { align: 'center' }
+  );
+  doc.text(
+    tPdf(
+      'Contacto: empresaalhadiqainvest@gmail.com | +58 422 027 3766',
+      'Contact: empresaalhadiqainvest@gmail.com | +58 422 027 3766'
+    ),
+    74,
+    finalY + 43,
+    { align: 'center' }
+  );
 
   savePdfResilient(doc, `recibo_${sale.receiptNumber}.pdf`);
 }
@@ -421,23 +558,35 @@ export function exportSingleReceiptPDF(sale: Sale): void {
  * Triggers thermal ticket / browser printer for a sale receipt using a hidden iframe
  * (prevents iPhone Safari / PWA & browser popup blockers from blocking ticket printing).
  */
-export function printReceiptTicket(sale: Sale): void {
+export function printReceiptTicket(
+  sale: Sale,
+  lang: SupportedLanguage = 'es'
+): void {
+  const trPrint = (es: string, en: string, zh: string) =>
+    lang === 'en' ? en : lang === 'zh' ? zh : es;
+  const sizeLabel = trPrint('Talla', 'Size', '尺码');
   const itemsHtml = sale.items
     .map(
       (item) => `
       <tr>
-        <td style="padding: 4px 0; text-align: left;">${item.quantity}x ${item.product.name}</td>
+        <td style="padding: 4px 0; text-align: left;">${item.quantity}x ${item.product.name}${
+          item.selectedSize
+            ? ` [${sizeLabel}: ${translateSizeTokenLabel(item.selectedSize, lang)}]`
+            : ''
+        }</td>
         <td style="padding: 4px 0; text-align: right; font-weight: bold;">$${(item.quantity * item.product.priceUSD).toFixed(2)}</td>
       </tr>`
     )
     .join('');
 
+  const htmlLang = lang === 'zh' ? 'zh-CN' : lang === 'en' ? 'en' : 'es';
+  const translatedMethod = translatePaymentMethodLabel(sale.paymentMethod, lang);
   const html = `
     <!DOCTYPE html>
-    <html lang="es">
+    <html lang="${htmlLang}">
       <head>
         <meta charset="UTF-8" />
-        <title>Recibo ${sale.receiptNumber}</title>
+        <title>${trPrint('Recibo', 'Receipt', '收据')} ${sale.receiptNumber}</title>
         <style>
           body {
             font-family: 'Courier New', Courier, monospace;
@@ -494,12 +643,12 @@ export function printReceiptTicket(sale: Sale): void {
         <div class="header">
           <div class="title">SMITH SOLUTIONS E-COMMERCE</div>
           <div class="subtitle">RIF: J-50129384-7 • Caracas, Venezuela</div>
-          <div class="subtitle">Recibo: ${sale.receiptNumber}</div>
-          ${sale.fiscalInvoiceNumber ? `<div class="subtitle" style="font-weight: bold; color: #b45309;">FACTURA FISCAL: ${sale.fiscalInvoiceNumber}</div>` : ''}
-          <div class="subtitle">Fecha: ${sale.date}</div>
-          <div class="subtitle">Cliente: ${sale.customerName}</div>
-          <div class="subtitle">RIF / C.I.: ${sale.customerRIF || 'V-00000000-0'}</div>
-          <div class="subtitle">Método: ${sale.paymentMethod}</div>
+          <div class="subtitle">${trPrint('Recibo', 'Receipt', '收据')}: ${sale.receiptNumber}</div>
+          ${sale.fiscalInvoiceNumber ? `<div class="subtitle" style="font-weight: bold; color: #b45309;">${trPrint('FACTURA FISCAL', 'FISCAL INVOICE', '税控发票')}: ${sale.fiscalInvoiceNumber}</div>` : ''}
+          <div class="subtitle">${trPrint('Fecha', 'Date', '日期')}: ${sale.date}</div>
+          <div class="subtitle">${trPrint('Cliente', 'Customer', '客户')}: ${sale.customerName}</div>
+          <div class="subtitle">${trPrint('RIF / C.I.', 'Tax ID', '税号/证件')}: ${sale.customerRIF || 'V-00000000-0'}</div>
+          <div class="subtitle">${trPrint('Método', 'Method', '支付方式')}: ${translatedMethod}</div>
         </div>
 
         <table>
@@ -512,16 +661,16 @@ export function printReceiptTicket(sale: Sale): void {
 
         <div style="font-size: 10px; margin-bottom: 4px;">
           <div style="display: flex; justify-content: space-between;">
-            <span>Base Imponible (16%):</span>
+            <span>${trPrint('Base Imponible (16%)', 'Taxable Base (16%)', '应税基数 (16%)')}:</span>
             <span>$${(sale.baseAmountUSD || (sale.subtotalUSD / 1.16)).toFixed(2)}</span>
           </div>
           <div style="display: flex; justify-content: space-between;">
-            <span>IVA Débito (16%):</span>
+            <span>${trPrint('IVA Débito (16%)', 'Fiscal VAT (16%)', '销项增值税 (16%)')}:</span>
             <span>$${(sale.ivaUSD || (sale.subtotalUSD - sale.subtotalUSD / 1.16)).toFixed(2)}</span>
           </div>
           ${sale.igtfAmountUSD && sale.igtfAmountUSD > 0 ? `
           <div style="display: flex; justify-content: space-between; font-weight: bold; color: #b45309;">
-            <span>+ IGTF (3% Divisas):</span>
+            <span>${trPrint('+ IGTF (3% Divisas)', '+ IGTF (3% FX)', '+ 外汇税 IGTF (3%)')}:</span>
             <span>+$${sale.igtfAmountUSD.toFixed(2)} USD</span>
           </div>` : ''}
         </div>
@@ -529,19 +678,19 @@ export function printReceiptTicket(sale: Sale): void {
         <div class="divider"></div>
 
         <div class="total-row">
-          <span>TOTAL FINAL USD:</span>
+          <span>${trPrint('TOTAL FINAL USD', 'FINAL TOTAL USD', '美元总计')}:</span>
           <span>$${(sale.totalWithIgtfUSD || sale.subtotalUSD).toFixed(2)}</span>
         </div>
         <div class="total-row" style="font-size: 11px;">
-          <span>TOTAL BOLÍVARES:</span>
+          <span>${trPrint('TOTAL BOLÍVARES', 'TOTAL BS', '玻利瓦尔总计')}:</span>
           <span>${(sale.totalWithIgtfBs || sale.subtotalBs).toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.</span>
         </div>
         <div style="font-size: 10px; text-align: center; color: #555;">
-          Tasa Oficial BCV: ${sale.exchangeRate.toFixed(2)} Bs/USD
+          ${trPrint('Tasa Oficial BCV', 'Official BCV Rate', 'BCV 官方汇率')}: ${sale.exchangeRate.toFixed(2)} Bs/USD
         </div>
 
         <div class="footer">
-          <div>¡Gracias por su compra!</div>
+          <div>${trPrint('¡Gracias por su compra!', 'Thank you for your purchase!', '感谢您的惠顾！')}</div>
           <div style="margin-top: 4px;">Smith Bussines Solutions 2026</div>
           <div>empresaalhadiqainvest@gmail.com</div>
           <div>+58 422 027 3766</div>
@@ -608,14 +757,20 @@ interface NormalizedInvoiceLine {
 }
 
 function normalizeInvoiceLines(
-  items: Array<StoreCartItem | StoreOrderItem>
+  items: Array<StoreCartItem | StoreOrderItem>,
+  pdfLang: 'es' | 'en' = 'es'
 ): NormalizedInvoiceLine[] {
+  const sizeWord = pdfLang === 'en' ? 'Size' : 'Talla';
   return items.map((entry) => {
     if ('product' in entry) {
       return {
-        name: entry.product.name,
+        name: `${entry.product.name}${
+          entry.selectedSize
+            ? ` [${sizeWord}: ${translateSizeTokenLabel(entry.selectedSize, pdfLang)}]`
+            : ''
+        }`,
         sku: entry.product.sku || '-',
-        unit: entry.product.unit || 'und',
+        unit: translateUnitLabel(entry.product.unit || 'und', pdfLang, entry.quantity > 1),
         quantity: entry.quantity,
         unitPriceUSD: entry.product.priceUSD,
         unitCostUSD: entry.product.costUSD || 0,
@@ -623,9 +778,13 @@ function normalizeInvoiceLines(
       };
     }
     return {
-      name: entry.productName,
+      name: `${entry.productName}${
+        entry.selectedSize
+          ? ` [${sizeWord}: ${translateSizeTokenLabel(entry.selectedSize, pdfLang)}]`
+          : ''
+      }`,
       sku: entry.sku || '-',
-      unit: entry.unit || 'und',
+      unit: translateUnitLabel(entry.unit || 'und', pdfLang, entry.quantity > 1),
       quantity: entry.quantity,
       unitPriceUSD: entry.unitPriceUSD,
       unitCostUSD: entry.unitCostUSD || 0,
@@ -639,9 +798,11 @@ function renderStoreInvoicePage(
   store: StoreTenant,
   order: StoreOrder,
   lines: NormalizedInvoiceLine[],
-  role: 'cliente' | 'dueno'
+  role: 'cliente' | 'dueno',
+  pdfLang: 'es' | 'en' = 'es'
 ): void {
   const isOwnerCopy = role === 'dueno';
+  const tPdf = (es: string, en: string) => pdfText(pdfLang, es, en);
 
   // Top Header Band
   doc.setFillColor(15, 23, 42);
@@ -671,12 +832,18 @@ function renderStoreInvoicePage(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(251, 191, 36);
-  doc.text(`Titular / Razón Social: ${store.registeredOwnerName}`, textOffsetX, 22);
+  doc.text(
+    `${tPdf('Titular / Razón Social', 'Owner / Legal Name')}: ${store.registeredOwnerName}`,
+    textOffsetX,
+    22
+  );
 
   doc.setTextColor(203, 213, 225);
   doc.setFontSize(8.5);
   doc.text(
-    `RIF: ${store.rif && store.rif.trim() ? store.rif : 'Sin RIF registrado'}  ·  WhatsApp: ${store.businessWhatsapp}`,
+    `${tPdf('RIF', 'Tax ID')}: ${
+      store.rif && store.rif.trim() ? store.rif : tPdf('Sin RIF registrado', 'No Tax ID on file')
+    }  ·  WhatsApp: ${store.businessWhatsapp}`,
     textOffsetX,
     28
   );
@@ -685,8 +852,14 @@ function renderStoreInvoicePage(
   doc.setFont('helvetica', 'bold');
   doc.text(
     isOwnerCopy
-      ? 'COPIA COMERCIO · DUEÑO DE TIENDA (CONTROL INTERNO DE VENTA)'
-      : 'ORIGINAL · FACTURA PARA EL CLIENTE (COMPROBANTE OFICIAL)',
+      ? tPdf(
+          'COPIA COMERCIO · DUEÑO DE TIENDA (CONTROL INTERNO DE VENTA)',
+          'MERCHANT COPY · STORE OWNER (INTERNAL SALES CONTROL)'
+        )
+      : tPdf(
+          'ORIGINAL · FACTURA PARA EL CLIENTE (COMPROBANTE OFICIAL)',
+          'ORIGINAL · CUSTOMER INVOICE (OFFICIAL RECEIPT)'
+        ),
     textOffsetX,
     36
   );
@@ -701,17 +874,24 @@ function renderStoreInvoicePage(
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text(`FACTURA #${order.invoiceNumber}`, 196, 15, { align: 'right' });
+  doc.text(`${tPdf('FACTURA', 'INVOICE')} #${order.invoiceNumber}`, 196, 15, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(203, 213, 225);
-  doc.text(`Fecha: ${nowStr}`, 196, 22, { align: 'right' });
+  doc.text(`${tPdf('Fecha', 'Date')}: ${nowStr}`, 196, 22, { align: 'right' });
   doc.setTextColor(251, 191, 36);
-  doc.text(`Tasa BCV: ${order.exchangeRate.toFixed(2)} Bs/USD`, 196, 28, { align: 'right' });
+  doc.text(`${tPdf('Tasa BCV', 'BCV Rate')}: ${order.exchangeRate.toFixed(2)} Bs/USD`, 196, 28, {
+    align: 'right',
+  });
   doc.setTextColor(isOwnerCopy ? 110 : 251, isOwnerCopy ? 231 : 191, isOwnerCopy ? 183 : 36);
   doc.setFont('helvetica', 'bold');
-  doc.text(isOwnerCopy ? 'COPIA DUEÑO' : 'COPIA CLIENTE', 196, 36, { align: 'right' });
+  doc.text(
+    isOwnerCopy ? tPdf('COPIA DUEÑO', 'OWNER COPY') : tPdf('COPIA CLIENTE', 'CUSTOMER COPY'),
+    196,
+    36,
+    { align: 'right' }
+  );
 
   // Buyer & Shipping Information Cards
   doc.setFillColor(248, 250, 252);
@@ -722,28 +902,42 @@ function renderStoreInvoicePage(
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('DATOS DEL COMPRADOR (CLIENTE)', 18, 58);
+  doc.text(tPdf('DATOS DEL COMPRADOR (CLIENTE)', 'BUYER DETAILS (CUSTOMER)'), 18, 58);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
-  doc.text(`Nombre / Razón: ${order.customerName}`, 18, 65);
-  doc.text(`C.I. / RIF: ${order.customerRif || 'No especificado'}`, 18, 71);
-  doc.text(`Teléfono / WhatsApp: ${order.customerPhone}`, 18, 77);
+  doc.text(`${tPdf('Nombre / Razón', 'Name / Company')}: ${order.customerName}`, 18, 65);
+  doc.text(
+    `${tPdf('C.I. / RIF', 'ID / Tax ID')}: ${order.customerRif || tPdf('No especificado', 'Not specified')}`,
+    18,
+    71
+  );
+  doc.text(`${tPdf('Teléfono / WhatsApp', 'Phone / WhatsApp')}: ${order.customerPhone}`, 18, 77);
   if (order.customerEmail) {
-    doc.text(`Correo: ${order.customerEmail}`, 18, 83);
+    doc.text(`${tPdf('Correo', 'Email')}: ${order.customerEmail}`, 18, 83);
   }
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(isOwnerCopy ? 'LOGÍSTICA, PAGO Y REGISTRO DE VENTA' : 'MODALIDAD DE ENTREGA Y PAGO', 112, 58);
+  doc.text(
+    isOwnerCopy
+      ? tPdf('LOGÍSTICA, PAGO Y REGISTRO DE VENTA', 'LOGISTICS, PAYMENT & SALE LOG')
+      : tPdf('MODALIDAD DE ENTREGA Y PAGO', 'DELIVERY & PAYMENT DETAILS'),
+    112,
+    58
+  );
+
+  const translatedShipping = translateShippingTypeLabel(order.shippingType, pdfLang);
+  const translatedPay = translatePaymentMethodLabel(order.paymentMethod, pdfLang);
+  const translatedChannel = translateSaleChannelLabel(order.saleChannel || 'Carrito Web', pdfLang);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
-  doc.text(`Entrega: ${order.shippingType}`, 112, 65);
-  doc.text(`Pago: ${order.paymentMethod} (${order.saleChannel || 'Carrito Web'})`, 112, 71);
+  doc.text(`${tPdf('Entrega', 'Delivery')}: ${translatedShipping}`, 112, 65);
+  doc.text(`${tPdf('Pago', 'Payment')}: ${translatedPay} (${translatedChannel})`, 112, 71);
   const shippingText = order.shippingDetails
-    ? doc.splitTextToSize(`Destino: ${order.shippingDetails}`, 80)
-    : ['Destino: Coordinado con la tienda'];
+    ? doc.splitTextToSize(`${tPdf('Destino', 'Destination')}: ${order.shippingDetails}`, 80)
+    : [tPdf('Destino: Coordinado con la tienda', 'Destination: Coordinated with store')];
   doc.text(shippingText.slice(0, 2), 112, 77);
 
   // Items Table
@@ -758,7 +952,16 @@ function renderStoreInvoicePage(
 
   autoTable(doc, {
     startY: 94,
-    head: [['Producto / Descripción', 'SKU', 'Cant.', 'P. Unit', 'Subtotal USD', 'Subtotal Bs.']],
+    head: [
+      [
+        tPdf('Producto / Descripción', 'Product / Description'),
+        'SKU',
+        tPdf('Cant.', 'Qty'),
+        tPdf('P. Unit', 'Unit Price'),
+        'Subtotal USD',
+        'Subtotal Bs.',
+      ],
+    ],
     body: rows,
     theme: 'grid',
     headStyles: {
@@ -803,16 +1006,37 @@ function renderStoreInvoicePage(
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(6, 95, 70);
-    doc.text('RESUMEN INTERNO DUEÑO DE TIENDA', 18, finalY + 7);
+    doc.text(
+      tPdf('RESUMEN INTERNO DUEÑO DE TIENDA', 'INTERNAL STORE OWNER SUMMARY'),
+      18,
+      finalY + 7
+    );
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(30, 41, 59);
-    doc.text(`ID Orden Sistema: ${order.id}`, 18, finalY + 13);
-    doc.text(`Estado Actual: ${order.status.toUpperCase()} · Stock: ${order.stockDeducted ? 'Descontado' : 'Por confirmar'}`, 18, finalY + 19);
-    doc.text(`Costo Reposición Est.: $${computedCost.toFixed(2)} USD`, 18, finalY + 25);
+    doc.text(`${tPdf('ID Orden Sistema', 'System Order ID')}: ${order.id}`, 18, finalY + 13);
+    doc.text(
+      `${tPdf('Estado Actual', 'Current Status')}: ${translateOrderStatusLabel(
+        order.status,
+        pdfLang
+      ).toUpperCase()} · Stock: ${
+        order.stockDeducted ? tPdf('Descontado', 'Deducted') : tPdf('Por confirmar', 'Pending')
+      }`,
+      18,
+      finalY + 19
+    );
+    doc.text(
+      `${tPdf('Costo Reposición Est.', 'Est. Restock Cost')}: $${computedCost.toFixed(2)} USD`,
+      18,
+      finalY + 25
+    );
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(4, 120, 87);
-    doc.text(`Ganancia Neta Est. Productos: $${computedProfit.toFixed(2)} USD`, 18, finalY + 31);
+    doc.text(
+      `${tPdf('Ganancia Neta Est. Productos', 'Est. Net Product Profit')}: $${computedProfit.toFixed(2)} USD`,
+      18,
+      finalY + 31
+    );
   } else {
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
@@ -820,13 +1044,24 @@ function renderStoreInvoicePage(
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text('GARANTÍA Y ATENCIÓN AL CLIENTE', 18, finalY + 7);
+    doc.text(tPdf('GARANTÍA Y ATENCIÓN AL CLIENTE', 'WARRANTY & CUSTOMER SUPPORT'), 18, finalY + 7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
-    doc.text(`Comercio Emisor: ${store.storeName}`, 18, finalY + 14);
-    doc.text(`Titular: ${store.registeredOwnerName}`, 18, finalY + 20);
-    doc.text(`WhatsApp Soporte Tienda: ${store.businessWhatsapp}`, 18, finalY + 26);
-    doc.text('Conserve esta factura original como respaldo de compra.', 18, finalY + 32);
+    doc.text(`${tPdf('Comercio Emisor', 'Issuing Store')}: ${store.storeName}`, 18, finalY + 14);
+    doc.text(`${tPdf('Titular', 'Owner')}: ${store.registeredOwnerName}`, 18, finalY + 20);
+    doc.text(
+      `${tPdf('WhatsApp Soporte Tienda', 'Store Support WhatsApp')}: ${store.businessWhatsapp}`,
+      18,
+      finalY + 26
+    );
+    doc.text(
+      tPdf(
+        'Conserve esta factura original como respaldo de compra.',
+        'Keep this original invoice as your purchase receipt.'
+      ),
+      18,
+      finalY + 32
+    );
   }
 
   // Right Financial Totals Box
@@ -837,23 +1072,25 @@ function renderStoreInvoicePage(
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
-  doc.text('Subtotal Productos:', 120, finalY + 8);
+  doc.text(tPdf('Subtotal Productos:', 'Items Subtotal:'), 120, finalY + 8);
   doc.text(`$${order.subtotalUSD.toFixed(2)} USD`, 192, finalY + 8, { align: 'right' });
 
-  doc.text(`Envío (${order.shippingType}):`, 120, finalY + 15);
+  doc.text(`${tPdf('Envío', 'Shipping')} (${translatedShipping}):`, 120, finalY + 15);
   doc.text(`$${order.shippingFeeUSD.toFixed(2)} USD`, 192, finalY + 15, { align: 'right' });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text('TOTAL FACTURA:', 120, finalY + 23);
+  doc.text(tPdf('TOTAL FACTURA:', 'INVOICE TOTAL:'), 120, finalY + 23);
   doc.setTextColor(isOwnerCopy ? 4 : 180, isOwnerCopy ? 120 : 83, isOwnerCopy ? 87 : 9);
   doc.text(`$${order.totalUSD.toFixed(2)} USD`, 192, finalY + 23, { align: 'right' });
 
   doc.setFontSize(8.5);
   doc.setTextColor(71, 85, 105);
   doc.text(
-    `Equivalente Bs.: ${order.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
+    `${tPdf('Equivalente Bs.', 'Bs. Equivalent')}: ${order.totalBs.toLocaleString('es-VE', {
+      minimumFractionDigits: 2,
+    })} Bs.`,
     192,
     finalY + 31,
     { align: 'right' }
@@ -865,15 +1102,21 @@ function renderStoreInvoicePage(
     doc.line(120, finalY + 52, 190, finalY + 52);
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
-    doc.text('Firma / Sello Despacho Tienda', 55, finalY + 57, { align: 'center' });
-    doc.text('Firma Recepción / Guía Courier', 155, finalY + 57, { align: 'center' });
+    doc.text(tPdf('Firma / Sello Despacho Tienda', 'Store Dispatch Stamp / Signature'), 55, finalY + 57, {
+      align: 'center',
+    });
+    doc.text(tPdf('Firma Recepción / Guía Courier', 'Courier Tracking / Receiver Sign'), 155, finalY + 57, {
+      align: 'center',
+    });
   }
 
   doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
   doc.text(
-    `${isOwnerCopy ? 'COPIA DUEÑO DE TIENDA' : 'ORIGINAL CLIENTE'} · ${store.storeName} · Plataforma Multi-SaaS Smith Solutions E-Commerce`,
+    `${
+      isOwnerCopy ? tPdf('COPIA DUEÑO DE TIENDA', 'STORE OWNER COPY') : tPdf('ORIGINAL CLIENTE', 'CUSTOMER ORIGINAL')
+    } · ${store.storeName} · ${tPdf('Plataforma Multi-SaaS', 'Multi-SaaS Platform')} Smith Solutions E-Commerce`,
     105,
     285,
     { align: 'center' }
@@ -887,32 +1130,34 @@ export function exportStoreOrderInvoicePDF(
   store: StoreTenant,
   order: StoreOrder,
   items: Array<StoreCartItem | StoreOrderItem>,
-  mode: 'cliente' | 'dueno' | 'dual' = 'dual'
+  mode: 'cliente' | 'dueno' | 'dual' = 'dual',
+  lang: SupportedLanguage = 'es'
 ): void {
+  const pdfLang = resolvePdfLang(lang);
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
   });
 
-  const normalizedLines = normalizeInvoiceLines(items);
+  const normalizedLines = normalizeInvoiceLines(items, pdfLang);
 
   if (mode === 'cliente') {
-    renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente');
+    renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente', pdfLang);
     savePdfResilient(doc, `factura_cliente_${store.slug}_${order.invoiceNumber}.pdf`);
     return;
   }
 
   if (mode === 'dueno') {
-    renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno');
+    renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno', pdfLang);
     savePdfResilient(doc, `factura_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
     return;
   }
 
   // Dual mode: Page 1 Original Cliente + Page 2 Copia Dueño de Tienda
-  renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente');
+  renderStoreInvoicePage(doc, store, order, normalizedLines, 'cliente', pdfLang);
   doc.addPage('a4', 'portrait');
-  renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno');
+  renderStoreInvoicePage(doc, store, order, normalizedLines, 'dueno', pdfLang);
   savePdfResilient(doc, `facturas_cliente_y_dueno_${store.slug}_${order.invoiceNumber}.pdf`);
 }
 
@@ -922,8 +1167,11 @@ export function exportStoreOrderInvoicePDF(
 export function exportStoreSalesLedgerPDF(
   store: StoreTenant,
   orders: StoreOrder[],
-  exchangeRate: number
+  exchangeRate: number,
+  lang: SupportedLanguage = 'es'
 ): void {
+  const pdfLang = resolvePdfLang(lang);
+  const tPdf = (es: string, en: string) => pdfText(pdfLang, es, en);
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -967,27 +1215,29 @@ export function exportStoreSalesLedgerPDF(
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text(`LIBRO DE VENTAS · ${store.storeName.toUpperCase()}`, offsetX, 15);
+  doc.text(`${tPdf('LIBRO DE VENTAS', 'SALES LEDGER')} · ${store.storeName.toUpperCase()}`, offsetX, 15);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(251, 191, 36);
   doc.text(
-    `Titular: ${store.registeredOwnerName} · RIF: ${store.rif || 'Sin RIF'}`,
+    `${tPdf('Titular', 'Owner')}: ${store.registeredOwnerName} · ${tPdf('RIF', 'Tax ID')}: ${
+      store.rif || tPdf('Sin RIF', 'None')
+    }`,
     offsetX,
     22
   );
 
   doc.setTextColor(148, 163, 184);
   doc.setFontSize(8);
-  doc.text(`WhatsApp Comercial: ${store.businessWhatsapp}`, offsetX, 29);
+  doc.text(`${tPdf('WhatsApp Comercial', 'Business WhatsApp')}: ${store.businessWhatsapp}`, offsetX, 29);
 
   doc.setTextColor(255, 255, 255);
-  doc.text(`Fecha: ${dateFormatted}`, 196, 15, { align: 'right' });
+  doc.text(`${tPdf('Fecha', 'Date')}: ${dateFormatted}`, 196, 15, { align: 'right' });
   doc.setTextColor(110, 231, 183);
-  doc.text(`Tasa BCV: ${exchangeRate.toFixed(2)} Bs/USD`, 196, 22, { align: 'right' });
+  doc.text(`${tPdf('Tasa BCV', 'BCV Rate')}: ${exchangeRate.toFixed(2)} Bs/USD`, 196, 22, { align: 'right' });
   doc.setTextColor(203, 213, 225);
-  doc.text(`Órdenes Válidas: ${activeOrders.length}`, 196, 29, { align: 'right' });
+  doc.text(`${tPdf('Órdenes Válidas', 'Valid Orders')}: ${activeOrders.length}`, 196, 29, { align: 'right' });
 
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
@@ -995,14 +1245,18 @@ export function exportStoreSalesLedgerPDF(
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(`RESUMEN PERSONALIZADO DE VENTAS DE ${store.storeName.toUpperCase()}`, 18, 54);
+  doc.text(
+    `${tPdf('RESUMEN PERSONALIZADO DE VENTAS DE', 'CUSTOM SALES SUMMARY FOR')} ${store.storeName.toUpperCase()}`,
+    18,
+    54
+  );
 
   doc.setFontSize(10.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`Facturado: $${totalUSD.toFixed(2)} USD`, 18, 63);
+  doc.text(`${tPdf('Facturado', 'Billed')}: $${totalUSD.toFixed(2)} USD`, 18, 63);
   doc.setTextColor(4, 120, 87);
-  doc.text(`Ganancia Productos Est.: $${totalProfitUSD.toFixed(2)} USD`, 78, 63);
+  doc.text(`${tPdf('Ganancia Productos Est.', 'Est. Product Profit')}: $${totalProfitUSD.toFixed(2)} USD`, 78, 63);
   doc.setTextColor(180, 83, 9);
   doc.text(
     `${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
@@ -1013,18 +1267,29 @@ export function exportStoreSalesLedgerPDF(
 
   const tableData = orders.map((o) => [
     o.invoiceNumber,
-    o.saleChannel || 'Carrito Web',
+    translateSaleChannelLabel(o.saleChannel || 'Carrito Web', pdfLang),
     o.customerName,
     o.itemsSummary,
-    o.shippingType,
-    o.status.toUpperCase(),
+    translateShippingTypeLabel(o.shippingType, pdfLang),
+    translateOrderStatusLabel(o.status, pdfLang).toUpperCase(),
     `$${o.totalUSD.toFixed(2)}`,
     `${o.totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs.`,
   ]);
 
   autoTable(doc, {
     startY: 74,
-    head: [['Factura #', 'Canal', 'Cliente', 'Detalle Productos', 'Entrega', 'Estado', 'Total USD', 'Total Bs.']],
+    head: [
+      [
+        tPdf('Factura #', 'Invoice #'),
+        tPdf('Canal', 'Channel'),
+        tPdf('Cliente', 'Customer'),
+        tPdf('Detalle Productos', 'Items Summary'),
+        tPdf('Entrega', 'Delivery'),
+        tPdf('Estado', 'Status'),
+        'Total USD',
+        'Total Bs.',
+      ],
+    ],
     body: tableData,
     theme: 'grid',
     headStyles: {

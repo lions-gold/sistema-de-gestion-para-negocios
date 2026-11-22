@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Github,
   Check,
@@ -9,7 +9,7 @@ import {
   X,
   Sparkles,
 } from 'lucide-react';
-import { useLanguage } from '../i18n/LanguageContext';
+import { useSubsectionTranslation } from './LanguageSettings';
 
 interface GitHubModalProps {
   isOpen: boolean;
@@ -18,8 +18,19 @@ interface GitHubModalProps {
 }
 
 export const GitHubModal: React.FC<GitHubModalProps> = ({ isOpen, onClose, userEmail }) => {
-  const { tr } = useLanguage();
+  const { tr } = useSubsectionTranslation('admin');
   const [copiedStep, setCopiedStep] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

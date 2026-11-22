@@ -29,6 +29,7 @@ import {
   VECTOR_LEVER_METADATA,
 } from '../services/vectorService';
 import { useLanguage } from '../i18n/LanguageContext';
+import { translateTicketPriorityLabel } from '../utils/platformLabelsI18n';
 
 interface MerchantVectorTabProps {
   user: User;
@@ -44,68 +45,68 @@ const LEVER_I18N: Record<
     rule: { es: string; en: string; zh: string };
   }
 > = {
-  autoridad: {
-    label: { es: 'Autoridad verificada', en: 'Verified authority', zh: '权威背书' },
-    rule: {
-      es: 'Solo hechos reales de la marca (años, certificaciones, volumen real).',
-      en: 'Only verified brand facts (years, certifications, real volume).',
-      zh: '仅使用真实品牌数据（年限、认证、真实销量）。',
-    },
-  },
-  prueba_social: {
-    label: { es: 'Prueba social real', en: 'Real social proof', zh: '真实口碑' },
-    rule: {
-      es: 'Usa calificaciones reales del producto o tienda sin inventar cifras.',
-      en: 'Use real store or product ratings without fabricating metrics.',
-      zh: '仅使用真实的门店或商品评分，严禁虚构数据。',
-    },
-  },
   reciprocidad: {
-    label: { es: 'Reciprocidad útil', en: 'Helpful reciprocity', zh: '互惠价值' },
+    label: { es: 'Reciprocidad verificable', en: 'Verifiable reciprocity', zh: '可验证互惠' },
     rule: {
-      es: 'Aporta guía práctica o comparación honesta antes de sugerir compra.',
-      en: 'Provide a practical guide or honest comparison before suggesting purchase.',
-      zh: '推荐购买前先提供实用指南或客观对比。',
+      es: 'Solo diagnósticos o datos útiles reales antes de sugerir acción.',
+      en: 'Only verified useful facts or comparisons before suggesting action.',
+      zh: '推荐操作前先提供真实诊断或实用数据。',
     },
   },
   escasez_real: {
-    label: { es: 'Escasez verificable', en: 'Verifiable scarcity', zh: '真实稀缺' },
+    label: { es: 'Escasez real', en: 'Real scarcity', zh: '真实库存稀缺' },
     rule: {
-      es: 'Solo menciona stock bajo cuando inventario actual sea <= mínimo.',
-      en: 'Only mention low stock when live inventory is <= minimum threshold.',
-      zh: '仅当实际库存低于预警线时才提示库存紧张。',
+      es: 'Solo cuando stock real del sistema sea > 0 y <= 5 unidades.',
+      en: 'Only when live inventory is > 0 and <= 5 units.',
+      zh: '仅当系统真实库存 > 0 且 <= 5 件时提示。',
     },
   },
   urgencia_real: {
-    label: { es: 'Urgencia real de corte', en: 'Real cutoff urgency', zh: '真实截止时间' },
+    label: { es: 'Urgencia con fecha real', en: 'Real-date urgency', zh: '真实截止日期紧迫感' },
     rule: {
-      es: 'Solo cita horarios de despacho o vencimientos reales configurados.',
-      en: 'Only cite configured dispatch cutoff times or real expiration dates.',
-      zh: '仅引用已配置的真实发货截单时间或活动有效期。',
+      es: 'Solo con fecha vigente registrada en campaña o promoción.',
+      en: 'Only with an active registered campaign date or dispatch cutoff.',
+      zh: '仅结合已登记的有效活动日期或发货截单时间。',
+    },
+  },
+  prueba_social: {
+    label: { es: 'Prueba social verificada', en: 'Verified social proof', zh: '已验证口碑评分' },
+    rule: {
+      es: 'Solo cuando exista calificación >= 4.0 con reseñas reales registradas.',
+      en: 'Only when verified store/product ratings >= 4.0 exist.',
+      zh: '仅在存在真实评分 >= 4.0 时展示口碑。',
+    },
+  },
+  anclaje: {
+    label: { es: 'Anclaje real USD / Bs BCV', en: 'Real price & BCV anchor', zh: '真实双币参考锚定' },
+    rule: {
+      es: 'Precio verificado del catálogo comparado con tasa oficial BCV en vivo.',
+      en: 'Verified catalog USD price paired with live official BCV rate.',
+      zh: '基于目录核实美元价与实时 BCV 官方汇率。',
     },
   },
   aversion_perdida: {
-    label: { es: 'Aversión a la pérdida', en: 'Loss aversion', zh: '损失规避' },
+    label: { es: 'Aversión a la pérdida real', en: 'Verified loss aversion', zh: '已确认权益保留提醒' },
     rule: {
-      es: 'Recordatorio respetuoso de carrito activo (máximo 2 avisos).',
-      en: 'Respectful active cart reminder (maximum 2 notices).',
-      zh: '礼貌提醒购物车待结商品（最多2次）。',
+      es: 'Solo sobre artículos ya guardados en el carrito del cliente (máx 2 avisos).',
+      en: 'Only for items already saved in the customer cart (max 2 notices).',
+      zh: '仅针对客户购物车内已存商品（最多提醒2次）。',
     },
   },
-  coherencia: {
-    label: { es: 'Coherencia y continuidad', en: 'Coherence & continuity', zh: '一致性原则' },
+  personalizacion: {
+    label: { es: 'Personalización de preferencias', en: 'Preference personalization', zh: '偏好个性化匹配' },
     rule: {
-      es: 'Mantiene criterio consistente con el historial del hilo actual.',
-      en: 'Keep recommendations consistent with the active conversation history.',
-      zh: '保持与当前对话上下文一致的建议。',
+      es: 'Adapta categoría, entrega o idioma según historial del usuario.',
+      en: 'Adapt category, delivery mode, or language to user context.',
+      zh: '根据用户记录匹配类别、配送方式与语言。',
     },
   },
-  anclaje_honesto: {
-    label: { es: 'Anclaje honesto de precio', en: 'Honest price anchoring', zh: '诚实价格锚点' },
+  compromiso_pequeno: {
+    label: { es: 'Compromiso progresivo simple', en: 'Small progressive step', zh: '渐进式轻量引导' },
     rule: {
-      es: 'Presenta referencia BCV y ahorro real sin inflar precios previos.',
-      en: 'Show BCV reference and real savings without inflating prior prices.',
-      zh: '展示央行参考汇率与真实优惠，绝不虚标原价。',
+      es: 'Ofrece un primer paso claro (ver catálogo o tallas) sin presión.',
+      en: 'Offer a clear low-friction first step (browse catalog or sizes) without pressure.',
+      zh: '提供清晰无压力的下一步指引（查看目录或尺码）。',
     },
   },
 };
@@ -498,7 +499,7 @@ export const MerchantVectorTab: React.FC<MerchantVectorTabProps> = ({
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-mono font-bold text-amber-400">{tkt.ticketNumber}</span>
                     <span className="px-2 py-0.5 rounded bg-zinc-900 border border-white/[0.08] text-zinc-200 font-mono text-[10px]">
-                      {tkt.level} · {tr('Prioridad', 'Priority', '优先级')} {tkt.priority}
+                      {tkt.level} · {tr('Prioridad', 'Priority', '优先级')} {translateTicketPriorityLabel(tkt.priority, lang)}
                     </span>
                     <span className="text-zinc-400 text-[11px] flex items-center gap-1">
                       <Clock className="w-3 h-3" /> SLA {tkt.slaMinutes} min

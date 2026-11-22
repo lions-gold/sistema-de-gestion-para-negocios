@@ -36,14 +36,18 @@ import {
   VENEZUELA_TIMEZONE,
 } from '../utils/venezuelaTime';
 import { saveBlobResilient } from '../utils/pdfExport';
+import { extractYouTubeVideoId } from '../utils/youtube';
 import {
   AdminEmailDispatch,
   CashClosingRecord,
   CashMovement,
   Debtor,
   EmailDeliveryChannel,
+  GuideVideoAudience,
+  GuideVideoLanguage,
   InventoryAuditLog,
   PlatformBillingSettings,
+  PlatformGuideVideo,
   PlatformPaymentCurrency,
   PlatformPaymentMethod,
   Product,
@@ -1079,6 +1083,8 @@ export interface StoreRegistrationInput {
   localDeliveryFeeUSD?: number;
   localDeliveryZone?: string;
   pickupEnabled: boolean;
+  clothingSizesEnabled?: boolean;
+  defaultClothingSizes?: string[];
   referredByCode?: string;
 }
 
@@ -1155,6 +1161,21 @@ function buildCleanStoreOptionalFields(input: Partial<StoreRegistrationInput>): 
   }
   if (input.localDeliveryZone && input.localDeliveryZone.trim())
     optional.localDeliveryZone = input.localDeliveryZone.trim().slice(0, 150);
+  if (typeof input.clothingSizesEnabled === 'boolean') {
+    optional.clothingSizesEnabled = input.clothingSizesEnabled;
+  }
+  if (Array.isArray(input.defaultClothingSizes)) {
+    const cleanSizes = Array.from(
+      new Set(
+        input.defaultClothingSizes
+          .map((s) => String(s || '').trim().slice(0, 24))
+          .filter(Boolean)
+      )
+    ).slice(0, 40);
+    if (cleanSizes.length > 0) {
+      optional.defaultClothingSizes = cleanSizes;
+    }
+  }
   return optional;
 }
 
@@ -1280,6 +1301,14 @@ export async function updateStoreTenantByOwner(
     localDeliveryZone:
       updates.localDeliveryZone !== undefined ? updates.localDeliveryZone : store.localDeliveryZone,
     pickupEnabled: updates.pickupEnabled ?? store.pickupEnabled,
+    clothingSizesEnabled:
+      updates.clothingSizesEnabled !== undefined
+        ? updates.clothingSizesEnabled
+        : store.clothingSizesEnabled,
+    defaultClothingSizes:
+      updates.defaultClothingSizes !== undefined
+        ? updates.defaultClothingSizes
+        : store.defaultClothingSizes,
   };
 
   const nextPayload: Record<string, unknown> = {
@@ -1360,6 +1389,8 @@ export interface AdminManualStoreOwnerInput {
   description?: string;
   status: StoreStatus;
   warehousePosEnabled: boolean;
+  clothingSizesEnabled?: boolean;
+  defaultClothingSizes?: string[];
   nationalShippingEnabled: boolean;
   localDeliveryEnabled: boolean;
   pickupEnabled: boolean;
@@ -1425,6 +1456,8 @@ export async function adminCreateStoreWithOwner(
       rif: input.rif,
       category: input.category,
       description: input.description,
+      clothingSizesEnabled: input.clothingSizesEnabled,
+      defaultClothingSizes: input.defaultClothingSizes,
     }),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -2047,7 +2080,29 @@ export interface StoreProductInput {
   stock: number;
   minStock?: number;
   unit?: string;
+  availableSizes?: string[];
+  sizeGuide?: string;
   isActive?: boolean;
+}
+
+function normalizeSizesPayload(sizes?: unknown): string[] {
+  const arr = Array.isArray(sizes)
+    ? sizes
+    : typeof sizes === 'string'
+      ? sizes.split(/[,;|/\n]+/)
+      : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of arr) {
+    const clean = String(raw || '').trim().slice(0, 24);
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= 40) break;
+  }
+  return out;
 }
 
 function buildProductFirestoreDoc(
@@ -2092,6 +2147,13 @@ function buildProductFirestoreDoc(
   }
   if (input.unit && input.unit.trim()) {
     payload.unit = input.unit.trim().slice(0, 30);
+  }
+  const cleanSizes = normalizeSizesPayload(input.availableSizes);
+  if (cleanSizes.length > 0) {
+    payload.availableSizes = cleanSizes;
+  }
+  if (input.sizeGuide && input.sizeGuide.trim()) {
+    payload.sizeGuide = input.sizeGuide.trim().slice(0, 300);
   }
   return payload;
 }
@@ -2206,6 +2268,8 @@ export interface PortableProductRecord {
   stock: number;
   costoUSD?: number;
   unidad?: string;
+  tallas?: string[];
+  guiaTallas?: string;
 }
 
 export function exportProductsToJSON(store: StoreTenant, products: StoreProduct[]): void {
@@ -2220,6 +2284,8 @@ export function exportProductsToJSON(store: StoreTenant, products: StoreProduct[
     stock: p.stock,
     costoUSD: p.costUSD ?? 0,
     unidad: p.unit || 'und',
+    tallas: p.availableSizes || [],
+    guiaTallas: p.sizeGuide || '',
   }));
   const blob = new Blob([JSON.stringify({ tienda: store.storeName, exportado: new Date().toISOString(), productos: records }, null, 2)], {
     type: 'application/json;charset=utf-8',
@@ -2252,6 +2318,8 @@ export function exportProductsToCSV(store: StoreTenant, products: StoreProduct[]
     'stock',
     'costoUSD',
     'unidad',
+    'tallas',
+    'guiaTallas',
   ];
   const rows = products.map((p) =>
     [
@@ -2265,6 +2333,8 @@ export function exportProductsToCSV(store: StoreTenant, products: StoreProduct[]
       escapeCsvCell(p.stock),
       escapeCsvCell(p.costUSD ?? 0),
       escapeCsvCell(p.unit || 'und'),
+      escapeCsvCell((p.availableSizes || []).join(' | ')),
+      escapeCsvCell(p.sizeGuide || ''),
     ].join(',')
   );
   const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
@@ -2351,6 +2421,8 @@ export function parseImportedDatabaseFile(
         sku: String(item.sku || '').trim(),
         stock: Number(item.stock ?? item.cantidad ?? 10) || 0,
         unit: String(item.unidad || item.unit || 'und').trim(),
+        availableSizes: normalizeSizesPayload(item.tallas ?? item.availableSizes ?? item.sizes),
+        sizeGuide: String(item.guiaTallas || item.sizeGuide || '').trim() || undefined,
         isActive: true,
       }))
       .filter((p) => p.name.length > 0);
@@ -2373,6 +2445,8 @@ export function parseImportedDatabaseFile(
   const iStock = idx(['stock', 'cantidad', 'existencia']);
   const iCost = idx(['costousd', 'costo', 'costusd']);
   const iUnit = idx(['unidad', 'unit']);
+  const iSizes = idx(['tallas', 'talla', 'availablesizes', 'sizes', 'size']);
+  const iSizeGuide = idx(['guiatallas', 'sizeguide', 'guia']);
 
   return matrix
     .slice(1)
@@ -2390,6 +2464,8 @@ export function parseImportedDatabaseFile(
         stock: Number(get(iStock)) || 10,
         costUSD: iCost >= 0 ? Number(get(iCost).replace(',', '.')) || 0 : undefined,
         unit: get(iUnit) || 'und',
+        availableSizes: normalizeSizesPayload(get(iSizes)),
+        sizeGuide: get(iSizeGuide) || undefined,
         isActive: true,
       };
     })
@@ -2472,8 +2548,11 @@ export async function createStoreOrderInCloud(
     const batch = writeBatch(db);
     batch.set(doc(db, 'stores', store.id, 'orders', orderId), payload);
 
+    const stockDeductionsByProduct = new Map<string, { baseStock: number; qty: number }>();
+
     cartItems.forEach((item, idx) => {
       const itemId = makeSafeDocId(`item${idx}`);
+      const itemQty = Math.max(1, Math.floor(item.quantity));
       const itemPayload: Record<string, unknown> = {
         id: itemId,
         orderId,
@@ -2482,15 +2561,18 @@ export async function createStoreOrderInCloud(
         customerUid: user.uid,
         productId: item.product.id,
         productName: (item.product.name || 'Producto').trim().slice(0, 140),
-        quantity: Math.max(1, Math.floor(item.quantity)),
+        quantity: itemQty,
         unitPriceUSD: Math.max(0, Number(item.product.priceUSD) || 0),
-        subtotalUSD: Number((item.product.priceUSD * item.quantity).toFixed(2)),
+        subtotalUSD: Number((item.product.priceUSD * itemQty).toFixed(2)),
       };
       if (item.product.sku && item.product.sku.trim()) {
         itemPayload.sku = item.product.sku.trim().slice(0, 60);
       }
       if (item.product.unit && item.product.unit.trim()) {
         itemPayload.unit = item.product.unit.trim().slice(0, 30);
+      }
+      if (item.selectedSize && item.selectedSize.trim()) {
+        itemPayload.selectedSize = item.selectedSize.trim().slice(0, 40);
       }
       if (typeof item.product.costUSD === 'number' && !Number.isNaN(item.product.costUSD)) {
         itemPayload.unitCostUSD = Math.max(0, Number(item.product.costUSD));
@@ -2499,13 +2581,23 @@ export async function createStoreOrderInCloud(
       batch.set(doc(db, 'stores', store.id, 'orders', orderId, 'items', itemId), itemPayload);
 
       if (deductNow) {
-        const nextStock = Math.max(0, (Number(item.product.stock) || 0) - item.quantity);
-        batch.update(doc(db, 'stores', store.id, 'products', item.product.id), {
-          stock: nextStock,
-          updatedAt: serverTimestamp(),
+        const existing = stockDeductionsByProduct.get(item.product.id);
+        stockDeductionsByProduct.set(item.product.id, {
+          baseStock: existing ? existing.baseStock : (Number(item.product.stock) || 0),
+          qty: (existing ? existing.qty : 0) + itemQty,
         });
       }
     });
+
+    if (deductNow) {
+      stockDeductionsByProduct.forEach(({ baseStock, qty }, prodId) => {
+        const nextStock = Math.max(0, baseStock - qty);
+        batch.update(doc(db, 'stores', store.id, 'products', prodId), {
+          stock: nextStock,
+          updatedAt: serverTimestamp(),
+        });
+      });
+    }
 
     await batch.commit();
     return {
@@ -2571,7 +2663,10 @@ export function parseOrderItemsFallback(order: StoreOrder): StoreOrderItem[] {
     const match = segment.match(/^(\d+)x\s+(.+?)\s*\(\$([0-9.]+)\)$/i);
     if (match) {
       const quantity = Math.max(1, Number(match[1]) || 1);
-      const productName = match[2].trim();
+      const rawName = match[2].trim();
+      const sizeMatch = rawName.match(/\s*\[Talla:\s*([^\]]+)\]\s*$/i);
+      const selectedSize = sizeMatch ? sizeMatch[1].trim() : undefined;
+      const productName = sizeMatch ? rawName.replace(sizeMatch[0], '').trim() : rawName;
       const lineTotal = Math.max(0, Number(match[3]) || 0);
       return {
         id: `legacy-${idx}`,
@@ -2581,6 +2676,7 @@ export function parseOrderItemsFallback(order: StoreOrder): StoreOrderItem[] {
         customerUid: order.customerUid,
         productId: `legacy-${idx}`,
         productName,
+        ...(selectedSize ? { selectedSize } : {}),
         unit: 'und',
         quantity,
         unitPriceUSD: Number((lineTotal / quantity).toFixed(2)),
@@ -2620,10 +2716,14 @@ export async function updateStoreOrderStatus(
 
     if (shouldDeductStock) {
       const items = await fetchStoreOrderItems(storeId, order, order.storeOwnerUid);
+      const qtyByProduct = new Map<string, number>();
       items.forEach((item) => {
-        const matchedProd = ownerProducts.find((p) => p.id === item.productId);
+        qtyByProduct.set(item.productId, (qtyByProduct.get(item.productId) || 0) + Math.max(1, item.quantity));
+      });
+      qtyByProduct.forEach((totalQty, prodId) => {
+        const matchedProd = ownerProducts.find((p) => p.id === prodId);
         if (matchedProd) {
-          const nextStock = Math.max(0, (Number(matchedProd.stock) || 0) - item.quantity);
+          const nextStock = Math.max(0, (Number(matchedProd.stock) || 0) - totalQty);
           batch.update(doc(db, 'stores', storeId, 'products', matchedProd.id), {
             stock: nextStock,
             updatedAt: serverTimestamp(),
@@ -3075,6 +3175,13 @@ function buildWarehouseProductDoc(
   if (product.storefrontProductId && product.storefrontProductId.trim()) {
     payload.storefrontProductId = product.storefrontProductId.trim().slice(0, 128);
   }
+  const cleanSizes = normalizeSizesPayload(product.availableSizes);
+  if (cleanSizes.length > 0) {
+    payload.availableSizes = cleanSizes;
+  }
+  if (product.sizeGuide && product.sizeGuide.trim()) {
+    payload.sizeGuide = product.sizeGuide.trim().slice(0, 300);
+  }
 
   return payload;
 }
@@ -3253,6 +3360,8 @@ export async function syncWarehouseProductToStorefront(
       stock: product.stock,
       minStock: product.minStock,
       unit: product.unit || 'und',
+      availableSizes: product.availableSizes,
+      sizeGuide: product.sizeGuide,
       isActive: true,
     },
     existingStorefrontProduct?.createdAt
@@ -3325,6 +3434,8 @@ export async function syncAllWarehouseProductsToStorefront(
         stock: prod.stock,
         minStock: prod.minStock,
         unit: prod.unit || 'und',
+        availableSizes: prod.availableSizes,
+        sizeGuide: prod.sizeGuide,
         isActive: true,
       },
       matchedExisting?.createdAt
@@ -3356,3 +3467,169 @@ export async function syncAllWarehouseProductsToStorefront(
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
+
+// =============================================================================
+// Platform YouTube Tutorial Videos (Admin Managed, Public User Guide Playback)
+// =============================================================================
+
+const PLATFORM_VIDEOS_CACHE_KEY = 'smith_platform_guide_videos_v1';
+
+export function loadCachedPlatformGuideVideos(): PlatformGuideVideo[] {
+  try {
+    const raw = localStorage.getItem(PLATFORM_VIDEOS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as PlatformGuideVideo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedPlatformGuideVideos(videos: PlatformGuideVideo[]): void {
+  try {
+    localStorage.setItem(PLATFORM_VIDEOS_CACHE_KEY, JSON.stringify(videos));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function sortPlatformGuideVideos(list: PlatformGuideVideo[]): PlatformGuideVideo[] {
+  return [...list].sort((a, b) => {
+    const orderDiff = (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0);
+    if (orderDiff !== 0) return orderDiff;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
+}
+
+export function subscribeActivePlatformGuideVideos(
+  onData: (videos: PlatformGuideVideo[]) => void
+): Unsubscribe {
+  const cached = loadCachedPlatformGuideVideos();
+  if (cached.length > 0) {
+    onData(sortPlatformGuideVideos(cached));
+  }
+
+  const q = query(
+    collection(db, 'platformGuideVideos'),
+    where('isActive', '==', true)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = sortPlatformGuideVideos(
+        snap.docs.map((d) => d.data() as PlatformGuideVideo)
+      );
+      saveCachedPlatformGuideVideos(list);
+      onData(list);
+    },
+    (error) => {
+      console.warn('Error cargando videos guía activos:', error.message);
+    }
+  );
+}
+
+export function subscribeAllPlatformGuideVideosForAdmin(
+  onData: (videos: PlatformGuideVideo[]) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'platformGuideVideos'),
+    (snap) => {
+      const list = sortPlatformGuideVideos(
+        snap.docs.map((d) => d.data() as PlatformGuideVideo)
+      );
+      onData(list);
+    },
+    (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'platformGuideVideos');
+    }
+  );
+}
+
+export async function savePlatformGuideVideo(
+  adminUser: User,
+  input: {
+    id?: string;
+    title: string;
+    description?: string;
+    youtubeUrl: string;
+    audience: GuideVideoAudience;
+    language: GuideVideoLanguage;
+    sortOrder?: number;
+    isActive: boolean;
+    existingCreatedAt?: unknown;
+  }
+): Promise<PlatformGuideVideo> {
+  const youtubeId = extractYouTubeVideoId(input.youtubeUrl);
+  if (!youtubeId) {
+    throw new Error(
+      'Enlace o ID de YouTube no válido. Usa una URL de youtube.com/watch?v=..., youtu.be/..., Shorts o un ID de 11 caracteres.'
+    );
+  }
+
+  const cleanTitle = input.title.trim().slice(0, 120);
+  if (cleanTitle.length < 2) {
+    throw new Error('El título del video debe tener al menos 2 caracteres.');
+  }
+
+  const docId = input.id && /^[a-zA-Z0-9_-]+$/.test(input.id)
+    ? input.id
+    : makeSafeDocId('vid');
+  const path = `platformGuideVideos/${docId}`;
+  const cleanUrl = input.youtubeUrl.trim().slice(0, 300);
+  const cleanDesc = (input.description || '').trim().slice(0, 400);
+  const cleanOrder = Math.max(0, Math.min(9999, Math.round(Number(input.sortOrder) || 0)));
+  const createdByEmail = (adminUser.email || SUPER_ADMIN_EMAIL).trim().slice(0, 160);
+
+  const payload: Record<string, unknown> = {
+    id: docId,
+    title: cleanTitle,
+    youtubeUrl: cleanUrl.length >= 8 ? cleanUrl : `https://www.youtube.com/watch?v=${youtubeId}`,
+    youtubeId,
+    audience: input.audience,
+    language: input.language,
+    sortOrder: cleanOrder,
+    isActive: Boolean(input.isActive),
+    createdByEmail,
+    createdAt: input.existingCreatedAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (cleanDesc) {
+    payload.description = cleanDesc;
+  }
+
+  try {
+    await setDoc(doc(db, 'platformGuideVideos', docId), payload);
+    return {
+      ...(payload as unknown as PlatformGuideVideo),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    handleFirestoreError(error, input.id ? OperationType.UPDATE : OperationType.CREATE, path);
+  }
+}
+
+export async function togglePlatformGuideVideoActive(
+  video: PlatformGuideVideo
+): Promise<void> {
+  const path = `platformGuideVideos/${video.id}`;
+  try {
+    await updateDoc(doc(db, 'platformGuideVideos', video.id), {
+      isActive: !video.isActive,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deletePlatformGuideVideo(videoId: string): Promise<void> {
+  const path = `platformGuideVideos/${videoId}`;
+  try {
+    await deleteDoc(doc(db, 'platformGuideVideos', videoId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
