@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Store,
   Search,
@@ -27,6 +27,10 @@ import {
   Wallet,
   Globe,
   Video,
+  QrCode,
+  Maximize2,
+  Link2,
+  ExternalLink,
 } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -49,6 +53,7 @@ import {
 } from '../services/saasService';
 import { mapGoogleAuthError } from '../services/authService';
 import { GoogleAuthButton } from './GoogleAuthButton';
+import { QrZoomModal } from './QrCodeModalAndField';
 import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
@@ -57,6 +62,13 @@ import {
   isFashionOrApparelCategory,
   normalizeSizeList,
 } from '../utils/clothingSizes';
+import {
+  buildSocialShareIntents,
+  getSocialPlatformEntries,
+  getStoreShareUrl,
+  getStoreSubdomainDisplay,
+  normalizeStoreSubdomainSlug,
+} from '../utils/socialLinks';
 import { translateCategoryLabel } from '../utils/categoryI18n';
 import {
   translateCommonPaymentInstruction,
@@ -81,12 +93,19 @@ import {
   saveCachedStoreProducts,
   saveCachedStores,
 } from '../services/offlineSyncService';
+import {
+  checkSubmissionCooldown,
+  isHoneypotTriggered,
+  isTooFastSubmission,
+  recordSubmissionTimestamp,
+} from '../utils/antiBotGuard';
 
 interface MarketplaceDirectoryProps {
   exchangeRate: number;
   initialStoreSlug?: string;
   onNavigateMerchant: () => void;
   onOpenVideoGuides?: (audience?: GuideVideoAudience) => void;
+  onActiveStoreChange?: (store: StoreTenant | null, products: StoreProduct[]) => void;
   onVectorContextChange?: (ctx: {
     store: StoreTenant | null;
     products: StoreProduct[];
@@ -97,12 +116,14 @@ interface MarketplaceDirectoryProps {
 }
 
 const CARTS_STORAGE_KEY = 'smith_saas_store_carts_v1';
+const EMPTY_STORE_CART: StoreCartItem[] = [];
 
 export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   exchangeRate,
   initialStoreSlug,
   onNavigateMerchant,
   onOpenVideoGuides,
+  onActiveStoreChange,
   onVectorContextChange,
 }) => {
   const { lang, t, tr } = useLanguage();
@@ -121,6 +142,13 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   const [failedImageKeys, setFailedImageKeys] = useState<Record<string, boolean>>({});
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [copiedSlug, setCopiedSlug] = useState(false);
+  const [copiedSubdomainSlug, setCopiedSubdomainSlug] = useState(false);
+  const [zoomQrData, setZoomQrData] = useState<{
+    qrUrl: string;
+    title: string;
+    subtitle?: string;
+    accountDetails?: string;
+  } | null>(null);
 
   // Per-store isolated shopping carts persisted in localStorage
   const [cartsByStore, setCartsByStore] = useState<Record<string, StoreCartItem[]>>(() => {
@@ -144,12 +172,31 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   const [shippingDetails, setShippingDetails] = useState('');
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [botTrapWebsite, setBotTrapWebsite] = useState('');
+  const checkoutMountedAtRef = useRef<number>(Date.now());
   const [completedOrder, setCompletedOrder] = useState<{
     order: StoreOrder;
     items: StoreCartItem[];
     store: StoreTenant;
     registeredInCloud: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    if (isCartOpen) {
+      checkoutMountedAtRef.current = Date.now();
+    }
+  }, [isCartOpen]);
+
+  const storeReputation = useMemo(() => {
+    const rated = products.filter((p) => typeof p.rating === 'number' && p.rating > 0);
+    if (rated.length === 0) return null;
+    const avg =
+      rated.reduce((sum, p) => sum + Number(p.rating || 5), 0) / rated.length;
+    return {
+      avg: Math.min(5, Math.max(1, avg)).toFixed(1),
+      count: rated.length,
+    };
+  }, [products]);
 
   useEffect(() => {
     try {
@@ -185,13 +232,17 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   // Resolve initialStoreSlug if provided
   useEffect(() => {
     if (!initialStoreSlug) return;
+    const cleanTarget = normalizeStoreSubdomainSlug(initialStoreSlug.replace(/^@/, ''));
     const match = stores.find(
-      (s) => s.slug === initialStoreSlug || s.id === initialStoreSlug
+      (s) =>
+        s.slug === initialStoreSlug ||
+        (cleanTarget && normalizeStoreSubdomainSlug(s.slug) === cleanTarget) ||
+        s.id === initialStoreSlug
     );
     if (match) {
       setSelectedStore(match);
     } else if (!isAppEffectivelyOffline()) {
-      fetchStoreByIdOrSlug(initialStoreSlug).then((found) => {
+      fetchStoreByIdOrSlug(cleanTarget || initialStoreSlug).then((found) => {
         if (found && found.status === 'active') setSelectedStore(found);
       });
     }
@@ -329,8 +380,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   }, [products, productQuery, productCategoryFilter, productSizeFilter, lang]);
 
   const activeCart = useMemo(() => {
-    if (!selectedStore) return [];
-    return cartsByStore[selectedStore.id] || [];
+    if (!selectedStore) return EMPTY_STORE_CART;
+    return cartsByStore[selectedStore.id] || EMPTY_STORE_CART;
   }, [selectedStore, cartsByStore]);
 
   const cartItemCount = activeCart.reduce((acc, i) => acc + i.quantity, 0);
@@ -473,16 +524,27 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
   const onVectorContextRef = React.useRef(onVectorContextChange);
   onVectorContextRef.current = onVectorContextChange;
+  const onActiveStoreChangeRef = React.useRef(onActiveStoreChange);
+  onActiveStoreChangeRef.current = onActiveStoreChange;
+
+  const addToCartRef = React.useRef(addToCart);
+  addToCartRef.current = addToCart;
+  const stableAddToCart = React.useCallback((p: StoreProduct) => addToCartRef.current(p), []);
+  const stableOpenCart = React.useCallback(() => setIsCartOpen(true), []);
+
+  useEffect(() => {
+    onActiveStoreChangeRef.current?.(selectedStore, products);
+  }, [selectedStore, products]);
 
   useEffect(() => {
     onVectorContextRef.current?.({
       store: selectedStore,
       products,
       cart: activeCart,
-      addToCart,
-      openCart: () => setIsCartOpen(true),
+      addToCart: stableAddToCart,
+      openCart: stableOpenCart,
     });
-  }, [selectedStore, products, activeCart]);
+  }, [selectedStore, products, activeCart, stableAddToCart, stableOpenCart]);
 
   const buildWhatsappOrderLink = (
     store: StoreTenant,
@@ -521,8 +583,43 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     if (!selectedStore || activeCart.length === 0) return;
     if (!customerName.trim() || !customerPhone.trim()) return;
 
+    if (isHoneypotTriggered(botTrapWebsite)) {
+      setOrderError(
+        tr(
+          'Solicitud bloqueada por protección anti-bot.',
+          'Request blocked by anti-bot protection.',
+          '请求已被反机器人保护拦截。'
+        )
+      );
+      return;
+    }
+
+    if (isTooFastSubmission(checkoutMountedAtRef.current, 600)) {
+      setOrderError(
+        tr(
+          'Espera un momento antes de confirmar tu pedido.',
+          'Please wait a moment before confirming your order.',
+          '请稍候再确认订单。'
+        )
+      );
+      return;
+    }
+
+    const cooldown = checkSubmissionCooldown('marketplace_checkout', 8000, 20);
+    if (!cooldown.allowed) {
+      setOrderError(
+        tr(
+          `Espera ${cooldown.waitSeconds}s antes de enviar otro pedido.`,
+          `Please wait ${cooldown.waitSeconds}s before submitting another order.`,
+          `请等待 ${cooldown.waitSeconds} 秒后再提交新订单。`
+        )
+      );
+      return;
+    }
+
     setOrderError(null);
     setIsSubmittingOrder(true);
+    recordSubmissionTimestamp('marketplace_checkout');
     try {
       const invoiceNumber = `FAC-${Date.now().toString().slice(-6)}`;
       const itemsSummary = activeCart
@@ -707,24 +804,80 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => {
-                const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-                const pathPrefix = base && base !== '.' ? base : '';
-                const url = `${window.location.origin}${pathPrefix}/tienda/${selectedStore.slug}`;
-                navigator.clipboard?.writeText(url);
-                setCopiedSlug(true);
-                setTimeout(() => setCopiedSlug(false), 2000);
-              }}
-              className="px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-xs text-zinc-300 flex items-center gap-1.5 min-h-[44px]"
-            >
-              <Share2 className="w-3.5 h-3.5 text-amber-400" />
-              <span>{copiedSlug ? t.marketplace.linkCopied : t.marketplace.copyStoreLink}</span>
-            </button>
+            {(() => {
+              const shareUrl = getStoreShareUrl(selectedStore.slug, 'live_at');
+              const subdomainLabel = getStoreSubdomainDisplay(selectedStore.slug);
+              const shareIntents = buildSocialShareIntents(shareUrl, selectedStore.storeName);
+              return (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(shareUrl);
+                      setCopiedSlug(true);
+                      setTimeout(() => setCopiedSlug(false), 2000);
+                    }}
+                    className="px-3 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-xs text-zinc-200 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
+                  >
+                    {copiedSlug ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                    )}
+                    <span>{copiedSlug ? t.marketplace.linkCopied : t.marketplace.copyStoreLink}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(subdomainLabel);
+                      setCopiedSubdomainSlug(true);
+                      setTimeout(() => setCopiedSubdomainSlug(false), 2000);
+                    }}
+                    className="hidden sm:inline-flex px-3 py-2 rounded-lg bg-[#111114] border border-amber-500/25 hover:border-amber-400/50 text-xs text-amber-300 font-mono items-center gap-1.5 min-h-[44px] cursor-pointer"
+                    title={tr('Copiar dirección tipo subdominio', 'Copy subdomain address', '复制子域名链接')}
+                  >
+                    <Link2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-[180px]">
+                      {copiedSubdomainSlug ? tr('¡Subdominio copiado!', 'Copied!', '已复制!') : subdomainLabel}
+                    </span>
+                  </button>
+
+                  <a
+                    href={shareIntents.whatsapp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-300 text-xs font-semibold inline-flex items-center gap-1 min-h-[44px]"
+                    title={tr('Compartir en WhatsApp', 'Share on WhatsApp', '分享到 WhatsApp')}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">WA</span>
+                  </a>
+                  <a
+                    href={shareIntents.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-sky-400/40 text-zinc-300 hover:text-sky-300 text-xs font-semibold inline-flex items-center gap-1 min-h-[44px]"
+                    title={tr('Compartir en Facebook', 'Share on Facebook', '分享到 Facebook')}
+                  >
+                    <span>FB</span>
+                  </a>
+                  <a
+                    href={shareIntents.x}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-zinc-400 text-zinc-300 hover:text-white text-xs font-semibold inline-flex items-center gap-1 min-h-[44px]"
+                    title={tr('Compartir en X', 'Share on X', '分享到 X')}
+                  >
+                    <span>X</span>
+                  </a>
+                </>
+              );
+            })()}
 
             <button
               onClick={() => setIsCartOpen(true)}
-              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 min-h-[44px]"
+              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 min-h-[44px] cursor-pointer"
             >
               <ShoppingCart className="w-4 h-4" />
               <span>{t.marketplace.cartBtn} ({cartItemCount})</span>
@@ -809,6 +962,19 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                         <span>{t.marketplace.verifiedBadge}</span>
                       </span>
+                      {storeReputation && (
+                        <span className="inline-flex items-center gap-1 text-amber-300 text-xs font-mono tabular-nums">
+                          <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                          <span>{storeReputation.avg}</span>
+                          <span className="text-zinc-400 font-sans">({storeReputation.count})</span>
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 text-sky-400 text-xs font-medium">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {tr('Checkout seguro', 'Verified checkout', '安全结账')}
+                        </span>
+                      </span>
                     </div>
 
                     <p className="text-xs sm:text-sm text-zinc-300">
@@ -824,6 +990,27 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         {selectedStore.description}
                       </p>
                     )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-300 font-mono text-[11px]">
+                        <Link2 className="w-3 h-3 shrink-0" />
+                        <span>/@{selectedStore.slug}</span>
+                      </span>
+                      {getSocialPlatformEntries(selectedStore.socialLinks).map((entry) => (
+                        <a
+                          key={entry.meta.key}
+                          href={entry.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#09090b] border border-white/[0.1] hover:border-amber-400/50 text-[11px] font-semibold text-zinc-200 hover:text-amber-300 transition-colors"
+                          title={entry.displayHandle}
+                        >
+                          <span className="font-mono text-amber-400">{entry.meta.badgeText}</span>
+                          <span>{entry.meta.label}</span>
+                          <ExternalLink className="w-3 h-3 opacity-70" />
+                        </a>
+                      ))}
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-zinc-400">
                       {selectedStore.nationalShippingEnabled && (
@@ -878,8 +1065,17 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
               </div>
               <p className="text-[11px] text-zinc-400 truncate">
                 {storePaymentMethods.length > 0
-                  ? storePaymentMethods.map((m) => `${translatePaymentMethodLabel(m.name, lang)} (${m.currency})`).join(' · ')
-                  : tr('Pago Móvil, Transferencia, Binance Pay, Zelle, Efectivo', 'Pago Móvil, Bank Transfer, Binance Pay, Zelle, Cash', 'Pago Móvil、银行转账、Binance Pay、Zelle、现金')}
+                  ? storePaymentMethods
+                      .map(
+                        (m) =>
+                          `${translatePaymentMethodLabel(m.name, lang)} (${m.currency}${m.qrImageUrl ? ' · QR' : ''})`
+                      )
+                      .join(' · ')
+                  : tr(
+                      'Pago Móvil, Transferencia, Binance Pay QR, Bybit QR, Zelle, Efectivo',
+                      'Pago Móvil, Bank Transfer, Binance Pay QR, Bybit QR, Zelle, Cash',
+                      'Pago Móvil、银行转账、Binance/Bybit 扫码、Zelle、现金'
+                    )}
               </p>
             </div>
           </div>
@@ -1575,6 +1771,19 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
                   {/* Checkout Form */}
                   <form onSubmit={handleFinalizeOrder} className="space-y-3 pt-2 border-t border-white/[0.08]">
+                    {/* Invisible anti-bot honeypot field */}
+                    <div className="sr-only" aria-hidden="true">
+                      <label htmlFor="checkout-company-website">Website</label>
+                      <input
+                        id="checkout-company-website"
+                        name="companyWebsite"
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={botTrapWebsite}
+                        onChange={(e) => setBotTrapWebsite(e.target.value)}
+                      />
+                    </div>
                     <div className="text-xs font-bold uppercase tracking-wider text-amber-400">
                       {t.marketplace.checkoutSection}
                     </div>
@@ -1631,6 +1840,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                             storePaymentMethods.map((m) => (
                               <option key={m.id} value={m.name}>
                                 {translatePaymentMethodLabel(m.name, lang)} ({m.currency})
+                                {m.qrImageUrl ? ' · QR' : ''}
                               </option>
                             ))
                           ) : (
@@ -1641,8 +1851,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                               <option value="Transferencia Bancaria">
                                 {translatePaymentMethodLabel('Transferencia Bancaria', lang)}
                               </option>
-                              <option value="Binance Pay">{translatePaymentMethodLabel('Binance Pay', lang)} (USDT)</option>
-                              <option value="Bybit">{translatePaymentMethodLabel('Bybit Pay', lang)}</option>
+                              <option value="Binance Pay (QR)">{translatePaymentMethodLabel('Binance Pay (QR)', lang)} (USDT)</option>
+                              <option value="Bybit Pay (QR)">{translatePaymentMethodLabel('Bybit Pay (QR)', lang)} (USDT)</option>
                               <option value="Zelle">{translatePaymentMethodLabel('Zelle', lang)}</option>
                               <option value="Efectivo USD">
                                 {translatePaymentMethodLabel('Efectivo USD', lang)}
@@ -1670,7 +1880,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                         .filter(Boolean)
                         .join('\n');
                       return (
-                        <div className="p-3 rounded-xl bg-[#111114] border border-emerald-500/30 space-y-1.5 text-xs">
+                        <div className="p-3 rounded-xl bg-[#111114] border border-emerald-500/30 space-y-2 text-xs">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-emerald-300">
                               {tr('Datos de Cobro', 'Payment Details', '收款账户信息')} · {translatedName} ({activeMethodInfo.currency})
@@ -1710,6 +1920,60 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                           {activeMethodInfo.instructions && (
                             <div className="text-[11px] text-amber-200/90">
                               {translateCommonPaymentInstruction(activeMethodInfo.instructions, lang)}
+                            </div>
+                          )}
+                          {activeMethodInfo.qrImageUrl && (
+                            <div className="pt-2 border-t border-white/[0.08] flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setZoomQrData({
+                                    qrUrl: activeMethodInfo.qrImageUrl!,
+                                    title: translatedName,
+                                    subtitle: activeMethodInfo.accountHolder || selectedStore.storeName,
+                                    accountDetails: activeMethodInfo.accountDetails,
+                                  })
+                                }
+                                className="bg-white p-2 rounded-xl border border-white/20 shrink-0 hover:scale-[1.03] transition-transform cursor-pointer"
+                                title={tr('Ampliar QR para escanear', 'Zoom QR to scan', '放大二维码扫码')}
+                              >
+                                <img
+                                  src={activeMethodInfo.qrImageUrl}
+                                  alt={translatedName}
+                                  referrerPolicy="no-referrer"
+                                  className="w-20 h-20 object-contain rounded"
+                                />
+                              </button>
+                              <div className="space-y-1.5 min-w-0">
+                                <div className="text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+                                  <QrCode className="w-3.5 h-3.5 shrink-0" />
+                                  <span>
+                                    {tr('Código QR para Pagar Directo', 'Direct Scan Payment QR', '支持直接扫码付款')}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-zinc-400 leading-snug">
+                                  {tr(
+                                    'Escanea desde Binance, Bybit o tu billetera y luego finaliza tu pedido.',
+                                    'Scan from Binance, Bybit, or your wallet app, then confirm your order.',
+                                    '使用 Binance、Bybit 或数字钱包扫码转账后确认提交订单。'
+                                  )}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setZoomQrData({
+                                      qrUrl: activeMethodInfo.qrImageUrl!,
+                                      title: translatedName,
+                                      subtitle: activeMethodInfo.accountHolder || selectedStore.storeName,
+                                      accountDetails: activeMethodInfo.accountDetails,
+                                    })
+                                  }
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Maximize2 className="w-3 h-3" />
+                                  <span>{tr('Ampliar / Escanear QR', 'Zoom / Scan QR', '放大 / 扫码')}</span>
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1831,6 +2095,15 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
             </div>
           </div>
         )}
+
+        <QrZoomModal
+          isOpen={Boolean(zoomQrData)}
+          qrUrl={zoomQrData?.qrUrl}
+          title={zoomQrData?.title || ''}
+          subtitle={zoomQrData?.subtitle}
+          accountDetails={zoomQrData?.accountDetails}
+          onClose={() => setZoomQrData(null)}
+        />
       </section>
     );
   }
@@ -2117,33 +2390,49 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                     )}
 
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400">
+                      <span className="font-mono text-amber-300/90">/@{store.slug}</span>
                       {isApparel && (
                         <span className="text-amber-300 font-medium inline-flex items-center gap-1">
-                          <Ruler className="w-3 h-3" />
+                          · <Ruler className="w-3 h-3" />
                           {tr('Tallas', 'Sizes', '多尺码')}
                         </span>
                       )}
                       {store.nationalShippingEnabled && (
                         <span className="text-zinc-300">
-                          {isApparel ? '· ' : ''}
-                          {t.marketplace.nationalShipping}
+                          · {t.marketplace.nationalShipping}
                         </span>
                       )}
                       {store.localDeliveryEnabled && (
                         <span className="text-emerald-400">
-                          {isApparel || store.nationalShippingEnabled ? '· ' : ''}
-                          {t.marketplace.localDelivery}
+                          · {t.marketplace.localDelivery}
                         </span>
                       )}
                       {store.pickupEnabled && (
                         <span className="text-sky-400">
-                          {isApparel || store.nationalShippingEnabled || store.localDeliveryEnabled
-                            ? '· '
-                            : ''}
-                          {t.marketplace.localPickup}
+                          · {t.marketplace.localPickup}
                         </span>
                       )}
                     </div>
+
+                    {getSocialPlatformEntries(store.socialLinks).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {getSocialPlatformEntries(store.socialLinks)
+                          .slice(0, 4)
+                          .map((entry) => (
+                            <a
+                              key={entry.meta.key}
+                              href={entry.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title={entry.displayHandle}
+                              className="px-2 py-0.5 rounded-md bg-[#09090b] border border-white/[0.1] hover:border-amber-400/50 text-[10px] font-mono font-semibold text-zinc-300 hover:text-amber-300 inline-flex items-center gap-1 transition-colors"
+                            >
+                              <span>{entry.meta.badgeText}</span>
+                            </a>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

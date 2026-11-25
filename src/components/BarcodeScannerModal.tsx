@@ -18,6 +18,7 @@ import {
 import { VENEZUELA_LOCALE, VENEZUELA_TIMEZONE } from '../utils/venezuelaTime';
 import { useSubsectionTranslation } from './LanguageSettings';
 import { translateUnitLabel } from '../utils/platformLabelsI18n';
+import { playScannerBeepSound } from '../utils/alertNotifications';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -74,30 +75,7 @@ function saveRecentScansToSession(items: RecentScannedItem[]): void {
   }
 }
 
-// Audio beep for authentic scanner feedback
-const playScannerBeep = () => {
-  try {
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1450, ctx.currentTime);
-    gain.gain.setValueAtTime(0.18, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.14);
-  } catch {
-    // Ignore audio restrictions
-  }
-};
+// Audio feedback uses shared AudioContext in alertNotifications.ts to avoid hardware context limits
 
 export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   isOpen,
@@ -124,6 +102,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = 'mobile-barcode-reader';
   const scanLockRef = useRef<boolean>(false);
+  const scanLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep latest products & preferences accessible to camera decode callbacks
   const productsRef = useRef<Product[]>(products);
@@ -169,7 +148,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     scanLockRef.current = true;
 
     if (soundEnabledRef.current) {
-      playScannerBeep();
+      playScannerBeepSound();
     }
     if (navigator.vibrate) {
       navigator.vibrate(80);
@@ -191,8 +170,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     }
 
     // Release scan lock after 1.5 seconds so user can scan next bottle
-    setTimeout(() => {
+    if (scanLockTimerRef.current) {
+      clearTimeout(scanLockTimerRef.current);
+    }
+    scanLockTimerRef.current = setTimeout(() => {
       scanLockRef.current = false;
+      scanLockTimerRef.current = null;
     }, 1500);
   };
 
@@ -231,6 +214,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   // Start the camera
   useEffect(() => {
     if (!isOpen) {
+      if (scanLockTimerRef.current) {
+        clearTimeout(scanLockTimerRef.current);
+        scanLockTimerRef.current = null;
+      }
+      scanLockRef.current = false;
       if (scannerRef.current) {
         if (scannerRef.current.isScanning) {
           scannerRef.current.stop().catch(console.error);
@@ -394,6 +382,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
     return () => {
       clearTimeout(timer);
+      if (scanLockTimerRef.current) {
+        clearTimeout(scanLockTimerRef.current);
+        scanLockTimerRef.current = null;
+      }
+      scanLockRef.current = false;
       obs.disconnect();
       if (scannerRef.current) {
         if (scannerRef.current.isScanning) {

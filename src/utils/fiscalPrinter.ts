@@ -1,4 +1,4 @@
-import { Sale, FiscalPrinterBrand, FiscalPrinterConfig } from '../types';
+import { Sale, FiscalPrinterConfig } from '../types';
 
 export const DEFAULT_FISCAL_CONFIG: FiscalPrinterConfig = {
   brand: 'The Factory HKA',
@@ -43,7 +43,7 @@ export const saveStoredFiscalConfig = (config: FiscalPrinterConfig): void => {
  */
 export const generateHKACommandStream = (
   sale: Sale,
-  config: FiscalPrinterConfig
+  _config: FiscalPrinterConfig
 ): string => {
   const lines: string[] = [];
   const rif = sale.customerRIF || 'V-00000000-0';
@@ -104,7 +104,7 @@ export const generateHKACommandStream = (
  */
 export const generateBematechCommandStream = (
   sale: Sale,
-  config: FiscalPrinterConfig
+  _config: FiscalPrinterConfig
 ): string => {
   const lines: string[] = [];
   const rif = sale.customerRIF || 'V-00000000';
@@ -133,7 +133,7 @@ export const generateBematechCommandStream = (
  */
 export const generateEpsonCommandStream = (
   sale: Sale,
-  config: FiscalPrinterConfig
+  _config: FiscalPrinterConfig
 ): string => {
   const lines: string[] = [];
   const rif = sale.customerRIF || 'V-00000000';
@@ -162,7 +162,7 @@ export const generateEpsonCommandStream = (
  */
 export const generateAclasCommandStream = (
   sale: Sale,
-  config: FiscalPrinterConfig
+  _config: FiscalPrinterConfig
 ): string => {
   const lines: string[] = [];
   lines.push(`[ACLAS_OPEN_RECEIPT:NAME=${sale.customerName},RIF=${sale.customerRIF || 'V-00000000'}]`);

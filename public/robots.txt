@@ -1,17 +1,59 @@
-# Robots.txt — Smith Solutions E-Commerce (Venezuela)
-# Optimizado para indexación en Google Search Console y rastreadores web
+# Robots.txt — Smith Solutions E-Commerce
+# Optimizado para SEO en Google/Bing/Redes Sociales + bloqueo de bots agresivos y escáneres
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+# Bloquear crawlers agresivos de scraping y escaneo
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
 
 User-agent: *
 Allow: /
+Allow: /tiendas
+Allow: /tienda/
+Allow: /@
+Allow: /mi-tienda
 Allow: /almacen
 Allow: /pos
 Allow: /fiados
 Allow: /caja
 Allow: /rentabilidad
 
-# Bloquear endpoints privados de API y rutas de error
+# Bloquear rutas privadas de administración, API, archivos sensibles y error
 Disallow: /api/
+Disallow: /admin
+Disallow: /superadmin
 Disallow: /404
+Disallow: /.env
+Disallow: /.git
 
 # Sitemap XML Oficial
 Sitemap: https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app/sitemap.xml

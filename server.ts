@@ -33,6 +33,11 @@ import {
   handleOpenSourceLogout,
   handleOpenSourceSession,
 } from './lib/openSourceAuthServer';
+import {
+  applyAntiScanAndBotShield,
+  issueAntiBotChallenge,
+  verifyAntiBotChallenge,
+} from './lib/securityShieldServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,9 +53,11 @@ try {
 }
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = 3000;
 
 app.use(express.json({ limit: '1mb' }));
+app.use(applyAntiScanAndBotShield);
 
 // Force HTTPS in production / proxy environments & add security headers
 app.use((req, res, next) => {
@@ -86,11 +93,14 @@ app.get('/api/bcv', async (req, res) => {
   const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
   if (!forceRefresh && cachedRate && now - cachedRate.timestamp < CACHE_TTL_MS) {
+    res.setHeader('Cache-Control', 'public, max-age=60');
     return res.json({ ...cachedRate, cached: true });
   }
 
   if (forceRefresh) {
     res.setHeader('Cache-Control', 'no-store');
+  } else {
+    res.setHeader('Cache-Control', 'public, max-age=60');
   }
 
   const latest = await fetchOfficialBCVData(cachedRate);
@@ -412,21 +422,80 @@ app.post('/api/auth/logout', (req, res) => {
   handleOpenSourceLogout(req, res);
 });
 
+// Anti-Bot HMAC Verification Endpoints
+app.get('/api/security/bot-challenge', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const challenge = issueAntiBotChallenge();
+  return res.json({ ok: true, ...challenge });
+});
+
+app.post('/api/security/verify-human', (req, res) => {
+  const { token, answer } = (req.body || {}) as {
+    token?: string;
+    answer?: string | number;
+  };
+  const verification = verifyAntiBotChallenge(token || '', answer ?? '');
+  if (!verification.valid) {
+    return res.status(400).json({
+      ok: false,
+      error: verification.reason || 'Verificación humana incorrecta.',
+    });
+  }
+  return res.json({ ok: true });
+});
+
 // Explicit JSON 404 for unknown API routes
 app.all('/api/*', (_req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado en Smith Solutions E-Commerce API' });
 });
 
-// Serve dynamic robots.txt with canonical origin
+// Serve dynamic robots.txt with canonical origin (SEO friendly + Anti-Scraper)
 app.get('/robots.txt', (req, res) => {
   const host = req.headers.host || 'ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app';
   const proto = req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https');
   const baseUrl = `${proto}://${host}`;
   res.type('text/plain').send(
-`# Robots.txt — Smith Solutions E-Commerce (Venezuela)
+`# Robots.txt — Smith Solutions E-Commerce
+# Optimizado para SEO en Google/Bing/Redes Sociales + bloqueo de bots agresivos y escáneres
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
 User-agent: *
 Allow: /
 Allow: /tiendas
+Allow: /tienda/
+Allow: /@
 Allow: /mi-tienda
 Allow: /almacen
 Allow: /pos
@@ -436,7 +505,10 @@ Allow: /rentabilidad
 
 Disallow: /api/
 Disallow: /admin
+Disallow: /superadmin
 Disallow: /404
+Disallow: /.env
+Disallow: /.git
 
 Sitemap: ${baseUrl}/sitemap.xml
 `
@@ -484,9 +556,27 @@ async function startServer() {
   const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    const distDir = path.resolve(__dirname, 'dist');
+    app.use(
+      '/assets',
+      express.static(path.join(distDir, 'assets'), {
+        maxAge: '365d',
+        immutable: true,
+      })
+    );
+    app.use(
+      express.static(distDir, {
+        maxAge: '1h',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      })
+    );
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
     const { createServer: createViteServer } = await import('vite');

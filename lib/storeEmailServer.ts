@@ -25,6 +25,35 @@ function isValidEmail(email?: string): email is string {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
+function isBlockedInternalSmtpHost(host: string): boolean {
+  const lower = host.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    !lower ||
+    lower === 'localhost' ||
+    lower === '::1' ||
+    lower === '0.0.0.0' ||
+    lower.startsWith('127.') ||
+    lower.startsWith('10.') ||
+    lower.startsWith('169.254.') ||
+    lower.startsWith('192.168.') ||
+    lower.startsWith('fc') ||
+    lower.startsWith('fd') ||
+    lower.startsWith('fe80') ||
+    lower.endsWith('.local') ||
+    lower.endsWith('.internal')
+  ) {
+    return true;
+  }
+  const m172 = /^172\.(\d{1,3})\./.exec(lower);
+  if (m172) {
+    const secondOctet = Number(m172[1]);
+    if (secondOctet >= 16 && secondOctet <= 31) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export interface StoreEmailProviderConfigInput {
   provider: 'resend' | 'smtp';
   recipientEmail: string;
@@ -61,6 +90,7 @@ export interface StoreEmailDispatchPayload {
   storeName: string;
   exchangeRate?: number;
   config: StoreEmailProviderConfigInput;
+  testRecipientEmail?: string;
   triggerEvent?: string;
   products?: StockAlertItemInput[];
   salesReport?: {
@@ -91,6 +121,10 @@ export interface StoreEmailDispatchResponse {
   status?: number;
   deliveryChannel?: 'smtp' | 'resend';
   messageId?: string;
+  latencyMs?: number;
+  testedAt?: string;
+  recipientEmail?: string;
+  stage?: 'syntax' | 'network' | 'auth' | 'api_key' | 'sender' | 'unauthorized';
   message: string;
   error?: string;
 }
@@ -107,6 +141,10 @@ function buildEmailContent(payload: StoreEmailDispatchPayload, authenticatedEmai
   });
 
   if (payload.action === 'test') {
+    const targetAdminEmail =
+      isValidEmail(payload.testRecipientEmail)
+        ? payload.testRecipientEmail.trim()
+        : payload.config.recipientEmail;
     const providerLabel =
       payload.config.provider === 'resend'
         ? 'Resend API'
@@ -118,9 +156,9 @@ function buildEmailContent(payload: StoreEmailDispatchPayload, authenticatedEmai
       `Smith Solutions E-Commerce — Verificación de Correo`,
       `Tienda: ${storeName}`,
       `Proveedor activo: ${providerLabel}`,
-      `Receptor principal: ${payload.config.recipientEmail}`,
+      `Administrador receptor: ${targetAdminEmail}`,
       payload.config.secondaryEmail ? `Copia (CC): ${payload.config.secondaryEmail}` : '',
-      `Cuenta verificada: ${authenticatedEmail || payload.config.recipientEmail}`,
+      `Cuenta verificada: ${authenticatedEmail || targetAdminEmail}`,
       `Fecha de prueba: ${nowStr}`,
       ``,
       `Tu canal de notificaciones está listo para entregar alertas de stock crítico y reportes de ventas.`,
@@ -135,11 +173,11 @@ function buildEmailContent(payload: StoreEmailDispatchPayload, authenticatedEmai
           <h2 style="margin:6px 0 0;color:#ffffff;font-size:20px;">Conexión de Correo Verificada</h2>
         </div>
         <p style="font-size:14px;line-height:1.6;color:#d4d4d8;margin:0 0 16px;">
-          Tu servidor de correo para <strong style="color:#ffffff;">${escapeHtml(storeName)}</strong> ha sido probado y validado correctamente.
+          Tu servidor de correo para <strong style="color:#ffffff;">${escapeHtml(storeName)}</strong> ha sido probado y validado correctamente tras guardar tus credenciales.
         </p>
         <div style="background:#111114;border:1px solid #27272a;border-radius:10px;padding:16px;font-size:13px;line-height:1.8;">
           <div><span style="color:#a1a1aa;">Proveedor:</span> <strong style="color:#fbbf24;">${escapeHtml(providerLabel)}</strong></div>
-          <div><span style="color:#a1a1aa;">Destinatario:</span> <span style="color:#ffffff;">${escapeHtml(payload.config.recipientEmail)}</span></div>
+          <div><span style="color:#a1a1aa;">Administrador receptor:</span> <span style="color:#ffffff;">${escapeHtml(targetAdminEmail)}</span></div>
           ${
             payload.config.secondaryEmail
               ? `<div><span style="color:#a1a1aa;">Copia (CC):</span> <span style="color:#ffffff;">${escapeHtml(payload.config.secondaryEmail)}</span></div>`
@@ -385,33 +423,61 @@ export async function handleStoreEmailDispatch(
   }
 
   const cfg = payload?.config;
-  if (!cfg || !isValidEmail(cfg.recipientEmail)) {
+  const overrideTestEmail =
+    payload.action === 'test' && isValidEmail(payload.testRecipientEmail)
+      ? payload.testRecipientEmail.trim()
+      : undefined;
+  const targetEmail = overrideTestEmail || (isValidEmail(cfg?.recipientEmail) ? cfg!.recipientEmail.trim() : '');
+
+  if (!cfg || !targetEmail) {
     return {
       ok: false,
       status: 400,
-      message: 'Ingresa un correo electrónico destinatario válido.',
+      stage: 'syntax',
+      message: 'Ingresa un correo electrónico destinatario válido para realizar el envío.',
       error: 'INVALID_RECIPIENT',
     };
   }
 
-  const toEmail = cfg.recipientEmail.trim();
-  const ccEmail = isValidEmail(cfg.secondaryEmail) && cfg.secondaryEmail.trim().toLowerCase() !== toEmail.toLowerCase()
-    ? cfg.secondaryEmail.trim()
-    : undefined;
+  const toEmail = targetEmail;
+  const ccEmail =
+    payload.action !== 'test' &&
+    isValidEmail(cfg.secondaryEmail) &&
+    cfg.secondaryEmail.trim().toLowerCase() !== toEmail.toLowerCase()
+      ? cfg.secondaryEmail.trim()
+      : undefined;
 
   const { subject, text, html } = buildEmailContent(payload, verified.email);
   const fromName = sanitizeHeaderLine(cfg.fromName || payload.storeName || 'Smith Solutions', 80);
+  const startedAt = Date.now();
+  const testedAt = new Date().toLocaleTimeString('es-VE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 
   if (cfg.provider === 'smtp') {
     const host = sanitizeHeaderLine(cfg.smtpHost || '', 160);
     const port = Number(cfg.smtpPort || 587);
+    const secure = typeof cfg.smtpSecure === 'boolean' ? cfg.smtpSecure : port === 465;
     const user = sanitizeHeaderLine(cfg.smtpUser || '', 160);
     const pass = String(cfg.smtpPass || '');
 
-    if (!host || !user || !pass || Number.isNaN(port) || port < 1 || port > 65535) {
+    if (!host || !/^[a-zA-Z0-9.-]+$/.test(host) || !host.includes('.') || isBlockedInternalSmtpHost(host)) {
       return {
         ok: false,
         status: 400,
+        stage: 'syntax',
+        message: 'Ingresa un servidor SMTP externo válido (ej. smtp.gmail.com o smtp-relay.brevo.com).',
+        error: 'INVALID_OR_BLOCKED_HOST',
+      };
+    }
+
+    if (!user || !pass || Number.isNaN(port) || port < 1 || port > 65535) {
+      return {
+        ok: false,
+        status: 400,
+        stage: 'syntax',
         message: 'Completa Servidor SMTP (host), Puerto (1-65535), Usuario y Contraseña.',
         error: 'INCOMPLETE_SMTP_CONFIG',
       };
@@ -427,7 +493,7 @@ export async function handleStoreEmailDispatch(
       const transporter = nodemailer.createTransport({
         host,
         port,
-        secure: typeof cfg.smtpSecure === 'boolean' ? cfg.smtpSecure : port === 465,
+        secure,
         auth: { user, pass },
         connectionTimeout: 10000,
         greetingTimeout: 10000,
@@ -447,32 +513,43 @@ export async function handleStoreEmailDispatch(
         text,
         html,
       });
+      const latencyMs = Math.max(1, Date.now() - startedAt);
+      transporter.close?.();
 
       return {
         ok: true,
         deliveryChannel: 'smtp',
         messageId: info.messageId,
-        message: `Correo enviado correctamente vía SMTP (${host}:${port}) a ${toEmail}.`,
+        latencyMs,
+        testedAt,
+        recipientEmail: toEmail,
+        message: `Email de prueba enviado correctamente vía SMTP (${host}:${port}) a ${toEmail} en ${latencyMs} ms.`,
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error de conexión SMTP';
+      const latencyMs = Math.max(1, Date.now() - startedAt);
+      const friendly = formatFriendlySmtpError(err, host, port, secure);
       return {
         ok: false,
         status: 502,
         deliveryChannel: 'smtp',
-        message: `Error SMTP: ${msg}`,
-        error: msg,
+        latencyMs,
+        testedAt,
+        recipientEmail: toEmail,
+        stage: friendly.stage,
+        message: friendly.message,
+        error: friendly.raw,
       };
     }
   }
 
   // Provider: Resend API
   const resendKey = String(cfg.resendApiKey || '').trim();
-  if (!resendKey || !resendKey.startsWith('re_')) {
+  if (!resendKey || !resendKey.startsWith('re_') || resendKey.length < 10) {
     return {
       ok: false,
       status: 400,
-      message: 'Ingresa una clave de API de Resend válida (ej. re_xxxxxxxxx).',
+      stage: 'api_key',
+      message: 'Ingresa una clave de API de Resend válida (debe iniciar con re_...).',
       error: 'INVALID_RESEND_API_KEY',
     };
   }
@@ -499,6 +576,7 @@ export async function handleStoreEmailDispatch(
       }),
     });
 
+    const latencyMs = Math.max(1, Date.now() - startedAt);
     const bodyText = await resp.text();
     let parsed: { id?: string; message?: string; name?: string } = {};
     try {
@@ -508,13 +586,34 @@ export async function handleStoreEmailDispatch(
     }
 
     if (!resp.ok) {
-      const errMsg = parsed?.message || `HTTP ${resp.status} desde Resend API`;
+      const rawErr = parsed?.message || `HTTP ${resp.status} desde Resend API`;
+      const lowerErr = rawErr.toLowerCase();
+      let friendlyMsg = `Error Resend API (${resp.status}): ${rawErr}`;
+      let stage: StoreEmailDispatchResponse['stage'] = 'api_key';
+
+      if (resp.status === 401 || resp.status === 403 || lowerErr.includes('api key')) {
+        if (lowerErr.includes('testing emails') || lowerErr.includes('verify a domain')) {
+          stage = 'sender';
+          friendlyMsg = `Resend API rechazó el envío porque estás en modo prueba o sin dominio verificado: envía al correo dueño de tu cuenta Resend o verifica tu dominio en resend.com/domains. (${rawErr})`;
+        } else {
+          stage = 'api_key';
+          friendlyMsg = `API Key de Resend inválida o revocada. Verifica tu clave re_... en resend.com/api-keys. (${rawErr})`;
+        }
+      } else if (lowerErr.includes('domain') || lowerErr.includes('from')) {
+        stage = 'sender';
+        friendlyMsg = `Dominio remitente no verificado en Resend. Deja vacío "Correo Remitente" para usar onboarding@resend.dev o verifica tu dominio. (${rawErr})`;
+      }
+
       return {
         ok: false,
         status: 502,
         deliveryChannel: 'resend',
-        message: `Error Resend API: ${errMsg}`,
-        error: errMsg,
+        latencyMs,
+        testedAt,
+        recipientEmail: toEmail,
+        stage,
+        message: friendlyMsg,
+        error: rawErr,
       };
     }
 
@@ -522,14 +621,22 @@ export async function handleStoreEmailDispatch(
       ok: true,
       deliveryChannel: 'resend',
       messageId: parsed.id,
-      message: `Correo enviado vía Resend API a ${toEmail}${parsed.id ? ` (ID: ${parsed.id})` : ''}.`,
+      latencyMs,
+      testedAt,
+      recipientEmail: toEmail,
+      message: `Email de prueba enviado vía Resend API a ${toEmail} en ${latencyMs} ms${parsed.id ? ` (ID: ${parsed.id})` : ''}.`,
     };
   } catch (err) {
+    const latencyMs = Math.max(1, Date.now() - startedAt);
     const msg = err instanceof Error ? err.message : 'Error de red contactando a Resend API';
     return {
       ok: false,
       status: 502,
       deliveryChannel: 'resend',
+      latencyMs,
+      testedAt,
+      recipientEmail: toEmail,
+      stage: 'network',
       message: `Error Resend API: ${msg}`,
       error: msg,
     };
@@ -669,14 +776,7 @@ export async function handleVerifySmtpConnection(
     };
   }
 
-  const lowerHost = host.toLowerCase();
-  if (
-    lowerHost === 'localhost' ||
-    lowerHost.startsWith('127.') ||
-    lowerHost.startsWith('169.254.') ||
-    lowerHost === '0.0.0.0' ||
-    lowerHost.endsWith('.internal')
-  ) {
+  if (isBlockedInternalSmtpHost(host)) {
     return {
       ok: false,
       status: 400,

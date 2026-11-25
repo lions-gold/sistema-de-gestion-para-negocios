@@ -68,14 +68,16 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'monthlyPriceUSD', 'bankTransfers', 'pagoMovil',
-          'binancePay', 'bybitPay', 'supportWhatsapp',
-          'warehousePosEnabled', 'referralRewardUSD', 'updatedAt'
+          'binancePay', 'bybitPay', 'binanceQrUrl', 'bybitQrUrl',
+          'supportWhatsapp', 'warehousePosEnabled', 'referralRewardUSD', 'updatedAt'
         ]) &&
         data.monthlyPriceUSD is number && data.monthlyPriceUSD >= 1 && data.monthlyPriceUSD <= 1000 &&
         data.bankTransfers is string && data.bankTransfers.size() <= 1000 &&
         data.pagoMovil is string && data.pagoMovil.size() <= 500 &&
         data.binancePay is string && data.binancePay.size() <= 300 &&
         data.bybitPay is string && data.bybitPay.size() <= 300 &&
+        (!('binanceQrUrl' in data) || (data.binanceQrUrl is string && data.binanceQrUrl.size() <= 150000)) &&
+        (!('bybitQrUrl' in data) || (data.bybitQrUrl is string && data.bybitQrUrl.size() <= 150000)) &&
         data.supportWhatsapp is string && data.supportWhatsapp.size() >= 7 && data.supportWhatsapp.size() <= 40 &&
         (!('warehousePosEnabled' in data) || data.warehousePosEnabled is bool) &&
         (!('referralRewardUSD' in data) || (data.referralRewardUSD is number && data.referralRewardUSD >= 0 && data.referralRewardUSD <= 1000)) &&
@@ -87,7 +89,7 @@ service cloud.firestore {
           'id', 'name', 'currency', 'accountHolder', 'accountDetails', 'isActive', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'id', 'name', 'currency', 'accountHolder', 'accountDetails', 'instructions', 'isActive', 'createdAt', 'updatedAt'
+          'id', 'name', 'currency', 'accountHolder', 'accountDetails', 'instructions', 'qrImageUrl', 'isActive', 'createdAt', 'updatedAt'
         ]) &&
         data.id == methodId &&
         isValidId(data.id) &&
@@ -96,6 +98,7 @@ service cloud.firestore {
         data.accountHolder is string && data.accountHolder.size() <= 120 &&
         data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
         (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        (!('qrImageUrl' in data) || (data.qrImageUrl is string && data.qrImageUrl.size() <= 150000)) &&
         data.isActive is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -127,7 +130,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'id', 'storeId', 'ownerUid', 'name', 'currency',
-          'accountHolder', 'accountDetails', 'instructions', 'appliesIgtf', 'isActive',
+          'accountHolder', 'accountDetails', 'instructions', 'qrImageUrl', 'appliesIgtf', 'isActive',
           'createdAt', 'updatedAt'
         ]) &&
         data.id == methodId &&
@@ -140,6 +143,7 @@ service cloud.firestore {
         data.accountHolder is string && data.accountHolder.size() <= 120 &&
         data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
         (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        (!('qrImageUrl' in data) || (data.qrImageUrl is string && data.qrImageUrl.size() <= 150000)) &&
         data.appliesIgtf is bool &&
         data.isActive is bool &&
         data.createdAt is timestamp &&
@@ -153,7 +157,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'id', 'storeId', 'storeName', 'ownerUid', 'name', 'currency',
-          'accountHolder', 'accountDetails', 'instructions', 'isActive',
+          'accountHolder', 'accountDetails', 'instructions', 'qrImageUrl', 'isActive',
           'createdAt', 'updatedAt'
         ]) &&
         data.id == methodId &&
@@ -167,6 +171,7 @@ service cloud.firestore {
         data.accountHolder is string && data.accountHolder.size() <= 120 &&
         data.accountDetails is string && data.accountDetails.size() >= 2 && data.accountDetails.size() <= 300 &&
         (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 400)) &&
+        (!('qrImageUrl' in data) || (data.qrImageUrl is string && data.qrImageUrl.size() <= 150000)) &&
         data.isActive is bool &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -195,6 +200,18 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidStoreSocialLinks(sl) {
+      return sl is map &&
+        sl.keys().hasOnly(['instagram', 'tiktok', 'facebook', 'x', 'youtube', 'telegram', 'website']) &&
+        (!('instagram' in sl) || (sl.instagram is string && sl.instagram.size() <= 200)) &&
+        (!('tiktok' in sl) || (sl.tiktok is string && sl.tiktok.size() <= 200)) &&
+        (!('facebook' in sl) || (sl.facebook is string && sl.facebook.size() <= 200)) &&
+        (!('x' in sl) || (sl.x is string && sl.x.size() <= 200)) &&
+        (!('youtube' in sl) || (sl.youtube is string && sl.youtube.size() <= 200)) &&
+        (!('telegram' in sl) || (sl.telegram is string && sl.telegram.size() <= 200)) &&
+        (!('website' in sl) || (sl.website is string && sl.website.size() <= 200));
+    }
+
     function isValidStoreTenant(data, storeId) {
       return data.keys().hasAll([
           'id', 'slug', 'ownerUid', 'storeName', 'registeredOwnerName',
@@ -204,7 +221,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'id', 'slug', 'ownerUid', 'storeName', 'registeredOwnerName',
-          'rif', 'logoUrl', 'businessWhatsapp', 'category', 'description',
+          'rif', 'logoUrl', 'businessWhatsapp', 'category', 'description', 'socialLinks',
           'status', 'subscriptionPriceUSD',
           'nationalShippingEnabled', 'nationalCouriers',
           'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
@@ -223,6 +240,7 @@ service cloud.firestore {
         data.businessWhatsapp is string && data.businessWhatsapp.size() >= 7 && data.businessWhatsapp.size() <= 25 &&
         (!('category' in data) || (data.category is string && data.category.size() <= 60)) &&
         (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+        (!('socialLinks' in data) || isValidStoreSocialLinks(data.socialLinks)) &&
         data.status in ['pending', 'active', 'suspended'] &&
         data.subscriptionPriceUSD is number && data.subscriptionPriceUSD == 25 &&
         data.nationalShippingEnabled is bool &&
@@ -972,7 +990,7 @@ service cloud.firestore {
             (!('referralCode' in existing()) || ('referralCode' in incoming() && incoming().referralCode == existing().referralCode)) &&
             incoming().diff(existing()).affectedKeys().hasOnly([
               'storeName', 'slug', 'registeredOwnerName', 'rif', 'logoUrl',
-              'businessWhatsapp', 'category', 'description',
+              'businessWhatsapp', 'category', 'description', 'socialLinks',
               'nationalShippingEnabled', 'nationalCouriers',
               'localDeliveryEnabled', 'localDeliveryFeeUSD', 'localDeliveryZone',
               'pickupEnabled', 'clothingSizesEnabled', 'defaultClothingSizes',

@@ -44,6 +44,7 @@ import {
   recordVectorConversationStat,
   upsertVectorConsent,
 } from './vectorService';
+import { dispatchStoreEmail } from './emailDeliveryService';
 
 export type VectorVoicePreset = 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Zephyr';
 
@@ -480,7 +481,13 @@ function stripLargeImagesForLocalStorage(value: unknown): unknown {
   const clone: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (
-      (k === 'image' || k === 'imageUrl' || k === 'logoUrl' || k === 'proofImageUrl') &&
+      (k === 'image' ||
+        k === 'imageUrl' ||
+        k === 'logoUrl' ||
+        k === 'proofImageUrl' ||
+        k === 'qrImageUrl' ||
+        k === 'binanceQrUrl' ||
+        k === 'bybitQrUrl') &&
       typeof v === 'string' &&
       v.startsWith('data:image/') &&
       v.length > 8000
@@ -1098,7 +1105,6 @@ export async function syncPendingOfflineActions(user: User | null): Promise<{
           );
           synced += 1;
         } else if (item.type === 'email_dispatch') {
-          const { dispatchStoreEmail } = await import('./emailDeliveryService');
           const res = await dispatchStoreEmail(item.payload);
           if (!res.ok) {
             throw new Error(res.message || 'No se pudo enviar el correo en cola');

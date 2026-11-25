@@ -19,25 +19,14 @@ import {
 import {
   TrendingUp,
   DollarSign,
-  Award,
-  ShoppingBag,
   Clock,
   Users,
   Flame,
-  ArrowUpRight,
-  TrendingDown,
-  Calendar,
-  Filter,
   Download,
   Printer,
-  ChevronRight,
   Search,
-  Percent,
   CheckCircle2,
-  BarChart3,
   Receipt,
-  ShieldCheck,
-  UserCheck,
   Mail,
   RefreshCw,
   AlertTriangle,
@@ -87,9 +76,34 @@ const PAYMENT_METHOD_COLORS: Record<string, string> = {
 
 const FALLBACK_PIE_COLORS = ['#f59e0b', '#10b981', '#38bdf8', '#a855f7', '#f97316', '#f43f5e'];
 
+function parseFlexibleSaleDate(rawDate: string): { dateObj: Date | null; isoDateStr: string } {
+  const trimmed = (rawDate || '').trim();
+  if (!trimmed) return { dateObj: null, isoDateStr: '' };
+
+  const dmyMatch = trimmed.match(/^(\d{2})[/-](\d{2})[/-](\d{4})(?:[\sT](\d{2}:\d{2}(?::\d{2})?))?/);
+  if (dmyMatch) {
+    const isoDateStr = `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+    const parsed = new Date(`${isoDateStr}T${dmyMatch[4] || '12:00:00'}`);
+    return { dateObj: isNaN(parsed.getTime()) ? null : parsed, isoDateStr };
+  }
+
+  const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[\sT](\d{2}:\d{2}(?::\d{2})?))?/);
+  if (ymdMatch) {
+    const isoDateStr = `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+    const parsed = new Date(`${isoDateStr}T${ymdMatch[4] || '12:00:00'}`);
+    return { dateObj: isNaN(parsed.getTime()) ? null : parsed, isoDateStr };
+  }
+
+  const fallback = new Date(trimmed.replace(' ', 'T'));
+  if (!isNaN(fallback.getTime())) {
+    return { dateObj: fallback, isoDateStr: getCaracasDateString(fallback) };
+  }
+  return { dateObj: null, isoDateStr: trimmed.split(' ')[0] };
+}
+
 export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
   sales,
-  products,
+  products: _products,
   exchangeRate,
   audits = [],
   activeStore = null,
@@ -123,25 +137,23 @@ export const AnalyticsModule: React.FC<AnalyticsModuleProps> = ({
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     return sales.filter((s) => {
-      const saleDate = new Date(s.date.replace(' ', 'T'));
-      const saleDateStr = s.date.split(' ')[0];
+      const { dateObj: saleDate, isoDateStr: saleDateStr } = parseFlexibleSaleDate(s.date);
 
       if (period === 'today') {
         // If no sales match today, fall back to latest available sale date so data shows
-        const hasToday = sales.some((x) => x.date.startsWith(todayStr));
+        const hasToday = sales.some((x) => parseFlexibleSaleDate(x.date).isoDateStr === todayStr);
         if (hasToday) return saleDateStr === todayStr;
-        // fallback to latest sale date
-        const latest = sales[sales.length - 1]?.date.split(' ')[0];
+        const latest = parseFlexibleSaleDate(sales[sales.length - 1]?.date || '').isoDateStr;
         return saleDateStr === latest;
       }
       if (period === 'yesterday') {
         return saleDateStr === yesterdayStr;
       }
       if (period === '7days') {
-        return saleDate >= sevenDaysAgo || sales.length <= 15; // show current window
+        return (saleDate ? saleDate >= sevenDaysAgo : false) || sales.length <= 15; // show current window
       }
       if (period === 'month') {
-        return saleDate >= firstDayOfMonth || sales.length <= 25;
+        return (saleDate ? saleDate >= firstDayOfMonth : false) || sales.length <= 25;
       }
       return true;
     });

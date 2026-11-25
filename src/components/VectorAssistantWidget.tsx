@@ -324,6 +324,10 @@ export const VectorAssistantWidget: React.FC<VectorAssistantWidgetProps> = ({
       };
       audio.onerror = () => {
         setSpeakingMessageId(null);
+        if (audioUrlRef.current === blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+          audioUrlRef.current = null;
+        }
       };
 
       setLoadingAudioId(null);

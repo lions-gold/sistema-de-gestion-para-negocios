@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { AdminVectorHub } from './AdminVectorHub';
 import { LanguageSettings } from './LanguageSettings';
+import { QrUploadField, QrZoomModal } from './QrCodeModalAndField';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, SUPER_ADMIN_EMAIL } from '../firebase';
 import {
@@ -164,6 +165,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   const [pmHolder, setPmHolder] = useState('');
   const [pmDetails, setPmDetails] = useState('');
   const [pmInstructions, setPmInstructions] = useState('');
+  const [pmQrImageUrl, setPmQrImageUrl] = useState('');
   const [pmActive, setPmActive] = useState(true);
   const [confirmDeleteMethodId, setConfirmDeleteMethodId] = useState<string | null>(null);
 
@@ -181,8 +183,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
   const [ssPmHolder, setSsPmHolder] = useState('');
   const [ssPmDetails, setSsPmDetails] = useState('');
   const [ssPmInstructions, setSsPmInstructions] = useState('');
+  const [ssPmQrImageUrl, setSsPmQrImageUrl] = useState('');
   const [ssPmActive, setSsPmActive] = useState(true);
   const [confirmDeleteStoreSubId, setConfirmDeleteStoreSubId] = useState<string | null>(null);
+  const [zoomQrState, setZoomQrState] = useState<{
+    qrUrl: string;
+    title: string;
+    subtitle?: string;
+    accountDetails?: string;
+  } | null>(null);
 
   // Admin Custom Sales Payment Methods Form State (for Store Owners recording sales)
   const [editingSalesMethodTarget, setEditingSalesMethodTarget] = useState<SalesPaymentMethod | null>(null);
@@ -483,6 +492,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     setPmHolder('');
     setPmDetails('');
     setPmInstructions('');
+    setPmQrImageUrl('');
     setPmActive(true);
   };
 
@@ -498,6 +508,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           accountHolder: pmHolder,
           accountDetails: pmDetails,
           instructions: pmInstructions,
+          qrImageUrl: pmQrImageUrl,
           isActive: pmActive,
         },
         editingMethodTarget || undefined
@@ -556,6 +567,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
     setSsPmHolder('');
     setSsPmDetails('');
     setSsPmInstructions('');
+    setSsPmQrImageUrl('');
     setSsPmActive(true);
   };
 
@@ -579,6 +591,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           accountHolder: ssPmHolder,
           accountDetails: ssPmDetails,
           instructions: ssPmInstructions,
+          qrImageUrl: ssPmQrImageUrl,
           isActive: ssPmActive,
         },
         editingStoreSubTarget || undefined
@@ -2203,17 +2216,17 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             ),
           },
           {
-            name: 'Binance Pay',
+            name: 'Binance Pay (QR)',
             currency: 'USDT',
             detailsPlaceholder: tr(
-              'Binance Pay ID: XXXXXXXXX · Correo: pagos@tudominio.com · Red USDT BEP20/TRC20',
-              'Binance Pay ID: XXXXXXXXX · Email: payments@yourdomain.com · USDT Network BEP20/TRC20',
-              'Binance Pay ID: XXXXXXXXX · 邮箱: payments@yourdomain.com · USDT 网络 BEP20/TRC20'
+              'Binance Pay ID: XXXXXXXXX · Correo: pagos@tudominio.com · Escanear QR',
+              'Binance Pay ID: XXXXXXXXX · Email: payments@yourdomain.com · Scan QR',
+              'Binance Pay ID: XXXXXXXXX · 邮箱: payments@yourdomain.com · 扫码付款'
             ),
             instructions: tr(
-              `Enviar exactamente $${billing.monthlyPriceUSD} USDT netos e indicar Order ID o correo Binance.`,
-              `Send exact $${billing.monthlyPriceUSD} net USDT and provide your Order ID or Binance email.`,
-              `请足额发送 $${billing.monthlyPriceUSD} USDT 并注明订单号或币安邮箱。`
+              `Escanea el QR oficial de Binance Pay, envía $${billing.monthlyPriceUSD} USDT netos e indica Order ID.`,
+              `Scan the official Binance Pay QR, send exact $${billing.monthlyPriceUSD} net USDT, and enter Order ID.`,
+              `请扫描官方 Binance Pay 二维码并全额支付 $${billing.monthlyPriceUSD} USDT，同时填报订单号。`
             ),
           },
           {
@@ -2237,13 +2250,13 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             ),
           },
           {
-            name: 'Bybit Pay',
+            name: 'Bybit Pay (QR)',
             currency: 'USDT',
-            detailsPlaceholder: tr('Bybit UID: XXXXXXXX · Correo interno sin comisión', 'Bybit UID: XXXXXXXX · Zero-fee internal email', 'Bybit UID: XXXXXXXX · 内部免手续费邮箱'),
+            detailsPlaceholder: tr('Bybit UID: XXXXXXXX · Correo interno · Escanear QR', 'Bybit UID: XXXXXXXX · Fee-free email · Scan QR', 'Bybit UID: XXXXXXXX · 免手续费邮箱 · 扫码付款'),
             instructions: tr(
-              'Transferencia interna instantánea en USDT y reportar UID emisor.',
-              'Instant internal USDT transfer and report your sender UID.',
-              'USDT 内部即时转账并填报发送方 UID。'
+              'Escanea el código QR desde la app de Bybit o envía por transferencia interna USDT sin comisión.',
+              'Scan the QR code in the Bybit app or send a zero-fee internal USDT transfer.',
+              '请在 Bybit App 中扫码或进行免手续费 USDT 内部转账。'
             ),
           },
           {
@@ -2510,6 +2523,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                         />
                       </div>
 
+                      <QrUploadField
+                        value={ssPmQrImageUrl}
+                        onChange={setSsPmQrImageUrl}
+                        onZoom={(qrUrl) =>
+                          setZoomQrState({
+                            qrUrl,
+                            title: ssPmName || 'QR',
+                            subtitle: selectedSubStore.storeName,
+                            accountDetails: ssPmDetails,
+                          })
+                        }
+                      />
+
                       <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer pt-1">
                         <input
                           type="checkbox"
@@ -2611,6 +2637,32 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                     {translateCommonPaymentInstruction(method.instructions, lang)}
                                   </div>
                                 )}
+                                {method.qrImageUrl && (
+                                  <div className="pt-1.5 flex items-center gap-2.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setZoomQrState({
+                                          qrUrl: method.qrImageUrl!,
+                                          title: translatePaymentMethodLabel(method.name, lang),
+                                          subtitle: selectedSubStore.storeName,
+                                          accountDetails: method.accountDetails,
+                                        })
+                                      }
+                                      className="bg-white p-1.5 rounded-lg border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                                    >
+                                      <img
+                                        src={method.qrImageUrl}
+                                        alt={method.name}
+                                        referrerPolicy="no-referrer"
+                                        className="w-14 h-14 object-contain"
+                                      />
+                                    </button>
+                                    <span className="text-[11px] text-amber-300 font-semibold">
+                                      {tr('QR adjunto (clic para ampliar)', 'QR attached (click to zoom)', '已附二维码（点击放大）')}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
 
                               <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -2637,6 +2689,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                     setSsPmHolder(method.accountHolder);
                                     setSsPmDetails(method.accountDetails);
                                     setSsPmInstructions(method.instructions || '');
+                                    setSsPmQrImageUrl(method.qrImageUrl || '');
                                     setSsPmActive(method.isActive);
                                   }}
                                   className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
@@ -2846,6 +2899,18 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                   />
                 </div>
 
+                <QrUploadField
+                  value={pmQrImageUrl}
+                  onChange={setPmQrImageUrl}
+                  onZoom={(qrUrl) =>
+                    setZoomQrState({
+                      qrUrl,
+                      title: pmName || 'QR',
+                      accountDetails: pmDetails,
+                    })
+                  }
+                />
+
                 <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer pt-1">
                   <input
                     type="checkbox"
@@ -2976,6 +3041,31 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               {translateCommonPaymentInstruction(method.instructions, lang)}
                             </div>
                           )}
+                          {method.qrImageUrl && (
+                            <div className="pt-1.5 flex items-center gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setZoomQrState({
+                                    qrUrl: method.qrImageUrl!,
+                                    title: translatePaymentMethodLabel(method.name, lang),
+                                    accountDetails: method.accountDetails,
+                                  })
+                                }
+                                className="bg-white p-1.5 rounded-lg border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                              >
+                                <img
+                                  src={method.qrImageUrl}
+                                  alt={method.name}
+                                  referrerPolicy="no-referrer"
+                                  className="w-14 h-14 object-contain"
+                                />
+                              </button>
+                              <span className="text-[11px] text-amber-300 font-semibold">
+                                {tr('QR adjunto (clic para ampliar)', 'QR attached (click to zoom)', '已附二维码（点击放大）')}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -3000,6 +3090,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                               setPmHolder(method.accountHolder);
                               setPmDetails(method.accountDetails);
                               setPmInstructions(method.instructions || '');
+                              setPmQrImageUrl(method.qrImageUrl || '');
                               setPmActive(method.isActive);
                             }}
                             className="p-2 min-h-[38px] min-w-[38px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
@@ -3197,27 +3288,65 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-zinc-300 block mb-1">
-                  {t.admin.binanceLabel}
-                </label>
-                <textarea
-                  rows={2}
-                  value={translateUnconfiguredBillingText(billing.binancePay, lang)}
-                  onChange={(e) => setBilling({ ...billing, binancePay: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {t.admin.binanceLabel}
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={translateUnconfiguredBillingText(billing.binancePay, lang)}
+                    onChange={(e) => setBilling({ ...billing, binancePay: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+                <QrUploadField
+                  value={billing.binanceQrUrl}
+                  onChange={(url) => setBilling({ ...billing, binanceQrUrl: url })}
+                  label={tr('Código QR Binance Pay (Base)', 'Binance Pay QR Code (Base)', 'Binance Pay 基础收款二维码')}
+                  hint={tr(
+                    'Los dueños de tienda verán este QR directamente al elegir Binance Pay.',
+                    'Store owners will see this QR directly when selecting Binance Pay.',
+                    '店主选择 Binance Pay 时将直接看到此收款二维码。'
+                  )}
+                  onZoom={(qrUrl) =>
+                    setZoomQrState({
+                      qrUrl,
+                      title: 'Binance Pay QR',
+                      accountDetails: billing.binancePay,
+                    })
+                  }
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-zinc-300 block mb-1">
-                  {t.admin.bybitLabel}
-                </label>
-                <textarea
-                  rows={2}
-                  value={translateUnconfiguredBillingText(billing.bybitPay, lang)}
-                  onChange={(e) => setBilling({ ...billing, bybitPay: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-zinc-300 block mb-1">
+                    {t.admin.bybitLabel}
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={translateUnconfiguredBillingText(billing.bybitPay, lang)}
+                    onChange={(e) => setBilling({ ...billing, bybitPay: e.target.value })}
+                    className="w-full px-3 py-2 bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
+                  />
+                </div>
+                <QrUploadField
+                  value={billing.bybitQrUrl}
+                  onChange={(url) => setBilling({ ...billing, bybitQrUrl: url })}
+                  label={tr('Código QR Bybit Pay (Base)', 'Bybit Pay QR Code (Base)', 'Bybit Pay 基础收款二维码')}
+                  hint={tr(
+                    'Los dueños de tienda verán este QR directamente al elegir Bybit Pay.',
+                    'Store owners will see this QR directly when selecting Bybit Pay.',
+                    '店主选择 Bybit Pay 时将直接看到此收款二维码。'
+                  )}
+                  onZoom={(qrUrl) =>
+                    setZoomQrState({
+                      qrUrl,
+                      title: 'Bybit Pay QR',
+                      accountDetails: billing.bybitPay,
+                    })
+                  }
                 />
               </div>
             </div>
@@ -4004,17 +4133,31 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
             ),
           },
           {
-            name: 'Binance Pay',
+            name: 'Binance Pay (QR)',
             currency: 'USDT',
             detailsPlaceholder: tr(
-              'Binance Pay ID / Correo USDT (BEP20/TRC20)',
-              'Binance Pay ID / USDT Email (BEP20/TRC20)',
-              'Binance Pay ID / USDT 邮箱 (BEP20/TRC20)'
+              'Binance Pay ID / Correo USDT · Escanear QR',
+              'Binance Pay ID / USDT Email · Scan QR',
+              'Binance Pay ID / USDT 邮箱 · 扫码付款'
             ),
             instructions: tr(
-              'Reportar Order ID o correo Binance al finalizar.',
-              'Submit Order ID or Binance email when finished.',
-              '完成后请提交订单号或币安邮箱。'
+              'Escanea el QR oficial de Binance Pay y reporta Order ID al finalizar.',
+              'Scan the official Binance Pay QR and submit Order ID when finished.',
+              '请扫描 Binance Pay 二维码并提交订单号。'
+            ),
+          },
+          {
+            name: 'Bybit Pay (QR)',
+            currency: 'USDT',
+            detailsPlaceholder: tr(
+              'Bybit UID / Correo interno · Escanear QR',
+              'Bybit UID / Internal Email · Scan QR',
+              'Bybit UID / 内部邮箱 · 扫码付款'
+            ),
+            instructions: tr(
+              'Escanea el QR desde la app de Bybit o transfiere USDT sin comisión.',
+              'Scan the QR in the Bybit app or send a zero-fee internal USDT transfer.',
+              '请在 Bybit App 中扫码或进行免手续费 USDT 转账。'
             ),
           },
           {
@@ -4208,6 +4351,19 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                     />
                   </div>
 
+                  <QrUploadField
+                    value={ssPmQrImageUrl}
+                    onChange={setSsPmQrImageUrl}
+                    onZoom={(qrUrl) =>
+                      setZoomQrState({
+                        qrUrl,
+                        title: ssPmName || 'QR',
+                        subtitle: modalStore.storeName,
+                        accountDetails: ssPmDetails,
+                      })
+                    }
+                  />
+
                   <label className="flex items-center gap-2 text-xs text-zinc-200 cursor-pointer">
                     <input
                       type="checkbox"
@@ -4298,6 +4454,32 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 {translateCommonPaymentInstruction(method.instructions, lang)}
                               </div>
                             )}
+                            {method.qrImageUrl && (
+                              <div className="pt-1 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setZoomQrState({
+                                      qrUrl: method.qrImageUrl!,
+                                      title: translatePaymentMethodLabel(method.name, lang),
+                                      subtitle: modalStore.storeName,
+                                      accountDetails: method.accountDetails,
+                                    })
+                                  }
+                                  className="bg-white p-1 rounded-lg border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                                >
+                                  <img
+                                    src={method.qrImageUrl}
+                                    alt={method.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-12 h-12 object-contain"
+                                  />
+                                </button>
+                                <span className="text-[11px] text-amber-300 font-semibold">
+                                  {tr('QR (ampliar)', 'QR (zoom)', '查看二维码')}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -4324,6 +4506,7 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
                                 setSsPmHolder(method.accountHolder);
                                 setSsPmDetails(method.accountDetails);
                                 setSsPmInstructions(method.instructions || '');
+                                setSsPmQrImageUrl(method.qrImageUrl || '');
                                 setSsPmActive(method.isActive);
                               }}
                               className="p-1.5 min-h-[34px] min-w-[34px] rounded-lg bg-[#111114] border border-white/[0.1] hover:border-amber-400 text-zinc-200 flex items-center justify-center"
@@ -4372,6 +4555,15 @@ export const SuperAdminPanel: React.FC<SuperAdminPanelProps> = ({ onOpenWarehous
           </div>
         );
       })()}
+
+      <QrZoomModal
+        isOpen={Boolean(zoomQrState)}
+        qrUrl={zoomQrState?.qrUrl}
+        title={zoomQrState?.title || 'QR'}
+        subtitle={zoomQrState?.subtitle}
+        accountDetails={zoomQrState?.accountDetails}
+        onClose={() => setZoomQrState(null)}
+      />
     </section>
   );
 };

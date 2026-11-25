@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Product,
   Debtor,
@@ -13,13 +13,27 @@ import {
   PurchaseInvoice,
   CashClosingRecord,
 } from '../types';
-import { InventoryModule } from './InventoryModule';
-import { POSModule, POSCustomPaymentOption } from './POSModule';
-import { FiadosModule } from './FiadosModule';
-import { CashierModule } from './CashierModule';
-import { AnalyticsModule } from './AnalyticsModule';
-import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
+import type { POSCustomPaymentOption } from './POSModule';
 import { dispatchStoreEmail, getLocalStoreEmailConfig } from '../services/emailDeliveryService';
+
+const InventoryModule = lazy(() =>
+  import('./InventoryModule').then((m) => ({ default: m.InventoryModule }))
+);
+const POSModule = lazy(() =>
+  import('./POSModule').then((m) => ({ default: m.POSModule }))
+);
+const FiadosModule = lazy(() =>
+  import('./FiadosModule').then((m) => ({ default: m.FiadosModule }))
+);
+const CashierModule = lazy(() =>
+  import('./CashierModule').then((m) => ({ default: m.CashierModule }))
+);
+const AnalyticsModule = lazy(() =>
+  import('./AnalyticsModule').then((m) => ({ default: m.AnalyticsModule }))
+);
+const EmailProviderConfigPanel = lazy(() =>
+  import('./EmailProviderConfigPanel').then((m) => ({ default: m.EmailProviderConfigPanel }))
+);
 import {
   subscribeActiveSalesPaymentMethods,
   subscribePublicStorePaymentMethods,
@@ -189,6 +203,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
           accountHolder: m.accountHolder,
           accountDetails: m.accountDetails,
           instructions: m.instructions,
+          qrImageUrl: m.qrImageUrl,
           source: 'store',
         });
       });
@@ -433,6 +448,14 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
         {/* Tab Body wrapped in reactive GranularTranslationScopeProvider */}
         <GranularTranslationScopeProvider section="warehouse">
           <div className="pt-6 min-w-0">
+          <Suspense
+            fallback={
+              <div className="py-12 flex items-center justify-center text-zinc-400 text-xs gap-2">
+                <div className="w-5 h-5 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+                <span>{tr('Cargando sección...', 'Loading section...', '正在加载栏目...')}</span>
+              </div>
+            }
+          >
           {showEmailPanel ? (
             <EmailProviderConfigPanel
               storeId={activeStore?.id || 'default-warehouse'}
@@ -519,6 +542,7 @@ export const WarehouseApp: React.FC<WarehouseAppProps> = ({
               )}
             </>
           )}
+          </Suspense>
           </div>
         </GranularTranslationScopeProvider>
       </div>

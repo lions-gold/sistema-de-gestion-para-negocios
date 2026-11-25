@@ -13,34 +13,94 @@ export const DEFAULT_EMAIL_CONFIG: EmailAlertConfig = {
   notifyOnManualAdjustment: true,
 };
 
+let sharedAudioContext: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return null;
+      sharedAudioContext = new AudioCtx();
+    }
+    if (sharedAudioContext.state === 'suspended') {
+      sharedAudioContext.resume().catch(() => {});
+    }
+    return sharedAudioContext;
+  } catch {
+    return null;
+  }
+}
+
+// Reusable scanner beep using shared AudioContext (avoids 6-context hardware exhaustion)
+export const playScannerBeepSound = (frequency = 1450, durationSec = 0.14, gainLevel = 0.18) => {
+  try {
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(gainLevel, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + durationSec);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + durationSec);
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {
+        // ignore disconnect errors
+      }
+    };
+  } catch {
+    // Ignore audio restrictions before user gesture
+  }
+};
+
 // Play a gentle notification chime using Web Audio API
 export const playAlertNotificationSound = () => {
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
 
     // Sequence of 2 melodic notes (C5 -> G5)
     const playTone = (freq: number, start: number, duration: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      const now = ctx.currentTime;
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      osc.frequency.setValueAtTime(freq, now + start);
 
-      gain.gain.setValueAtTime(0.001, ctx.currentTime + start);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + start + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+      gain.gain.setValueAtTime(0.001, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + start + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
 
       osc.connect(gain);
       gain.connect(ctx.destination);
 
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + duration);
+      osc.start(now + start);
+      osc.stop(now + start + duration);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // ignore
+        }
+      };
     };
 
     playTone(523.25, 0, 0.16);     // C5
     playTone(783.99, 0.12, 0.28);   // G5
-  } catch (e) {
+  } catch {
     // AudioContext might be blocked before first user interaction
   }
 };

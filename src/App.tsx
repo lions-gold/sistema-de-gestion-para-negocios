@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Product,
   Debtor,
@@ -24,21 +24,39 @@ import { ComparisonSection } from './components/ComparisonSection';
 import { TestimonialsSection } from './components/TestimonialsSection';
 import { ContactSection } from './components/ContactSection';
 import { Footer } from './components/Footer';
-import { WarehouseApp } from './components/WarehouseApp';
-import { GitHubModal } from './components/GitHubModal';
 import { VideoTutorialsSection } from './components/VideoTutorialsSection';
-import { BarcodeScannerModal } from './components/BarcodeScannerModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { fetchLiveExchangeRates, BCVRatesState } from './services/bcvApi';
 import { getStoredEmailConfig, recordSimulatedEmailDispatch } from './utils/alertNotifications';
 import { dispatchStoreEmail, getLocalStoreEmailConfig } from './services/emailDeliveryService';
 import { CookieBanner } from './components/CookieBanner';
 import { NotFoundPage } from './components/NotFoundPage';
-import { MarketplaceDirectory } from './components/MarketplaceDirectory';
-import { MerchantPortal } from './components/MerchantPortal';
-import { SuperAdminPanel } from './components/SuperAdminPanel';
+import type { VectorOpenSignal } from './components/VectorAssistantWidget';
+
+const WarehouseApp = lazy(() =>
+  import('./components/WarehouseApp').then((m) => ({ default: m.WarehouseApp }))
+);
+const GitHubModal = lazy(() =>
+  import('./components/GitHubModal').then((m) => ({ default: m.GitHubModal }))
+);
+const BarcodeScannerModal = lazy(() =>
+  import('./components/BarcodeScannerModal').then((m) => ({ default: m.BarcodeScannerModal }))
+);
+const MarketplaceDirectory = lazy(() =>
+  import('./components/MarketplaceDirectory').then((m) => ({ default: m.MarketplaceDirectory }))
+);
+const MerchantPortal = lazy(() =>
+  import('./components/MerchantPortal').then((m) => ({ default: m.MerchantPortal }))
+);
+const SuperAdminPanel = lazy(() =>
+  import('./components/SuperAdminPanel').then((m) => ({ default: m.SuperAdminPanel }))
+);
+const VectorAssistantWidget = lazy(() =>
+  import('./components/VectorAssistantWidget').then((m) => ({ default: m.VectorAssistantWidget }))
+);
 import {
   applyRouteMetaTags,
+  applyStorefrontMetaTags,
   trackAnalyticsPageView,
   resolvePathToRoute,
   ROUTE_SEO_MAP,
@@ -75,7 +93,6 @@ import {
 } from './services/authService';
 import { Lock, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import { useLanguage } from './i18n/LanguageContext';
-import { VectorAssistantWidget, VectorOpenSignal } from './components/VectorAssistantWidget';
 import { OfflineSyncBanner } from './components/OfflineSyncBanner';
 import { getCaracasDateString, getCaracasDateTimeStamp } from './utils/venezuelaTime';
 import {
@@ -109,10 +126,25 @@ import {
   subscribeNotificationNavigation,
 } from './services/browserNotificationService';
 
+const EMPTY_VECTOR_CONTEXT: {
+  store: StoreTenant | null;
+  products: StoreProduct[];
+  cart: StoreCartItem[];
+  addToCart?: (p: StoreProduct) => void;
+  openCart?: () => void;
+} = {
+  store: null,
+  products: [],
+  cart: [],
+};
+const EMPTY_DIRECTORY_PRODUCTS: StoreProduct[] = [];
+
 export default function App() {
   const { lang, t, tr } = useLanguage();
   const initialRoute = resolvePathToRoute(
-    typeof window !== 'undefined' ? window.location.pathname : '/'
+    typeof window !== 'undefined' ? window.location.pathname : '/',
+    typeof window !== 'undefined' ? window.location.search : '',
+    typeof window !== 'undefined' ? window.location.hostname : ''
   );
 
   const [currentView, setCurrentView] = useState<AppMainView>(
@@ -120,6 +152,10 @@ export default function App() {
   );
   const [selectedStoreSlug, setSelectedStoreSlug] = useState<string | undefined>(
     initialRoute.storeSlug
+  );
+  const [activeDirectoryStore, setActiveDirectoryStore] = useState<StoreTenant | null>(null);
+  const [activeDirectoryProducts, setActiveDirectoryProducts] = useState<StoreProduct[]>(
+    EMPTY_DIRECTORY_PRODUCTS
   );
   const [attemptedPath, setAttemptedPath] = useState<string>(
     typeof window !== 'undefined' ? window.location.pathname : '/'
@@ -191,19 +227,62 @@ export default function App() {
     cart: StoreCartItem[];
     addToCart?: (p: StoreProduct) => void;
     openCart?: () => void;
-  }>({
-    store: null,
-    products: [],
-    cart: [],
-  });
+  }>(EMPTY_VECTOR_CONTEXT);
 
   const handleMerchantVectorContext = useCallback(
     (ctx: { store: StoreTenant | null; products: StoreProduct[] }) => {
-      setActiveVectorContext({
-        store: ctx.store,
-        products: ctx.products,
-        cart: [],
-      });
+      setActiveVectorContext((prev) =>
+        prev.store === ctx.store && prev.products === ctx.products && prev.cart.length === 0
+          ? prev
+          : {
+              store: ctx.store,
+              products: ctx.products,
+              cart: [],
+            }
+      );
+    },
+    []
+  );
+
+  const handleActiveDirectoryStoreChange = useCallback(
+    (store: StoreTenant | null, storeProds: StoreProduct[]) => {
+      setActiveDirectoryStore((prev) => (prev === store ? prev : store));
+      setActiveDirectoryProducts((prev) =>
+        prev === storeProds || (prev.length === 0 && storeProds.length === 0)
+          ? prev
+          : storeProds
+      );
+      if (typeof window !== 'undefined') {
+        const basePrefix = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+        if (store && store.slug) {
+          setSelectedStoreSlug(store.slug);
+          const nextPath = `/@${store.slug}`;
+          const prefixed =
+            basePrefix && basePrefix !== '.' ? `${basePrefix}${nextPath}` : nextPath;
+          if (
+            window.location.pathname !== prefixed &&
+            (window.location.pathname.endsWith('/tiendas') ||
+              window.location.pathname.includes('/tienda/') ||
+              window.location.pathname.includes('/@'))
+          ) {
+            window.history.pushState({}, '', prefixed);
+          }
+        } else if (!store) {
+          setSelectedStoreSlug(undefined);
+          if (
+            window.location.pathname.includes('/tienda/') ||
+            window.location.pathname.includes('/@') ||
+            window.location.pathname.includes('/s/')
+          ) {
+            const dirPath = '/tiendas';
+            const prefixed =
+              basePrefix && basePrefix !== '.' ? `${basePrefix}${dirPath}` : dirPath;
+            if (window.location.pathname !== prefixed) {
+              window.history.pushState({}, '', prefixed);
+            }
+          }
+        }
+      }
     },
     []
   );
@@ -265,9 +344,17 @@ export default function App() {
     syncFirebaseAuthLanguage(lang);
   }, [lang]);
 
+  const navigateToRef = useRef<
+    (
+      view: AppMainView,
+      tab?: 'inventory' | 'pos' | 'debtors' | 'cashier' | 'sales',
+      customPath?: string
+    ) => void
+  >(() => {});
+
   useEffect(() => {
     return subscribeNotificationNavigation((tab) => {
-      navigateTo('app', tab);
+      navigateToRef.current('app', tab);
     });
   }, []);
 
@@ -548,23 +635,24 @@ export default function App() {
     Boolean(platformBilling.warehousePosEnabled) ||
     ownerStores.some((s) => Boolean(s.warehousePosEnabled));
 
+  const activeRateTypeRef = useRef<'bcv' | 'paralelo' | 'custom'>(bcvData.activeRateType || 'bcv');
+  activeRateTypeRef.current = bcvData.activeRateType || 'bcv';
+
   // Fetch real-time official BCV dollar rate from API
   const refreshBCVRate = async (forceRefresh = false) => {
     setIsRateLoading(true);
     try {
       const data = await fetchLiveExchangeRates(forceRefresh);
-      setBcvData((prev) => {
-        const preservedType = prev.activeRateType || 'bcv';
-        if (preservedType === 'bcv') {
-          setExchangeRate(data.bcv);
-        } else if (preservedType === 'paralelo') {
-          setExchangeRate(data.paralelo);
-        }
-        return {
-          ...data,
-          activeRateType: preservedType,
-        };
+      const preservedType = activeRateTypeRef.current;
+      setBcvData({
+        ...data,
+        activeRateType: preservedType,
       });
+      if (preservedType === 'bcv') {
+        setExchangeRate(data.bcv);
+      } else if (preservedType === 'paralelo') {
+        setExchangeRate(data.paralelo);
+      }
     } catch (err) {
       console.error('Error fetching live BCV rate:', err);
     } finally {
@@ -649,7 +737,11 @@ export default function App() {
   // Sync browser back/forward navigation (popstate)
   useEffect(() => {
     const handlePopState = () => {
-      const resolved = resolvePathToRoute(window.location.pathname);
+      const resolved = resolvePathToRoute(
+        window.location.pathname,
+        window.location.search,
+        window.location.hostname
+      );
       setAttemptedPath(window.location.pathname);
       setSelectedStoreSlug(resolved.storeSlug);
       if (resolved.is404) {
@@ -662,6 +754,21 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Clear storefront directory & assistant context cleanly when navigating outside marketplace/merchant
+  useEffect(() => {
+    if (currentView !== 'marketplace' && currentView !== 'merchant') {
+      setActiveVectorContext((prev) =>
+        !prev.store && prev.products.length === 0 && prev.cart.length === 0
+          ? prev
+          : EMPTY_VECTOR_CONTEXT
+      );
+      setActiveDirectoryStore((prev) => (prev === null ? prev : null));
+      setActiveDirectoryProducts((prev) =>
+        prev.length === 0 ? prev : EMPTY_DIRECTORY_PRODUCTS
+      );
+    }
+  }, [currentView]);
 
   // Update dynamic Title tags, Meta descriptions, Canonical URL, and track Google Analytics page_view
   useEffect(() => {
@@ -678,19 +785,29 @@ export default function App() {
                 ? 'admin'
                 : appInitialTab;
 
-    applyRouteMetaTags(routeKey, lang);
+    if (currentView === 'marketplace' && activeDirectoryStore) {
+      applyStorefrontMetaTags(activeDirectoryStore, activeDirectoryProducts, lang);
+    } else {
+      applyStorefrontMetaTags(null, [], lang);
+      applyRouteMetaTags(routeKey, lang);
+    }
+
     const trackPath =
       currentView === 'not_found'
         ? attemptedPath
-        : currentView === 'marketplace' && selectedStoreSlug
-          ? `/tienda/${selectedStoreSlug}`
+        : currentView === 'marketplace' && (activeDirectoryStore?.slug || selectedStoreSlug)
+          ? `/@${activeDirectoryStore?.slug || selectedStoreSlug}`
           : ROUTE_SEO_MAP[routeKey].path;
     trackAnalyticsPageView(routeKey, trackPath);
-
-    if (currentView !== 'marketplace' && currentView !== 'merchant') {
-      setActiveVectorContext({ store: null, products: [], cart: [] });
-    }
-  }, [currentView, appInitialTab, attemptedPath, selectedStoreSlug, lang]);
+  }, [
+    currentView,
+    appInitialTab,
+    attemptedPath,
+    selectedStoreSlug,
+    activeDirectoryStore,
+    activeDirectoryProducts,
+    lang,
+  ]);
 
   const navigateTo = (
     view: AppMainView,
@@ -713,7 +830,9 @@ export default function App() {
     } else if (view === 'marketplace') {
       handleChangeUserRole('buyer');
       nextPath = customPath || '/tiendas';
-      if (customPath && customPath.startsWith('/tienda/')) {
+      if (customPath && customPath.startsWith('/@')) {
+        setSelectedStoreSlug(customPath.slice(2));
+      } else if (customPath && customPath.startsWith('/tienda/')) {
         setSelectedStoreSlug(customPath.replace('/tienda/', ''));
       } else {
         setSelectedStoreSlug(undefined);
@@ -739,6 +858,7 @@ export default function App() {
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  navigateToRef.current = navigateTo;
 
   // Helper to persist warehouse ledgers to cloud or enqueue cleanly when offline
   const syncLedgerWithOfflineFallback = (
@@ -881,18 +1001,17 @@ export default function App() {
     mergeBySku: boolean = true,
     publishToStore: boolean = true
   ) => {
-    let computedList: Product[] = [];
-    setProducts((prev) => {
-      if (!mergeBySku) {
-        const created = importedItems.map((item, idx) => ({
-          ...item,
-          id: `wh-imp-${Date.now()}-${idx}`,
-        }));
-        computedList = [...created, ...prev];
-        return computedList;
-      }
+    const nowTs = Date.now();
+    let computedList: Product[];
 
-      const next = [...prev];
+    if (!mergeBySku) {
+      const created = importedItems.map((item, idx) => ({
+        ...item,
+        id: `wh-imp-${nowTs}-${idx}`,
+      }));
+      computedList = [...created, ...products];
+    } else {
+      const next = [...products];
       const toPrepend: Product[] = [];
       importedItems.forEach((item, idx) => {
         const cleanSku = item.sku.trim().toLowerCase();
@@ -908,13 +1027,14 @@ export default function App() {
         } else {
           toPrepend.push({
             ...item,
-            id: `wh-imp-${Date.now()}-${idx}`,
+            id: `wh-imp-${nowTs}-${idx}`,
           });
         }
       });
       computedList = [...toPrepend, ...next];
-      return computedList;
-    });
+    }
+
+    setProducts(computedList);
 
     if (activeWarehouseStore && computedList.length > 0) {
       if (isAppEffectivelyOffline() || !authUser) {
@@ -1417,27 +1537,35 @@ export default function App() {
       )}
 
       {/* GitHub Connection Modal */}
-      <GitHubModal
-        isOpen={isGitHubModalOpen}
-        onClose={() => setIsGitHubModalOpen(false)}
-        userEmail="zambranogonzalezcarlossmith@gmail.com"
-      />
+      {isGitHubModalOpen && (
+        <Suspense fallback={null}>
+          <GitHubModal
+            isOpen={isGitHubModalOpen}
+            onClose={() => setIsGitHubModalOpen(false)}
+            userEmail="zambranogonzalezcarlossmith@gmail.com"
+          />
+        </Suspense>
+      )}
 
       {/* Mobile Barcode Scanner Camera Modal */}
-      <BarcodeScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        products={products}
-        exchangeRate={exchangeRate}
-        onAddToCart={() => {
-          setAppInitialTab('pos');
-          setCurrentView('app');
-          setIsScannerOpen(false);
-        }}
-        onUpdateStock={(prodId, delta) => {
-          handleUpdateProductStock(prodId, delta);
-        }}
-      />
+      {isScannerOpen && (
+        <Suspense fallback={null}>
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            products={products}
+            exchangeRate={exchangeRate}
+            onAddToCart={() => {
+              setAppInitialTab('pos');
+              setCurrentView('app');
+              setIsScannerOpen(false);
+            }}
+            onUpdateStock={(prodId, delta) => {
+              handleUpdateProductStock(prodId, delta);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Real-time BCV Exchange Rate bar and converter */}
       <LiveRateBar
@@ -1468,6 +1596,16 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 w-full">
+        <Suspense
+          fallback={
+            <div className="max-w-7xl mx-auto px-4 py-20 flex flex-col items-center justify-center gap-3 text-zinc-400">
+              <div className="w-8 h-8 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+              <span className="text-xs font-medium tracking-wide">
+                {tr('Cargando módulo...', 'Loading module...', '正在加载模块...')}
+              </span>
+            </div>
+          }
+        >
         {currentView === 'not_found' ? (
           <NotFoundPage
             attemptedPath={attemptedPath}
@@ -1480,6 +1618,7 @@ export default function App() {
             initialStoreSlug={selectedStoreSlug}
             onNavigateMerchant={() => navigateTo('merchant')}
             onOpenVideoGuides={(aud) => openVideoGuidesModal(aud || 'buyers')}
+            onActiveStoreChange={handleActiveDirectoryStoreChange}
             onVectorContextChange={setActiveVectorContext}
           />
         ) : currentView === 'merchant' ? (
@@ -1494,7 +1633,7 @@ export default function App() {
                 // ignore storage errors
               }
             }}
-            onOpenStorefront={(slug) => navigateTo('marketplace', undefined, `/tienda/${slug}`)}
+            onOpenStorefront={(slug) => navigateTo('marketplace', undefined, `/@${slug}`)}
             onOpenWarehouseApp={(storeId) => {
               if (storeId) setSelectedWarehouseStoreId(storeId);
               navigateTo('app', 'inventory');
@@ -1549,7 +1688,10 @@ export default function App() {
 
             <ComparisonSection />
 
-            <TestimonialsSection />
+            <TestimonialsSection
+              onOpenMerchant={() => navigateTo('merchant')}
+              onOpenMarketplace={() => navigateTo('marketplace')}
+            />
 
             <VideoTutorialsSection variant="section" />
 
@@ -1623,6 +1765,7 @@ export default function App() {
             isSyncingToStore={isSyncingToStore}
           />
         )}
+        </Suspense>
       </main>
 
       {/* Footer */}
@@ -1675,21 +1818,23 @@ export default function App() {
       </a>
 
       {/* Vector Commercial Assistant (ES / EN / 中文, Multi-Brand Isolated) */}
-      <VectorAssistantWidget
-        user={authUser}
-        activeStore={activeVectorContext.store}
-        activeProducts={activeVectorContext.products}
-        activeCart={activeVectorContext.cart}
-        exchangeRate={exchangeRate}
-        currentView={currentView}
-        userRole={userRole}
-        onChangeUserRole={handleChangeUserRole}
-        onNavigateView={(view) => navigateTo(view)}
-        ownedStores={ownerStores}
-        openSignal={vectorOpenSignal}
-        onAddProductToCart={activeVectorContext.addToCart}
-        onOpenCartDrawer={activeVectorContext.openCart}
-      />
+      <Suspense fallback={null}>
+        <VectorAssistantWidget
+          user={authUser}
+          activeStore={activeVectorContext.store}
+          activeProducts={activeVectorContext.products}
+          activeCart={activeVectorContext.cart}
+          exchangeRate={exchangeRate}
+          currentView={currentView}
+          userRole={userRole}
+          onChangeUserRole={handleChangeUserRole}
+          onNavigateView={(view) => navigateTo(view)}
+          ownedStores={ownerStores}
+          openSignal={vectorOpenSignal}
+          onAddProductToCart={activeVectorContext.addToCart}
+          onOpenCartDrawer={activeVectorContext.openCart}
+        />
+      </Suspense>
 
       {/* Material Cookie Consent Banner (Kookies) */}
       <CookieBanner />

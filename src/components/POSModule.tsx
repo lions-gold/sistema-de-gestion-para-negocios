@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Product, CartItem, PaymentMethod, Sale } from '../types';
 import { 
   ShoppingCart, 
@@ -6,21 +6,18 @@ import {
   Minus, 
   Trash2, 
   Check, 
-  Receipt, 
   Printer, 
   Share2, 
   ArrowRight,
-  User,
-  CreditCard,
-  Banknote,
-  Smartphone,
   CheckCircle2,
   X,
   Camera,
   Barcode,
   Download,
   ShieldCheck,
-  FileText
+  QrCode,
+  Maximize2,
+  Ruler,
 } from 'lucide-react';
 import { exportSingleReceiptPDF, printReceiptTicket } from '../utils/pdfExport';
 import { 
@@ -31,6 +28,7 @@ import {
 import { useOnlineStatus } from '../hooks/usePWAInstall';
 import { getCaracasDateTimeStamp, normalizeVenezuelanPhone } from '../utils/venezuelaTime';
 import { useSubsectionTranslation } from './LanguageSettings';
+import { QrZoomModal } from './QrCodeModalAndField';
 import { buildCartLineKey } from '../utils/clothingSizes';
 import { translateCategoryLabel } from '../utils/categoryI18n';
 import {
@@ -38,7 +36,7 @@ import {
   translatePaymentMethodLabel,
   translateSizeTokenLabel,
 } from '../utils/platformLabelsI18n';
-import { Ruler } from 'lucide-react';
+import { playScannerBeepSound } from '../utils/alertNotifications';
 
 export interface POSCustomPaymentOption {
   name: string;
@@ -47,6 +45,7 @@ export interface POSCustomPaymentOption {
   accountHolder?: string;
   accountDetails?: string;
   instructions?: string;
+  qrImageUrl?: string;
   source?: 'store' | 'admin';
 }
 
@@ -89,6 +88,12 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const [fiscalPrintSuccess, setFiscalPrintSuccess] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<'catalog' | 'cart'>('catalog');
   const [sizePromptProduct, setSizePromptProduct] = useState<Product | null>(null);
+  const [zoomQrData, setZoomQrData] = useState<{
+    qrUrl: string;
+    title: string;
+    subtitle?: string;
+    accountDetails?: string;
+  } | null>(null);
   const { isOnline } = useOnlineStatus();
 
   const getMethodDisplayLabel = (name: string) => translatePaymentMethodLabel(name, lang);
@@ -125,10 +130,26 @@ export const POSModule: React.FC<POSModuleProps> = ({
     addToCartWithSize(product);
   };
 
+  const productsRef = useRef(products);
+  productsRef.current = products;
+  const trRef = useRef(tr);
+  trRef.current = tr;
+  const scanFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Support for PC USB / Bluetooth Barcode Scanners (wedge mode typing + Enter)
   useEffect(() => {
     let barcodeBuffer = '';
     let lastKeyTime = Date.now();
+
+    const scheduleFeedbackClear = (delayMs: number) => {
+      if (scanFeedbackTimerRef.current) {
+        clearTimeout(scanFeedbackTimerRef.current);
+      }
+      scanFeedbackTimerRef.current = setTimeout(() => {
+        setLastScannedFeedback(null);
+        scanFeedbackTimerRef.current = null;
+      }, delayMs);
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if user is typing in form inputs
@@ -151,7 +172,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
       if (e.key === 'Enter') {
         if (barcodeBuffer.length >= 4) {
           const scanned = barcodeBuffer.trim();
-          const found = products.find(
+          const found = productsRef.current.find(
             (p) =>
               p.barcode === scanned ||
               p.sku.toLowerCase() === scanned.toLowerCase()
@@ -160,36 +181,23 @@ export const POSModule: React.FC<POSModuleProps> = ({
           if (found && found.stock > 0) {
             addToCartWithSize(found, found.availableSizes?.[0]);
             setLastScannedFeedback(
-              tr(
+              trRef.current(
                 `¡Escaneado en PC: ${found.name}!`,
                 `Scanned on PC: ${found.name}!`,
                 `PC 扫码成功：${found.name}`
               )
             );
-            setTimeout(() => setLastScannedFeedback(null), 3000);
-            try {
-              const AudioClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-              if (AudioClass) {
-                const ctx = new AudioClass();
-                const osc = ctx.createOscillator();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(1450, ctx.currentTime);
-                osc.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.12);
-              }
-            } catch {
-              // ignore
-            }
+            scheduleFeedbackClear(3000);
+            playScannerBeepSound(1450, 0.12, 0.16);
           } else {
             setLastScannedFeedback(
-              tr(
+              trRef.current(
                 `Código "${scanned}" no encontrado en catálogo`,
                 `Barcode "${scanned}" not found in catalog`,
                 `目录中未找到条码 "${scanned}"`
               )
             );
-            setTimeout(() => setLastScannedFeedback(null), 3500);
+            scheduleFeedbackClear(3500);
           }
           barcodeBuffer = '';
         }
@@ -199,8 +207,14 @@ export const POSModule: React.FC<POSModuleProps> = ({
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [products]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (scanFeedbackTimerRef.current) {
+        clearTimeout(scanFeedbackTimerRef.current);
+        scanFeedbackTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const updateQuantity = (lineKey: string, delta: number) => {
     setCart((prev) => {
@@ -797,8 +811,11 @@ export const POSModule: React.FC<POSModuleProps> = ({
               ))}
             </div>
 
-            {selectedCustomMethod && (selectedCustomMethod.accountDetails || selectedCustomMethod.instructions) && (
-              <div className="p-2.5 rounded-lg bg-[#09090b] border border-emerald-500/25 text-[11px] space-y-0.5">
+            {selectedCustomMethod &&
+              (selectedCustomMethod.accountDetails ||
+                selectedCustomMethod.instructions ||
+                selectedCustomMethod.qrImageUrl) && (
+              <div className="p-2.5 rounded-lg bg-[#09090b] border border-emerald-500/25 text-[11px] space-y-2">
                 <div className="font-semibold text-emerald-300 flex items-center justify-between gap-2">
                   <span>
                     {tr('Datos configurados para cobrar', 'Configured receiving details', '已配置的收款信息')} (
@@ -821,6 +838,51 @@ export const POSModule: React.FC<POSModuleProps> = ({
                 {selectedCustomMethod.instructions && (
                   <div className="text-zinc-400">
                     {translateCommonPaymentInstruction(selectedCustomMethod.instructions, lang)}
+                  </div>
+                )}
+                {selectedCustomMethod.qrImageUrl && (
+                  <div className="pt-1.5 border-t border-white/[0.08] flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setZoomQrData({
+                          qrUrl: selectedCustomMethod.qrImageUrl!,
+                          title: getMethodDisplayLabel(selectedCustomMethod.name),
+                          subtitle: selectedCustomMethod.accountHolder,
+                          accountDetails: selectedCustomMethod.accountDetails,
+                        })
+                      }
+                      className="bg-white p-1.5 rounded-lg border border-white/20 shrink-0 hover:scale-[1.03] transition-transform cursor-pointer"
+                      title={tr('Ampliar código QR', 'Zoom QR code', '放大二维码')}
+                    >
+                      <img
+                        src={selectedCustomMethod.qrImageUrl}
+                        alt={selectedCustomMethod.name}
+                        referrerPolicy="no-referrer"
+                        className="w-16 h-16 object-contain rounded"
+                      />
+                    </button>
+                    <div className="space-y-1 min-w-0">
+                      <div className="text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+                        <QrCode className="w-3.5 h-3.5 shrink-0" />
+                        <span>{tr('QR de Cobro Disponible', 'Scannable Payment QR', '支持扫码收款')}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setZoomQrData({
+                            qrUrl: selectedCustomMethod.qrImageUrl!,
+                            title: getMethodDisplayLabel(selectedCustomMethod.name),
+                            subtitle: selectedCustomMethod.accountHolder,
+                            accountDetails: selectedCustomMethod.accountDetails,
+                          })
+                        }
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Maximize2 className="w-3 h-3" />
+                        <span>{tr('Mostrar QR en Pantalla', 'Show Fullscreen QR', '全屏展示二维码')}</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1164,6 +1226,14 @@ export const POSModule: React.FC<POSModuleProps> = ({
           </div>
         </div>
       )}
+      <QrZoomModal
+        isOpen={Boolean(zoomQrData)}
+        qrUrl={zoomQrData?.qrUrl}
+        title={zoomQrData?.title || ''}
+        subtitle={zoomQrData?.subtitle}
+        accountDetails={zoomQrData?.accountDetails}
+        onClose={() => setZoomQrData(null)}
+      />
     </div>
   );
 };

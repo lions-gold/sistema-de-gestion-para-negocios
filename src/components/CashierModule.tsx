@@ -1,11 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   CashMovement, 
   Sale, 
   PurchaseInvoice, 
   CashClosingRecord, 
-  FiscalPrinterConfig, 
-  PaymentMethod 
+  FiscalPrinterConfig 
 } from '../types';
 import { useSubsectionTranslation } from './LanguageSettings';
 import {
@@ -15,11 +14,7 @@ import {
 } from '../utils/platformLabelsI18n';
 import { 
   Coins, 
-  TrendingUp, 
-  TrendingDown, 
   Plus, 
-  Search, 
-  Calendar, 
   X,
   ArrowUpRight,
   ArrowDownRight,
@@ -29,17 +24,14 @@ import {
   Download,
   ShieldCheck,
   CheckCircle2,
-  AlertTriangle,
   Receipt,
   DollarSign,
   Building,
-  RefreshCw,
   Sliders,
   Landmark,
   Scale
 } from 'lucide-react';
 import { 
-  DEFAULT_FISCAL_CONFIG, 
   getStoredFiscalConfig, 
   saveStoredFiscalConfig, 
   generateReportXCommand, 
@@ -96,17 +88,12 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
 
   // Fiscal Printer Config
   const [fiscalConfig, setFiscalConfig] = useState<FiscalPrinterConfig>(getStoredFiscalConfig);
-  const [printerStatus, setPrinterStatus] = useState<{
-    connected: boolean;
-    paperOk: boolean;
-    fiscalMemoryOk: boolean;
-    clockOk: boolean;
-  }>({
-    connected: true,
-    paperOk: true,
-    fiscalMemoryOk: true,
-    clockOk: true,
-  });
+  const closingToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (closingToastTimerRef.current) clearTimeout(closingToastTimerRef.current);
+    };
+  }, []);
 
   // Purchase Invoices (Libro de Compras) — starts empty per store
   const [localPurchases, setLocalPurchases] = useState<PurchaseInvoice[]>([]);
@@ -243,7 +230,7 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   // Execute Dual Cash Closing & Report Z
   const handlePerformCashClosing = () => {
     const nextClosingNum = `CIERRE-2026-${String(closings.length + 42).padStart(4, '0')}`;
-    const { newZNumber, jsonPayload } = generateReportZCommand(fiscalConfig, fiscalConfig.currentZReport);
+    const { newZNumber } = generateReportZCommand(fiscalConfig, fiscalConfig.currentZReport);
     const zReportStr = `Z-${String(newZNumber).padStart(4, '0')}`;
 
     const newClosing: CashClosingRecord = {
@@ -291,7 +278,11 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
     ]);
 
     setClosingSuccessToast(tr(`Cierre de Caja ${nextClosingNum} y Reporte ${zReportStr} emitidos exitosamente.`, `Cash Closing ${nextClosingNum} and Report ${zReportStr} issued.`, `结账单 ${nextClosingNum} 与 Z 报表 ${zReportStr} 已成功签发。`));
-    setTimeout(() => setClosingSuccessToast(null), 5000);
+    if (closingToastTimerRef.current) clearTimeout(closingToastTimerRef.current);
+    closingToastTimerRef.current = setTimeout(() => {
+      setClosingSuccessToast(null);
+      closingToastTimerRef.current = null;
+    }, 5000);
   };
 
   // Fiscal Printer Test Actions
@@ -377,7 +368,6 @@ export const CashierModule: React.FC<CashierModuleProps> = ({
   const totalCreditoFiscalBs = purchases.reduce((acc, p) => acc + p.ivaAmountUSD, 0) * exchangeRate;
   const totalIGTFBols = paymentMethodStats.totalIGTFUSD * exchangeRate;
   const totalRetencionesBs = purchases.reduce((acc, p) => acc + p.retentionAmountUSD, 0) * exchangeRate;
-  const saldoIVABs = totalDebitoFiscalBs - totalCreditoFiscalBs;
 
   const methodLabel = (method: string) => translatePaymentMethodLabel(method, lang);
 

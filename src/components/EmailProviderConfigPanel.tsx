@@ -24,7 +24,7 @@ import {
   Wallet,
   XCircle,
 } from 'lucide-react';
-import { auth } from '../firebase';
+import { auth, SUPER_ADMIN_EMAIL } from '../firebase';
 import {
   translateCommonPaymentInstruction,
   translatePaymentMethodLabel,
@@ -164,6 +164,23 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     signature: '',
   });
 
+  // Saved credentials tracking & post-save Admin Connection Test state
+  const [savedConfigSnapshot, setSavedConfigSnapshot] = useState<StoreEmailConfig | null>(null);
+  const [justSavedCredentials, setJustSavedCredentials] = useState(false);
+  const [testAdminEmail, setTestAdminEmail] = useState<string>(
+    () => config.recipientEmail || ownerEmail || auth.currentUser?.email || SUPER_ADMIN_EMAIL
+  );
+  const [testRecipientTouched, setTestRecipientTouched] = useState(false);
+  const [testConnectionResult, setTestConnectionResult] = useState<{
+    ok: boolean;
+    provider: EmailProviderType;
+    recipient: string;
+    message: string;
+    latencyMs?: number;
+    messageId?: string;
+    testedAt: string;
+  } | null>(null);
+
   // Per-store customer payment methods state (subcollection: store_payment_methods)
   const [storeMethods, setStoreMethods] = useState<StorePaymentMethod[]>(() =>
     loadCachedStorePaymentMethods(storeId)
@@ -283,10 +300,28 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     }
   };
 
+  const hasStoredCredentialsFor = (cfg: StoreEmailConfig | null): boolean => {
+    if (!cfg) return false;
+    if (cfg.provider === 'resend') {
+      return /^re_[a-zA-Z0-9_-]{6,}$/.test((cfg.resendApiKey || '').trim());
+    }
+    return Boolean(
+      (cfg.smtpHost || '').trim() && (cfg.smtpUser || '').trim() && (cfg.smtpPass || '').trim()
+    );
+  };
+
   useEffect(() => {
     if (!storeId) return;
     smtpPingMetaRef.current = { status: 'idle', signature: '' };
-    setConfig(getLocalStoreEmailConfig(storeId, ownerUid, ownerEmail));
+    const localInitial = getLocalStoreEmailConfig(storeId, ownerUid, ownerEmail);
+    setConfig(localInitial);
+    setSavedConfigSnapshot(hasStoredCredentialsFor(localInitial) ? localInitial : null);
+    setJustSavedCredentials(false);
+    setTestConnectionResult(null);
+    setTestRecipientTouched(false);
+    setTestAdminEmail(
+      localInitial.recipientEmail || ownerEmail || auth.currentUser?.email || SUPER_ADMIN_EMAIL
+    );
     setLogs(getStoreEmailLogs(storeId));
 
     let cancelled = false;
@@ -295,6 +330,12 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       .then((cloudCfg) => {
         if (!cancelled) {
           setConfig(cloudCfg);
+          setSavedConfigSnapshot(hasStoredCredentialsFor(cloudCfg) ? cloudCfg : null);
+          setTestAdminEmail((prev) =>
+            prev.trim()
+              ? prev
+              : cloudCfg.recipientEmail || ownerEmail || auth.currentUser?.email || SUPER_ADMIN_EMAIL
+          );
         }
       })
       .finally(() => {
@@ -307,6 +348,9 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
   const updateField = <K extends keyof StoreEmailConfig>(key: K, value: StoreEmailConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
+    if (key === 'recipientEmail' && !testRecipientTouched && typeof value === 'string') {
+      setTestAdminEmail(value);
+    }
   };
 
   const mergedProducts: Product[] =
@@ -332,7 +376,21 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       cfg.smtpSecure
     )}|${(cfg.smtpUser || '').trim()}|${cfg.smtpPass || ''}`;
 
+  const buildCredentialsSignature = (cfg: StoreEmailConfig) =>
+    `${cfg.provider}|${(cfg.recipientEmail || '').trim().toLowerCase()}|${(cfg.fromEmail || '').trim().toLowerCase()}|${(cfg.fromName || '').trim()}|${
+      cfg.provider === 'resend'
+        ? (cfg.resendApiKey || '').trim()
+        : buildSmtpSignature(cfg)
+    }`;
+
   const currentSmtpSignature = buildSmtpSignature(config);
+  const currentCredentialsSignature = buildCredentialsSignature(config);
+  const savedCredentialsSignature = savedConfigSnapshot
+    ? buildCredentialsSignature(savedConfigSnapshot)
+    : '';
+  const hasSavedCredentials = hasStoredCredentialsFor(savedConfigSnapshot);
+  const hasUnsavedCredentialChanges =
+    !savedConfigSnapshot || currentCredentialsSignature !== savedCredentialsSignature;
 
   const getSmtpSyntaxIssue = (cfg: StoreEmailConfig): string | null => {
     const host = (cfg.smtpHost || '').trim();
@@ -541,7 +599,10 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     });
   }, [lang, tr]);
 
-  const persistEmailConfig = async (bypassPingCheck = false) => {
+  const persistEmailConfig = async (
+    bypassPingCheck = false,
+    silentFeedback = false
+  ): Promise<StoreEmailConfig | null> => {
     setIsSaving(true);
     setFeedback(null);
     setAllowSaveBypassAfterPingFail(false);
@@ -552,6 +613,22 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         storeId,
         ownerUid,
       };
+
+      if (toSave.provider === 'resend') {
+        const cleanKey = (toSave.resendApiKey || '').trim();
+        if (!cleanKey || !/^re_[a-zA-Z0-9_-]{6,}$/.test(cleanKey)) {
+          setFeedback({
+            type: 'error',
+            text: tr(
+              'Ingresa una API Key de Resend válida (debe comenzar con re_...) antes de guardar.',
+              'Enter a valid Resend API Key (must start with re_...) before saving.',
+              '保存前请输入有效的 Resend API 密钥（须以 re_ 开头）。'
+            ),
+          });
+          return null;
+        }
+        toSave = { ...toSave, resendApiKey: cleanKey };
+      }
 
       if (toSave.provider === 'smtp' && !bypassPingCheck) {
         const syntaxIssue = getSmtpSyntaxIssue(toSave);
@@ -575,7 +652,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             stage: 'syntax',
           });
           setFeedback({ type: 'error', text: msg });
-          return;
+          return null;
         }
 
         let verifiedLatency = smtpPingState.latencyMs;
@@ -596,7 +673,7 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 `由于 SMTP 连接测试失败，未保存凭据：${pingRes.message}`
               ),
             });
-            return;
+            return null;
           }
           verifiedLatency = pingRes.latencyMs;
         }
@@ -609,41 +686,57 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
 
         await saveStoreEmailConfig(toSave);
         setConfig(toSave);
+        setSavedConfigSnapshot(toSave);
+        setJustSavedCredentials(true);
+        if (!testRecipientTouched) {
+          setTestAdminEmail(toSave.recipientEmail || ownerEmail || auth.currentUser?.email || SUPER_ADMIN_EMAIL);
+        }
         onConfigSaved?.(toSave);
-        setFeedback({
-          type: 'success',
-          text: tr(
-            `Conexión SMTP verificada mediante ping (${verifiedLatency ?? 'OK'} ms) y credenciales guardadas de forma segura para ${storeName}.`,
-            `SMTP connection verified via ping (${verifiedLatency ?? 'OK'} ms) and credentials saved securely for ${storeName}.`,
-            `已通过 Ping 验证 SMTP 连接（${verifiedLatency ?? 'OK'} ms），并为 ${storeName} 安全保存凭据。`
-          ),
-        });
-        return;
+        if (!silentFeedback) {
+          setFeedback({
+            type: 'success',
+            text: tr(
+              `Conexión SMTP verificada mediante ping (${verifiedLatency ?? 'OK'} ms) y credenciales guardadas para ${storeName}. Ahora puedes enviar el email de prueba al administrador.`,
+              `SMTP connection verified via ping (${verifiedLatency ?? 'OK'} ms) and credentials saved for ${storeName}. You can now send a test email to the administrator.`,
+              `已通过 Ping 验证 SMTP 连接（${verifiedLatency ?? 'OK'} ms）并为 ${storeName} 保存凭据。现在可以向管理员发送测试邮件。`
+            ),
+          });
+        }
+        return toSave;
       }
 
       await saveStoreEmailConfig(toSave);
       setConfig(toSave);
+      setSavedConfigSnapshot(toSave);
+      setJustSavedCredentials(true);
+      if (!testRecipientTouched) {
+        setTestAdminEmail(toSave.recipientEmail || ownerEmail || auth.currentUser?.email || SUPER_ADMIN_EMAIL);
+      }
       onConfigSaved?.(toSave);
-      setFeedback({
-        type: 'success',
-        text:
-          toSave.provider === 'smtp'
-            ? tr(
-                `Configuración SMTP guardada sin verificación remota para ${storeName}.`,
-                `SMTP configuration saved without remote check for ${storeName}.`,
-                `已为 ${storeName} 保存 SMTP 配置（未进行远程验证）。`
-              )
-            : tr(
-                `Configuración de Resend API guardada de forma segura para ${storeName}.`,
-                `Resend API configuration saved securely for ${storeName}.`,
-                `已为 ${storeName} 安全保存 Resend API 配置。`
-              ),
-      });
+      if (!silentFeedback) {
+        setFeedback({
+          type: 'success',
+          text:
+            toSave.provider === 'smtp'
+              ? tr(
+                  `Configuración SMTP guardada para ${storeName}. Envía un email de prueba abajo para confirmar la entrega.`,
+                  `SMTP configuration saved for ${storeName}. Send a test email below to confirm delivery.`,
+                  `已为 ${storeName} 保存 SMTP 配置。请在下方发送测试邮件确认投递。`
+                )
+              : tr(
+                  `API Key de Resend guardada de forma segura para ${storeName}. Haz clic en "Enviar Email de Prueba" abajo para verificar la entrega al administrador.`,
+                  `Resend API Key saved securely for ${storeName}. Click "Send Test Email" below to verify administrator delivery.`,
+                  `已为 ${storeName} 安全保存 Resend API 密钥。点击下方“发送测试邮件”即可验证管理员收件情况。`
+                ),
+        });
+      }
+      return toSave;
     } catch (err) {
       setFeedback({
         type: 'error',
         text: err instanceof Error ? err.message : tr('No se pudo guardar la configuración.', 'Could not save configuration.', '无法保存配置。'),
       });
+      return null;
     } finally {
       setIsVerifyingBeforeSave(false);
       setIsSaving(false);
@@ -742,9 +835,40 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     };
   };
 
-  const handleDispatch = async (action: 'test' | 'stock_alert' | 'sales_report') => {
+  const handleDispatch = async (
+    action: 'test' | 'stock_alert' | 'sales_report',
+    overrideConfig?: StoreEmailConfig,
+    overrideRecipientEmail?: string
+  ) => {
+    const activeCfg = overrideConfig || config;
+    const targetAdminEmail =
+      action === 'test'
+        ? (overrideRecipientEmail ?? testAdminEmail).trim() || activeCfg.recipientEmail.trim()
+        : activeCfg.recipientEmail.trim();
+
+    if (action === 'test' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetAdminEmail)) {
+      const invalidMsg = tr(
+        'Ingresa un correo electrónico válido para el administrador que recibirá la prueba.',
+        'Enter a valid administrator email address to receive the test email.',
+        '请输入有效的管理员测试收件人邮箱。'
+      );
+      setFeedback({ type: 'error', text: invalidMsg });
+      setTestConnectionResult({
+        ok: false,
+        provider: activeCfg.provider,
+        recipient: targetAdminEmail || '--',
+        message: invalidMsg,
+        testedAt: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      });
+      return;
+    }
+
     setBusyAction(action);
     setFeedback(null);
+    if (action === 'test') {
+      setTestConnectionResult(null);
+    }
+
     try {
       const targetProducts =
         action === 'stock_alert'
@@ -759,10 +883,11 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
         storeName,
         exchangeRate,
         config: {
-          ...config,
+          ...activeCfg,
           storeId,
           ownerUid,
         },
+        testRecipientEmail: action === 'test' ? targetAdminEmail : undefined,
         triggerEvent:
           action === 'stock_alert'
             ? lowStockProducts.length > 0
@@ -783,9 +908,9 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                   '从面板请求的销售报告'
                 )
               : tr(
-                  'Prueba de conexión SMTP / Resend API',
-                  'SMTP / Resend API connection test',
-                  'SMTP / Resend API 连接测试'
+                  `Prueba de conexión post-guardado al administrador (${targetAdminEmail})`,
+                  `Post-save administrator connection test (${targetAdminEmail})`,
+                  `保存后管理员连接测试 (${targetAdminEmail})`
                 ),
         products: targetProducts,
         salesSummary: action === 'sales_report' ? buildSalesSummaryPayload() : undefined,
@@ -796,15 +921,31 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
       onLogsUpdated?.(updatedLogs);
 
       if (action === 'test') {
+        const testedTimestamp = new Date().toLocaleString('es-VE');
+        const testedShortTime =
+          res.testedAt ||
+          new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const stamped: StoreEmailConfig = {
-          ...config,
+          ...activeCfg,
           storeId,
           ownerUid,
-          lastTestStatus: res.ok ? `OK · ${res.deliveryChannel?.toUpperCase()}` : res.message,
-          lastTestAt: new Date().toLocaleString('es-VE'),
+          lastTestStatus: res.ok
+            ? `Email Test OK · ${(res.deliveryChannel || activeCfg.provider).toUpperCase()}${typeof res.latencyMs === 'number' ? ` (${res.latencyMs} ms)` : ''}`
+            : res.message,
+          lastTestAt: testedTimestamp,
         };
         setConfig(stamped);
+        setSavedConfigSnapshot((prev) => (prev ? { ...prev, lastTestStatus: stamped.lastTestStatus, lastTestAt: testedTimestamp } : stamped));
         saveStoreEmailConfig(stamped).catch(() => {});
+        setTestConnectionResult({
+          ok: res.ok,
+          provider: res.deliveryChannel || activeCfg.provider,
+          recipient: res.recipientEmail || targetAdminEmail,
+          message: res.message,
+          latencyMs: res.latencyMs,
+          messageId: res.messageId,
+          testedAt: testedShortTime,
+        });
       }
 
       setFeedback({
@@ -816,12 +957,28 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
     }
   };
 
+  const handleSaveAndTestEmail = async () => {
+    const saved = await persistEmailConfig(false, true);
+    if (!saved) return;
+    await handleDispatch('test', saved, testAdminEmail);
+  };
+
+  const handleSendAdminConnectionTest = async () => {
+    if (hasUnsavedCredentialChanges) {
+      await handleSaveAndTestEmail();
+      return;
+    }
+    await handleDispatch('test', savedConfigSnapshot || config, testAdminEmail);
+  };
+
   const handleReset = () => {
     smtpPingAbortRef.current?.abort();
     const fresh = getDefaultStoreEmailConfig(storeId, ownerUid, ownerEmail);
     setConfig(fresh);
     setFeedback(null);
     setAllowSaveBypassAfterPingFail(false);
+    setJustSavedCredentials(false);
+    setTestConnectionResult(null);
     setSmtpPingState({
       status: 'idle',
       message: '',
@@ -1791,8 +1948,8 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                disabled={busyAction !== null}
-                onClick={() => handleDispatch('test')}
+                disabled={busyAction !== null || isSaving || isVerifyingBeforeSave}
+                onClick={handleSendAdminConnectionTest}
                 className="px-3.5 py-2.5 min-h-[44px] rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-400/35 text-amber-300 text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
               >
                 {busyAction === 'test' ? (
@@ -1851,6 +2008,19 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 {tr('Restablecer', 'Reset', '重置')}
               </button>
               <button
+                type="button"
+                disabled={isSaving || isVerifyingBeforeSave || busyAction !== null}
+                onClick={handleSaveAndTestEmail}
+                className="px-4 py-2.5 min-h-[44px] rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {busyAction === 'test' || isSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{tr('Guardar y Enviar Prueba', 'Save & Send Test', '保存并发送测试邮件')}</span>
+              </button>
+              <button
                 type="submit"
                 disabled={isSaving || isVerifyingBeforeSave}
                 className="px-5 py-2.5 min-h-[44px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-50"
@@ -1871,6 +2041,202 @@ export const EmailProviderConfigPanel: React.FC<EmailProviderConfigPanelProps> =
                 </span>
               </button>
             </div>
+          </div>
+
+          {/* Post-Save Connection Verification Card (Send Test Email to Administrator) */}
+          <div
+            className={`p-4 sm:p-5 rounded-2xl border space-y-3.5 transition-colors ${
+              justSavedCredentials && !hasUnsavedCredentialChanges
+                ? 'bg-emerald-950/20 border-emerald-500/45 shadow-lg shadow-emerald-950/25'
+                : 'bg-[#09090b] border-white/[0.1]'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Activity className="w-4 h-4 text-amber-400 shrink-0" />
+                  <h3 className="text-sm font-bold text-white">
+                    {tr(
+                      'Prueba de Conexión — Email al Administrador',
+                      'Connection Test — Administrator Email Verification',
+                      '连接测试 — 向管理员发送验证邮件'
+                    )}
+                  </h3>
+                  {justSavedCredentials && !hasUnsavedCredentialChanges ? (
+                    <span className="text-[11px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/35 px-2 py-0.5 rounded-md">
+                      {tr('Credenciales guardadas · Listo para probar', 'Credentials saved · Ready to test', '凭据已保存 · 可立即测试')}
+                    </span>
+                  ) : hasUnsavedCredentialChanges ? (
+                    <span className="text-[11px] font-semibold text-amber-300 bg-amber-500/15 border border-amber-500/35 px-2 py-0.5 rounded-md">
+                      {tr('Cambios sin guardar', 'Unsaved changes', '有未保存的更改')}
+                    </span>
+                  ) : hasSavedCredentials ? (
+                    <span className="text-[11px] font-semibold text-zinc-300 bg-zinc-800 border border-white/[0.1] px-2 py-0.5 rounded-md">
+                      {savedConfigSnapshot?.provider === 'smtp' ? 'SMTP' : 'Resend API'}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  {tr(
+                    'Envía un correo real de verificación al administrador usando tus credenciales guardadas de SMTP o Resend API para confirmar al instante que todo funciona.',
+                    'Send a real verification email to the administrator using your saved SMTP or Resend API credentials to confirm instant delivery.',
+                    '使用已保存的 SMTP 或 Resend API 凭据向管理员发送真实测试邮件，即时确认发信配置正确。'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+              <div className="lg:col-span-7 space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-200 block">
+                  {tr(
+                    'Correo del Administrador para la Prueba',
+                    'Administrator Email for Verification Test',
+                    '接收测试邮件的管理员邮箱'
+                  )}
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    value={testAdminEmail}
+                    onChange={(e) => {
+                      setTestRecipientTouched(true);
+                      setTestAdminEmail(e.target.value);
+                    }}
+                    placeholder={ownerEmail || SUPER_ADMIN_EMAIL}
+                    className="w-full pl-10 pr-3.5 py-2.5 min-h-[44px] bg-[#111114] border border-white/[0.1] rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {config.recipientEmail && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTestRecipientTouched(true);
+                        setTestAdminEmail(config.recipientEmail);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors ${
+                        testAdminEmail.trim().toLowerCase() === config.recipientEmail.trim().toLowerCase()
+                          ? 'bg-amber-400/15 border-amber-400 text-amber-300'
+                          : 'bg-[#111114] border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {tr('Admin Tienda:', 'Store Admin:', '店铺管理员：')} {config.recipientEmail}
+                    </button>
+                  )}
+                  {(ownerEmail || auth.currentUser?.email) &&
+                    (ownerEmail || auth.currentUser?.email || '').toLowerCase() !==
+                      config.recipientEmail.trim().toLowerCase() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTestRecipientTouched(true);
+                          setTestAdminEmail(ownerEmail || auth.currentUser?.email || '');
+                        }}
+                        className="px-2.5 py-1 rounded-lg border bg-[#111114] border-white/[0.08] text-[11px] text-zinc-400 hover:text-zinc-200"
+                      >
+                        {tr('Cuenta Google:', 'Google Account:', 'Google 账号：')} {ownerEmail || auth.currentUser?.email}
+                      </button>
+                    )}
+                  {SUPER_ADMIN_EMAIL.toLowerCase() !== config.recipientEmail.trim().toLowerCase() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTestRecipientTouched(true);
+                        setTestAdminEmail(SUPER_ADMIN_EMAIL);
+                      }}
+                      className="px-2.5 py-1 rounded-lg border bg-[#111114] border-white/[0.08] text-[11px] text-zinc-400 hover:text-zinc-200"
+                    >
+                      {tr('Admin Plataforma', 'Platform Admin', '平台管理员')}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-5 flex flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={busyAction !== null || isSaving || isVerifyingBeforeSave}
+                  onClick={handleSendAdminConnectionTest}
+                  className="w-full px-4 py-2.5 min-h-[44px] rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/15 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {busyAction === 'test' || isSaving ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  <span>
+                    {busyAction === 'test'
+                      ? tr('Enviando Email de Prueba...', 'Sending Test Email...', '正在发送测试邮件...')
+                      : hasUnsavedCredentialChanges
+                        ? tr('Guardar y Enviar Prueba al Admin', 'Save & Send Admin Test Email', '保存并发送管理员测试邮件')
+                        : tr('Enviar Email de Prueba al Admin', 'Send Test Email to Admin', '向管理员发送测试邮件')}
+                  </span>
+                </button>
+                <span className="text-[11px] text-zinc-500 text-center">
+                  {config.provider === 'resend'
+                    ? tr('Canal: Resend API · Verificación real en bandeja', 'Channel: Resend API · Real inbox check', '通道：Resend API · 真实收件验证')
+                    : tr(
+                        `Canal: SMTP (${config.smtpHost || '--'}:${config.smtpPort || 587})`,
+                        `Channel: SMTP (${config.smtpHost || '--'}:${config.smtpPort || 587})`,
+                        `通道：SMTP (${config.smtpHost || '--'}:${config.smtpPort || 587})`
+                      )}
+                </span>
+              </div>
+            </div>
+
+            {testConnectionResult && (
+              <div
+                aria-live="polite"
+                className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                  testConnectionResult.ok
+                    ? 'bg-emerald-950/40 border-emerald-500/45 text-emerald-100'
+                    : 'bg-red-950/40 border-red-500/45 text-red-100'
+                }`}
+              >
+                {testConnectionResult.ok ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="font-bold flex flex-wrap items-center gap-2">
+                    <span>
+                      {testConnectionResult.ok
+                        ? tr(
+                            '¡Configuración verificada! Email entregado correctamente',
+                            'Configuration verified! Test email delivered',
+                            '配置已验证！测试邮件投递成功'
+                          )
+                        : tr(
+                            'Falló el envío del email de prueba',
+                            'Test email delivery failed',
+                            '测试邮件发送失败'
+                          )}
+                    </span>
+                    <span className="font-mono text-[11px] opacity-80">
+                      {testConnectionResult.provider.toUpperCase()}
+                      {typeof testConnectionResult.latencyMs === 'number'
+                        ? ` · ${testConnectionResult.latencyMs} ms`
+                        : ''}
+                      {` · ${testConnectionResult.testedAt}`}
+                    </span>
+                  </div>
+                  <p className="text-[11px] opacity-90 break-words leading-relaxed">
+                    {testConnectionResult.message}
+                  </p>
+                  <div className="text-[11px] opacity-80 font-mono flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span>
+                      {tr('Destinatario:', 'Recipient:', '收件人：')} {testConnectionResult.recipient}
+                    </span>
+                    {testConnectionResult.messageId && (
+                      <span>ID: {testConnectionResult.messageId}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </form>
         </div>

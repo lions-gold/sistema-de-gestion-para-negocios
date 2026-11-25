@@ -38,6 +38,11 @@ import {
 import { saveBlobResilient } from '../utils/pdfExport';
 import { extractYouTubeVideoId } from '../utils/youtube';
 import {
+  isValidStoreSubdomainSlug,
+  normalizeStoreSubdomainSlug,
+  sanitizeSocialLinksMap,
+} from '../utils/socialLinks';
+import {
   AdminEmailDispatch,
   CashClosingRecord,
   CashMovement,
@@ -65,6 +70,7 @@ import {
   StorePaymentMethod,
   StoreProduct,
   StoreReferral,
+  StoreSocialLinks,
   StoreStatus,
   StoreSubscriptionPaymentMethod,
   StoreTenant,
@@ -157,10 +163,16 @@ export function compressImageFileToDataURL(
           reject(new Error('Canvas no disponible para compresión de imagen.'));
           return;
         }
+        // Fill white background so transparent PNG logos/QRs never turn black
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
         if (dataUrl.length > 140000) {
           dataUrl = canvas.toDataURL('image/jpeg', 0.48);
+        }
+        if (dataUrl.length > 145000) {
+          dataUrl = canvas.toDataURL('image/jpeg', 0.34);
         }
         resolve(dataUrl);
       };
@@ -194,7 +206,6 @@ export async function ensureSuperAdminRecord(user: User): Promise<void> {
 }
 
 export async function getPlatformBillingSettings(): Promise<PlatformBillingSettings> {
-  const path = 'platformSettings/billing';
   try {
     const ref = doc(db, 'platformSettings', 'billing');
     const snap = await getDoc(ref);
@@ -208,6 +219,8 @@ export async function getPlatformBillingSettings(): Promise<PlatformBillingSetti
       pagoMovil: data.pagoMovil || DEFAULT_BILLING_SETTINGS.pagoMovil,
       binancePay: data.binancePay || DEFAULT_BILLING_SETTINGS.binancePay,
       bybitPay: data.bybitPay || DEFAULT_BILLING_SETTINGS.bybitPay,
+      binanceQrUrl: data.binanceQrUrl || undefined,
+      bybitQrUrl: data.bybitQrUrl || undefined,
       supportWhatsapp: data.supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp,
       warehousePosEnabled: Boolean(data.warehousePosEnabled),
       referralRewardUSD: typeof data.referralRewardUSD === 'number' ? data.referralRewardUSD : 25,
@@ -236,6 +249,8 @@ export function subscribePlatformBillingSettings(
         pagoMovil: data.pagoMovil || DEFAULT_BILLING_SETTINGS.pagoMovil,
         binancePay: data.binancePay || DEFAULT_BILLING_SETTINGS.binancePay,
         bybitPay: data.bybitPay || DEFAULT_BILLING_SETTINGS.bybitPay,
+        binanceQrUrl: data.binanceQrUrl || undefined,
+        bybitQrUrl: data.bybitQrUrl || undefined,
         supportWhatsapp: data.supportWhatsapp || DEFAULT_BILLING_SETTINGS.supportWhatsapp,
         warehousePosEnabled: Boolean(data.warehousePosEnabled),
         referralRewardUSD: typeof data.referralRewardUSD === 'number' ? data.referralRewardUSD : 25,
@@ -254,7 +269,7 @@ export async function savePlatformBillingSettings(
   const path = 'platformSettings/billing';
   try {
     const ref = doc(db, 'platformSettings', 'billing');
-    await setDoc(ref, {
+    const payload: Record<string, unknown> = {
       monthlyPriceUSD: Number(settings.monthlyPriceUSD) || 25,
       bankTransfers: (settings.bankTransfers || '').trim().slice(0, 1000),
       pagoMovil: (settings.pagoMovil || '').trim().slice(0, 500),
@@ -267,7 +282,14 @@ export async function savePlatformBillingSettings(
           ? Math.max(0, Math.min(1000, Number(settings.referralRewardUSD)))
           : 25,
       updatedAt: serverTimestamp(),
-    });
+    };
+    if (settings.binanceQrUrl && settings.binanceQrUrl.trim()) {
+      payload.binanceQrUrl = settings.binanceQrUrl.trim().slice(0, 150000);
+    }
+    if (settings.bybitQrUrl && settings.bybitQrUrl.trim()) {
+      payload.bybitQrUrl = settings.bybitQrUrl.trim().slice(0, 150000);
+    }
+    await setDoc(ref, payload);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -299,6 +321,7 @@ export interface PlatformPaymentMethodInput {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   isActive: boolean;
 }
 
@@ -449,6 +472,9 @@ export async function savePlatformPaymentMethod(
     if (input.instructions && input.instructions.trim()) {
       payload.instructions = input.instructions.trim().slice(0, 400);
     }
+    if (input.qrImageUrl && input.qrImageUrl.trim()) {
+      payload.qrImageUrl = input.qrImageUrl.trim().slice(0, 150000);
+    }
 
     await setDoc(targetRef, payload);
 
@@ -492,6 +518,9 @@ export async function togglePlatformPaymentMethodActive(
       if (method.instructions && method.instructions.trim()) {
         payload.instructions = method.instructions.trim().slice(0, 400);
       }
+      if (method.qrImageUrl && method.qrImageUrl.trim()) {
+        payload.qrImageUrl = method.qrImageUrl.trim().slice(0, 150000);
+      }
       await setDoc(targetRef, payload);
       deleteDoc(doc(db, LEGACY_PLATFORM_METHODS_COLLECTION, method.id)).catch(() => {});
     }
@@ -524,6 +553,7 @@ export interface StoreSubscriptionPaymentMethodInput {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   isActive: boolean;
 }
 
@@ -646,6 +676,9 @@ export async function saveStoreSubscriptionPaymentMethod(
     };
     if (input.instructions && input.instructions.trim()) {
       payload.instructions = input.instructions.trim().slice(0, 400);
+    }
+    if (input.qrImageUrl && input.qrImageUrl.trim()) {
+      payload.qrImageUrl = input.qrImageUrl.trim().slice(0, 150000);
     }
 
     await setDoc(targetRef, payload);
@@ -827,6 +860,7 @@ export interface StorePaymentMethodInput {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   appliesIgtf: boolean;
   isActive: boolean;
 }
@@ -996,6 +1030,9 @@ export async function saveStorePaymentMethod(
     if (input.instructions && input.instructions.trim()) {
       payload.instructions = input.instructions.trim().slice(0, 400);
     }
+    if (input.qrImageUrl && input.qrImageUrl.trim()) {
+      payload.qrImageUrl = input.qrImageUrl.trim().slice(0, 150000);
+    }
 
     await setDoc(targetRef, payload);
     deleteDoc(
@@ -1043,6 +1080,9 @@ export async function toggleStorePaymentMethodActive(
       if (method.instructions && method.instructions.trim()) {
         payload.instructions = method.instructions.trim().slice(0, 400);
       }
+      if (method.qrImageUrl && method.qrImageUrl.trim()) {
+        payload.qrImageUrl = method.qrImageUrl.trim().slice(0, 150000);
+      }
       await setDoc(targetRef, payload);
       deleteDoc(
         doc(db, 'stores', storeId, LEGACY_STORE_PAYMENT_METHODS_SUBCOLLECTION, method.id)
@@ -1071,12 +1111,14 @@ export async function deleteStorePaymentMethod(storeId: string, methodId: string
 
 export interface StoreRegistrationInput {
   storeName: string;
+  slug?: string;
   registeredOwnerName: string;
   rif?: string;
   logoUrl?: string;
   businessWhatsapp: string;
   category?: string;
   description?: string;
+  socialLinks?: StoreSocialLinks;
   nationalShippingEnabled: boolean;
   nationalCouriers?: string;
   localDeliveryEnabled: boolean;
@@ -1086,6 +1128,26 @@ export interface StoreRegistrationInput {
   clothingSizesEnabled?: boolean;
   defaultClothingSizes?: string[];
   referredByCode?: string;
+}
+
+export async function isStoreSlugAvailable(
+  rawSlug: string,
+  excludeStoreId?: string
+): Promise<boolean> {
+  const cleanSlug = normalizeStoreSubdomainSlug(rawSlug);
+  const check = isValidStoreSubdomainSlug(cleanSlug);
+  if (!check.valid) return false;
+  try {
+    const q = query(
+      collection(db, 'stores'),
+      where('slug', '==', cleanSlug),
+      where('status', '==', 'active')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.every((d) => d.id === excludeStoreId);
+  } catch {
+    return true;
+  }
 }
 
 export function normalizeReferralCode(raw: string): string {
@@ -1154,6 +1216,10 @@ function buildCleanStoreOptionalFields(input: Partial<StoreRegistrationInput>): 
   if (input.category && input.category.trim()) optional.category = input.category.trim().slice(0, 60);
   if (input.description && input.description.trim())
     optional.description = input.description.trim().slice(0, 500);
+  const cleanSocial = sanitizeSocialLinksMap(input.socialLinks);
+  if (cleanSocial) {
+    optional.socialLinks = cleanSocial;
+  }
   if (input.nationalCouriers && input.nationalCouriers.trim())
     optional.nationalCouriers = input.nationalCouriers.trim().slice(0, 200);
   if (typeof input.localDeliveryFeeUSD === 'number' && !Number.isNaN(input.localDeliveryFeeUSD)) {
@@ -1184,7 +1250,23 @@ export async function registerStoreTenant(
   input: StoreRegistrationInput
 ): Promise<StoreTenant> {
   const storeId = makeSafeDocId('store');
-  const slug = `${slugifyStoreName(input.storeName)}-${storeId.slice(-4)}`;
+  let slug = `${slugifyStoreName(input.storeName)}-${storeId.slice(-4)}`;
+  if (input.slug && input.slug.trim()) {
+    const customSlug = normalizeStoreSubdomainSlug(input.slug);
+    const validity = isValidStoreSubdomainSlug(customSlug);
+    if (!validity.valid) {
+      throw new Error(
+        validity.reason === 'reserved'
+          ? `El subdominio "${customSlug}" está reservado por la plataforma. Elige otro.`
+          : 'El enlace/subdominio debe tener entre 2 y 60 caracteres (solo letras minúsculas, números y guiones).'
+      );
+    }
+    const available = await isStoreSlugAvailable(customSlug);
+    if (!available) {
+      throw new Error(`El enlace "${customSlug}" ya está ocupado por otra tienda activa.`);
+    }
+    slug = customSlug;
+  }
   const myReferralCode = generateStoreReferralCode(input.storeName, storeId);
   const path = `stores/${storeId}`;
 
@@ -1281,6 +1363,27 @@ export async function updateStoreTenantByOwner(
 ): Promise<void> {
   const path = `stores/${store.id}`;
   const cleanName = (updates.storeName ?? store.storeName).trim().slice(0, 100);
+
+  let nextSlug = store.slug;
+  if (updates.slug !== undefined) {
+    const normalized = normalizeStoreSubdomainSlug(updates.slug);
+    if (normalized && normalized !== store.slug) {
+      const validity = isValidStoreSubdomainSlug(normalized);
+      if (!validity.valid) {
+        throw new Error(
+          validity.reason === 'reserved'
+            ? `El subdominio "${normalized}" está reservado por la plataforma. Elige otro.`
+            : 'El subdominio debe tener entre 2 y 60 caracteres (solo letras minúsculas, números y guiones).'
+        );
+      }
+      const available = await isStoreSlugAvailable(normalized, store.id);
+      if (!available) {
+        throw new Error(`El enlace "${normalized}" ya está ocupado por otra tienda activa.`);
+      }
+      nextSlug = normalized;
+    }
+  }
+
   const optionalMerged: StoreRegistrationInput = {
     storeName: cleanName,
     registeredOwnerName: (updates.registeredOwnerName ?? store.registeredOwnerName).trim().slice(0, 100),
@@ -1289,6 +1392,7 @@ export async function updateStoreTenantByOwner(
     businessWhatsapp: (updates.businessWhatsapp ?? store.businessWhatsapp).trim().slice(0, 25),
     category: updates.category !== undefined ? updates.category : store.category,
     description: updates.description !== undefined ? updates.description : store.description,
+    socialLinks: updates.socialLinks !== undefined ? updates.socialLinks : store.socialLinks,
     nationalShippingEnabled:
       updates.nationalShippingEnabled ?? store.nationalShippingEnabled,
     nationalCouriers:
@@ -1313,7 +1417,7 @@ export async function updateStoreTenantByOwner(
 
   const nextPayload: Record<string, unknown> = {
     id: store.id,
-    slug: store.slug,
+    slug: nextSlug,
     ownerUid: store.ownerUid,
     storeName: optionalMerged.storeName,
     registeredOwnerName: optionalMerged.registeredOwnerName,
@@ -2637,7 +2741,6 @@ export async function fetchStoreOrderItems(
   order: StoreOrder,
   requesterUid: string
 ): Promise<StoreOrderItem[]> {
-  const path = `stores/${storeId}/orders/${order.id}/items`;
   try {
     const field = requesterUid === order.storeOwnerUid ? 'storeOwnerUid' : 'customerUid';
     const q = query(collection(db, 'stores', storeId, 'orders', order.id, 'items'), where(field, '==', requesterUid));
@@ -2800,22 +2903,25 @@ export function exportStoreSalesToCSV(store: StoreTenant, orders: StoreOrder[]):
 }
 
 export async function fetchStoreByIdOrSlug(slugOrId: string): Promise<StoreTenant | null> {
-  const clean = (slugOrId || '').trim();
-  if (!clean) return null;
+  const rawClean = (slugOrId || '').trim();
+  if (!rawClean) return null;
 
-  if (/^[a-zA-Z0-9_-]{1,128}$/.test(clean)) {
+  if (/^[a-zA-Z0-9_-]{1,128}$/.test(rawClean)) {
     try {
-      const direct = await getDoc(doc(db, 'stores', clean));
+      const direct = await getDoc(doc(db, 'stores', rawClean));
       if (direct.exists()) return direct.data() as StoreTenant;
     } catch {
       // Fall through to public slug query if direct ID lookup is denied or not an ID
     }
   }
 
+  const normalizedSlug = normalizeStoreSubdomainSlug(rawClean.replace(/^@+/, ''));
+  if (!normalizedSlug) return null;
+
   try {
     const q = query(
       collection(db, 'stores'),
-      where('slug', '==', clean),
+      where('slug', '==', normalizedSlug),
       where('status', '==', 'active')
     );
     const snap = await getDocs(q);

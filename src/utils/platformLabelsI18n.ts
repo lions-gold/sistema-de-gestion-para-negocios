@@ -85,8 +85,16 @@ const PAYMENT_METHOD_ENTRIES: LabelEntry[] = [
     labels: { es: 'Binance Pay', en: 'Binance Pay', zh: 'Binance Pay (币安支付)' },
   },
   {
+    aliases: ['binance pay (qr)', 'binance pay qr', 'binance qr'],
+    labels: { es: 'Binance Pay (QR)', en: 'Binance Pay (QR)', zh: 'Binance Pay (扫码支付)' },
+  },
+  {
     aliases: ['bybit', 'bybit pay'],
     labels: { es: 'Bybit Pay', en: 'Bybit Pay', zh: 'Bybit Pay' },
+  },
+  {
+    aliases: ['bybit pay (qr)', 'bybit pay qr', 'bybit qr'],
+    labels: { es: 'Bybit Pay (QR)', en: 'Bybit Pay (QR)', zh: 'Bybit Pay (扫码支付)' },
   },
   {
     aliases: ['zelle'],

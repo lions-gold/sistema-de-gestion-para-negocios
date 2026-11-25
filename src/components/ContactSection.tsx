@@ -1,7 +1,26 @@
-import React, { useState } from 'react';
-import { Mail, MessageCircle, Send, CheckCircle2, Shield, Database } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import {
+  Mail,
+  MessageCircle,
+  Send,
+  CheckCircle2,
+  Shield,
+  ShieldCheck,
+  Database,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { saveOfflineLead } from '../services/offlineSyncService';
+import {
+  checkSubmissionCooldown,
+  createHumanCheckChallenge,
+  HumanCheckChallenge,
+  isHoneypotTriggered,
+  isTooFastSubmission,
+  recordSubmissionTimestamp,
+  verifyHumanCheckChallenge,
+} from '../utils/antiBotGuard';
 
 export const ContactSection: React.FC = () => {
   const { t, tr } = useLanguage();
@@ -10,12 +29,74 @@ export const ContactSection: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [message, setMessage] = useState('');
+  const [companyWebsiteTrap, setCompanyWebsiteTrap] = useState('');
+  const [humanChallenge, setHumanChallenge] = useState<HumanCheckChallenge>(() =>
+    createHumanCheckChallenge()
+  );
+  const [humanAnswer, setHumanAnswer] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [whatsappHref, setWhatsappHref] = useState('');
+  const mountedAtRef = useRef<number>(Date.now());
+
+  const refreshHumanChallenge = () => {
+    setHumanChallenge(createHumanCheckChallenge());
+    setHumanAnswer('');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!name.trim() || !phone.trim()) return;
+
+    if (isHoneypotTriggered(companyWebsiteTrap)) {
+      setFormError(
+        tr(
+          'Solicitud bloqueada por protección anti-bot.',
+          'Request blocked by anti-bot protection.',
+          '请求已被反机器人保护拦截。'
+        )
+      );
+      return;
+    }
+
+    if (isTooFastSubmission(mountedAtRef.current, 750)) {
+      setFormError(
+        tr(
+          'Por favor tómate un momento antes de enviar el formulario.',
+          'Please take a moment before submitting the form.',
+          '请稍等片刻后再提交表单。'
+        )
+      );
+      return;
+    }
+
+    const cooldown = checkSubmissionCooldown('contact_lead', 15000, 10);
+    if (!cooldown.allowed) {
+      setFormError(
+        tr(
+          `Espera ${cooldown.waitSeconds}s antes de enviar otra consulta.`,
+          `Please wait ${cooldown.waitSeconds}s before sending another inquiry.`,
+          `请等待 ${cooldown.waitSeconds} 秒后再提交新咨询。`
+        )
+      );
+      return;
+    }
+
+    if (!verifyHumanCheckChallenge(humanChallenge, humanAnswer)) {
+      setFormError(
+        tr(
+          'Responde correctamente la suma de verificación humana.',
+          'Please solve the human verification check correctly.',
+          '请正确填写人工验证算术题结果。'
+        )
+      );
+      refreshHumanChallenge();
+      return;
+    }
+
+    recordSubmissionTimestamp('contact_lead');
+    refreshHumanChallenge();
 
     saveOfflineLead({
       name: name.trim(),
@@ -212,6 +293,60 @@ export const ContactSection: React.FC = () => {
                     className={inputClass}
                   />
                 </div>
+
+                {/* Invisible honeypot field for automated bots */}
+                <div className="sr-only" aria-hidden="true">
+                  <label htmlFor="contact-company-website">Company Website</label>
+                  <input
+                    id="contact-company-website"
+                    name="companyWebsite"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={companyWebsiteTrap}
+                    onChange={(e) => setCompanyWebsiteTrap(e.target.value)}
+                  />
+                </div>
+
+                {/* Compact Human Verification Check */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-[#09090b] border border-white/[0.08] rounded-lg px-3.5 py-2.5">
+                  <div className="flex items-center gap-2 text-xs text-zinc-300">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      {tr('Verificación humana:', 'Human check:', '人机验证：')}{' '}
+                      <strong className="font-mono text-amber-300">
+                        {humanChallenge.prompt} = ?
+                      </strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      aria-label={tr('Resultado de verificación humana', 'Human verification answer', '人机验证答案')}
+                      placeholder="?"
+                      value={humanAnswer}
+                      onChange={(e) => setHumanAnswer(e.target.value)}
+                      className="w-16 px-2.5 py-1.5 bg-[#111114] border border-white/[0.12] rounded-md text-xs font-mono text-center text-zinc-100 focus:outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={refreshHumanChallenge}
+                      title={tr('Nuevo reto', 'New check', '更换验证题')}
+                      className="p-1.5 rounded-md bg-[#111114] border border-white/[0.08] text-zinc-400 hover:text-zinc-100 transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {formError && (
+                  <div className="flex items-center gap-2 text-xs text-rose-300 bg-rose-950/40 border border-rose-500/30 rounded-lg px-3 py-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{formError}</span>
+                  </div>
+                )}
 
                 <button
                   type="submit"

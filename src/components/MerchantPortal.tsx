@@ -38,12 +38,26 @@ import {
   Globe,
   ChevronDown,
   Video,
+  QrCode,
+  Share2,
+  Link2,
 } from 'lucide-react';
 import { MerchantVectorTab } from './MerchantVectorTab';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
 import { SizeTagBuilder } from './SizeTagBuilder';
 import { LanguageSettings } from './LanguageSettings';
+import { QrUploadField, QrZoomModal } from './QrCodeModalAndField';
 import { normalizeSizeList, buildCartLineKey } from '../utils/clothingSizes';
+import {
+  buildSocialShareIntents,
+  getStoreShareUrl,
+  getStoreSubdomainDisplay,
+  isSharedHostingOrLocalHost,
+  isValidStoreSubdomainSlug,
+  normalizeStoreSubdomainSlug,
+  sanitizeSocialLinksMap,
+  SOCIAL_PLATFORMS,
+} from '../utils/socialLinks';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
@@ -61,6 +75,7 @@ import {
   StorePaymentMethod,
   StoreProduct,
   StoreReferral,
+  StoreSocialLinks,
   StoreSubscriptionPaymentMethod,
   StoreTenant,
   SubscriptionPayment,
@@ -83,6 +98,7 @@ import {
   fetchStoreOrderItems,
   getPlatformBillingSettings,
   importStoreProductsBatch,
+  isStoreSlugAvailable,
   markStoreInboxMessageRead,
   normalizeReferralCode,
   parseImportedDatabaseFile,
@@ -216,12 +232,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
 
   // Store Registration Form State
   const [regStoreName, setRegStoreName] = useState('');
+  const [regSlug, setRegSlug] = useState('');
+  const [regSlugManuallyEdited, setRegSlugManuallyEdited] = useState(false);
+  const [slugAvailability, setSlugAvailability] = useState<
+    'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+  >('idle');
   const [regOwnerName, setRegOwnerName] = useState('');
   const [regRif, setRegRif] = useState('');
   const [regLogoUrl, setRegLogoUrl] = useState('');
   const [regWhatsapp, setRegWhatsapp] = useState('+58 ');
   const [regCategory, setRegCategory] = useState('Comercio General');
   const [regDescription, setRegDescription] = useState('');
+  const [regSocialLinks, setRegSocialLinks] = useState<StoreSocialLinks>({});
   const [regNationalEnabled, setRegNationalEnabled] = useState(true);
   const [regNationalCouriers, setRegNationalCouriers] = useState('MRW, Zoom, Tealca');
   const [regLocalEnabled, setRegLocalEnabled] = useState(true);
@@ -291,10 +313,18 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [stPmHolder, setStPmHolder] = useState('');
   const [stPmDetails, setStPmDetails] = useState('');
   const [stPmInstructions, setStPmInstructions] = useState('');
+  const [stPmQrImageUrl, setStPmQrImageUrl] = useState('');
   const [stPmAppliesIgtf, setStPmAppliesIgtf] = useState(false);
   const [stPmActive, setStPmActive] = useState(true);
   const [confirmDeleteStoreMethodId, setConfirmDeleteStoreMethodId] = useState<string | null>(null);
   const [showOwnerGuide, setShowOwnerGuide] = useState(true);
+  const [merchantZoomQr, setMerchantZoomQr] = useState<{
+    qrUrl: string;
+    title: string;
+    subtitle?: string;
+    accountDetails?: string;
+  } | null>(null);
+  const [linkCopiedKey, setLinkCopiedKey] = useState<'at' | 'subdomain' | null>(null);
 
   useEffect(() => {
     getPlatformBillingSettings().then((b) => {
@@ -478,10 +508,52 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     };
   }, [regReferralCode]);
 
+  // Auto-generate clean subdomain slug while creating a new store unless manually edited
+  useEffect(() => {
+    if ((activeStore && !isCreatingNewStore) || regSlugManuallyEdited) return;
+    const autoSlug = normalizeStoreSubdomainSlug(regStoreName);
+    setRegSlug(autoSlug);
+  }, [regStoreName, activeStore, isCreatingNewStore, regSlugManuallyEdited]);
+
+  // Debounced uniqueness validation for custom store subdomain slug
+  useEffect(() => {
+    const clean = normalizeStoreSubdomainSlug(regSlug);
+    if (!clean) {
+      setSlugAvailability('idle');
+      return;
+    }
+    const validity = isValidStoreSubdomainSlug(clean);
+    if (!validity.valid) {
+      setSlugAvailability('invalid');
+      return;
+    }
+    if (!isCreatingNewStore && activeStore && clean === activeStore.slug) {
+      setSlugAvailability('available');
+      return;
+    }
+    let cancelled = false;
+    setSlugAvailability('checking');
+    const timer = setTimeout(async () => {
+      const free = await isStoreSlugAvailable(
+        clean,
+        isCreatingNewStore ? undefined : activeStore?.id
+      );
+      if (!cancelled) {
+        setSlugAvailability(free ? 'available' : 'taken');
+      }
+    }, 360);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [regSlug, activeStore?.id, activeStore?.slug, isCreatingNewStore]);
+
   // Populate Settings form when switching activeStore
   useEffect(() => {
     if (!activeStore || isCreatingNewStore) return;
     setRegStoreName(activeStore.storeName);
+    setRegSlug(activeStore.slug);
+    setRegSlugManuallyEdited(false);
     setRegOwnerName(activeStore.registeredOwnerName);
     setRegRif(activeStore.rif || '');
     setRegLogoUrl(activeStore.logoUrl || '');
@@ -489,6 +561,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setPayWhatsapp((prev) => prev || activeStore.businessWhatsapp || '');
     setRegCategory(activeStore.category || 'Comercio General');
     setRegDescription(activeStore.description || '');
+    setRegSocialLinks(activeStore.socialLinks || {});
     setRegNationalEnabled(activeStore.nationalShippingEnabled);
     setRegNationalCouriers(activeStore.nationalCouriers || 'MRW, Zoom, Tealca');
     setRegLocalEnabled(activeStore.localDeliveryEnabled);
@@ -544,12 +617,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     try {
       const created = await registerStoreTenant(user, {
         storeName: regStoreName,
+        slug: regSlug.trim() || undefined,
         registeredOwnerName: regOwnerName,
         rif: regRif,
         logoUrl: regLogoUrl,
         businessWhatsapp: regWhatsapp,
         category: regCategory,
         description: regDescription,
+        socialLinks: sanitizeSocialLinksMap(regSocialLinks),
         nationalShippingEnabled: regNationalEnabled,
         nationalCouriers: regNationalCouriers,
         localDeliveryEnabled: regLocalEnabled,
@@ -579,12 +654,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     try {
       await updateStoreTenantByOwner(activeStore, {
         storeName: regStoreName,
+        slug: regSlug.trim() || activeStore.slug,
         registeredOwnerName: regOwnerName,
         rif: regRif,
         logoUrl: regLogoUrl,
         businessWhatsapp: regWhatsapp,
         category: regCategory,
         description: regDescription,
+        socialLinks: sanitizeSocialLinksMap(regSocialLinks),
         nationalShippingEnabled: regNationalEnabled,
         nationalCouriers: regNationalCouriers,
         localDeliveryEnabled: regLocalEnabled,
@@ -594,7 +671,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         clothingSizesEnabled: regClothingSizesEnabled,
         defaultClothingSizes: normalizeSizeList(regDefaultClothingSizes),
       });
-      notify(tr('Datos fiscales, logo, tallas y preferencias de envío actualizados.', 'Tax details, logo, sizes, and shipping preferences updated.', '税务资料、徽标、尺码设置与配送偏好已更新。'));
+      notify(tr('Datos, enlace subdominio, redes sociales y envíos actualizados.', 'Store details, subdomain link, social profiles, and shipping updated.', '店铺资料、子域名链接、社交主页与配送设置已更新。'));
     } catch (err) {
       notifyError(err instanceof Error ? err.message : tr('Error actualizando tienda.', 'Error updating store.', '更新店铺资料时出错。'));
     } finally {
@@ -625,24 +702,28 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       title: t.merchant.pagoMovil,
       currency: 'Bs' as PlatformPaymentCurrency,
       value: billing.pagoMovil,
+      qrImageUrl: undefined as string | undefined,
     },
     {
       key: 'Transferencia Bancaria',
       title: t.merchant.bankTransfers,
       currency: 'Bs' as PlatformPaymentCurrency,
       value: billing.bankTransfers,
+      qrImageUrl: undefined as string | undefined,
     },
     {
       key: 'Binance Pay',
       title: t.merchant.binancePay,
       currency: 'USDT' as PlatformPaymentCurrency,
       value: billing.binancePay,
+      qrImageUrl: billing.binanceQrUrl,
     },
     {
       key: 'Bybit',
       title: t.merchant.bybitPay,
       currency: 'USDT' as PlatformPaymentCurrency,
       value: billing.bybitPay,
+      qrImageUrl: billing.bybitQrUrl,
     },
   ].filter(
     (item) =>
@@ -664,6 +745,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     accountHolder?: string;
     accountDetails: string;
     instructions?: string;
+    qrImageUrl?: string;
     isCustom: boolean;
     isStoreSpecific: boolean;
   }> = [
@@ -674,6 +756,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       accountHolder: pm.accountHolder,
       accountDetails: pm.accountDetails,
       instructions: pm.instructions,
+      qrImageUrl: pm.qrImageUrl,
       isCustom: true,
       isStoreSpecific: true,
     })),
@@ -684,6 +767,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       accountHolder: pm.accountHolder,
       accountDetails: pm.accountDetails,
       instructions: pm.instructions,
+      qrImageUrl: pm.qrImageUrl,
       isCustom: true,
       isStoreSpecific: false,
     })),
@@ -692,6 +776,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       label: `${base.title} (${base.currency})`,
       currency: base.currency,
       accountDetails: base.value,
+      qrImageUrl: base.qrImageUrl,
       isCustom: false,
       isStoreSpecific: false,
     })),
@@ -709,8 +794,9 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
       return;
     }
     const exists = subscriptionCheckoutOptions.some((opt) => opt.value === payMethod);
-    if (!exists || !hasManualPayMethodSelection) {
-      setPayMethod(subscriptionCheckoutOptions[0].value as SubscriptionPaymentMethod);
+    const defaultVal = subscriptionCheckoutOptions[0].value as SubscriptionPaymentMethod;
+    if ((!exists || !hasManualPayMethodSelection) && payMethod !== defaultVal) {
+      setPayMethod(defaultVal);
     }
   }, [
     activeStore?.id,
@@ -854,14 +940,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         createdAt: editingProduct?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setProducts((prev) => {
-        const next = editingProduct
-          ? prev.map((p) => (p.id === localProd.id ? localProd : p))
-          : [localProd, ...prev];
-        saveCachedStorefrontWarehouseProducts(activeStore.id, next);
-        saveCachedStoreProducts(activeStore.id, next);
-        return next;
-      });
+      const nextProducts = editingProduct
+        ? products.map((p) => (p.id === localProd.id ? localProd : p))
+        : [localProd, ...products];
+      setProducts(nextProducts);
+      saveCachedStorefrontWarehouseProducts(activeStore.id, nextProducts);
+      saveCachedStoreProducts(activeStore.id, nextProducts);
       queueOfflineMutation({
         type: 'storefront_product_upsert',
         label: `${tr('Catálogo', 'Catalog', '目录')} ${activeStore.storeName}: ${localProd.name}`,
@@ -909,6 +993,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
     setStPmHolder(activeStore?.registeredOwnerName || '');
     setStPmDetails('');
     setStPmInstructions('');
+    setStPmQrImageUrl('');
     setStPmAppliesIgtf(false);
     setStPmActive(true);
   };
@@ -928,6 +1013,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           accountHolder: stPmHolder,
           accountDetails: stPmDetails,
           instructions: stPmInstructions,
+          qrImageUrl: stPmQrImageUrl,
           appliesIgtf: stPmAppliesIgtf,
           isActive: stPmActive,
         },
@@ -1698,6 +1784,95 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             />
           </div>
 
+          {/* Store Subdomain URL Customization */}
+          <div className="bg-[#09090b]/70 border border-emerald-500/25 rounded-xl p-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5" />
+                <span>
+                  {tr(
+                    'Enlace Subdominio de Tu Tienda (para Bio de Redes Sociales)',
+                    'Your Store Subdomain URL (for Social Media Bio)',
+                    '店铺专属子域名短链（适合放在社交媒体主页简介）'
+                  )}
+                </span>
+              </label>
+              {slugAvailability === 'checking' && (
+                <span className="text-[11px] text-zinc-400">{tr('Verificando...', 'Checking...', '检测中...')}</span>
+              )}
+              {slugAvailability === 'available' && (
+                <span className="text-[11px] text-emerald-400 font-semibold">
+                  ✓ {tr('Disponible', 'Available', '可用')}
+                </span>
+              )}
+              {slugAvailability === 'taken' && (
+                <span className="text-[11px] text-red-400 font-semibold">
+                  ✕ {tr('En uso por otra tienda', 'Already taken', '已被其他店铺占用')}
+                </span>
+              )}
+              {slugAvailability === 'invalid' && (
+                <span className="text-[11px] text-amber-400 font-semibold">
+                  {tr('Mín. 2 caracteres (letras, números y guiones)', 'Min 2 chars (lowercase, numbers & hyphens)', '至少 2 个字符（小写字母、数字和连字符）')}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex-1 flex items-center bg-[#111114] border border-white/[0.1] rounded-xl overflow-hidden">
+                <span className="px-3 py-2.5 text-xs font-mono text-zinc-400 bg-zinc-900/70 border-r border-white/[0.08] shrink-0">
+                  /@
+                </span>
+                <input
+                  type="text"
+                  maxLength={60}
+                  value={regSlug}
+                  onChange={(e) => {
+                    setRegSlugManuallyEdited(true);
+                    setRegSlug(normalizeStoreSubdomainSlug(e.target.value));
+                  }}
+                  placeholder="mi-boutique"
+                  className="w-full px-3 py-2.5 bg-transparent text-xs font-mono text-white focus:outline-none"
+                />
+              </div>
+              <div className="text-[11px] font-mono text-zinc-400 px-3 py-2 rounded-xl bg-[#111114] border border-white/[0.06] truncate">
+                {getStoreSubdomainDisplay(regSlug || 'mi-tienda')}
+              </div>
+            </div>
+          </div>
+
+          {/* Store Social Media Profiles */}
+          <div className="bg-[#09090b]/70 border border-white/[0.08] rounded-xl p-4 space-y-3">
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Share2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>
+                {tr(
+                  'Redes Sociales de Tu Tienda (Opcional)',
+                  'Store Social Media Profiles (Optional)',
+                  '店铺社交媒体主页（可选）'
+                )}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {SOCIAL_PLATFORMS.map((soc) => (
+                <div key={`reg-soc-${soc.key}`}>
+                  <label className="text-[11px] text-zinc-400 block mb-1">{soc.label}</label>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={regSocialLinks[soc.key] || ''}
+                    onChange={(e) =>
+                      setRegSocialLinks((prev) => ({
+                        ...prev,
+                        [soc.key]: e.target.value,
+                      }))
+                    }
+                    placeholder={soc.placeholder}
+                    className="w-full px-3 py-2 bg-[#111114] border border-white/[0.08] rounded-lg text-xs text-white"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Universal Clothing / Product Sizes Configurator (Indistinct of project/category) */}
           <div className="bg-[#09090b]/70 border border-amber-500/25 rounded-xl p-4 space-y-3">
             <label className="flex items-start gap-2.5 cursor-pointer">
@@ -1961,7 +2136,12 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             </button>
           )}
           <button
-            onClick={() => setIsCreatingNewStore(true)}
+            onClick={() => {
+              setIsCreatingNewStore(true);
+              setRegSlug('');
+              setRegSlugManuallyEdited(false);
+              setRegSocialLinks({});
+            }}
             className="px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.08] text-xs font-medium text-white flex items-center justify-center gap-1.5 min-h-[40px] whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
@@ -1976,6 +2156,95 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Shareable Subdomain URL Banner for Social Media */}
+      {(() => {
+        const liveAtUrl = getStoreShareUrl(activeStore.slug, 'live_at');
+        const subdomainPreview = getStoreSubdomainDisplay(activeStore.slug);
+        const subdomainUrl = getStoreShareUrl(activeStore.slug, 'subdomain_preview');
+        const intents = buildSocialShareIntents(liveAtUrl, activeStore.storeName);
+        const isSharedEnv =
+          typeof window !== 'undefined' && isSharedHostingOrLocalHost(window.location.hostname);
+
+        return (
+          <div className="bg-[#111114] border border-emerald-500/25 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {tr(
+                    'Enlace Subdominio de Tu Tienda para Redes Sociales',
+                    'Store Subdomain Link for Social Media Sharing',
+                    '用于社交媒体分享的店铺专属链接'
+                  )}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-mono text-white bg-[#09090b] border border-white/[0.08] px-2.5 py-1 rounded-lg break-all">
+                  {liveAtUrl}
+                </span>
+                <span className="text-zinc-500 text-[11px] font-mono">
+                  · {subdomainPreview}
+                </span>
+              </div>
+              {isSharedEnv && (
+                <p className="text-[11px] text-zinc-400">
+                  {tr(
+                    'Comparte el enlace /@' + activeStore.slug + ' ahora mismo en Instagram, TikTok, WhatsApp o Facebook. También soporta subdominio directo al vincular dominio propio.',
+                    'Share the /@' + activeStore.slug + ' link right away in Instagram, TikTok, WhatsApp, or Facebook bios. Also routes wildcard subdomains on custom domains.',
+                    '可立即将 /@' + activeStore.slug + ' 链接放入 Instagram、TikTok、WhatsApp 或 Facebook 简介；绑定自定义域名后亦可直接启用子域名访问。'
+                  )}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(liveAtUrl);
+                  setLinkCopiedKey('at');
+                  setTimeout(() => setLinkCopiedKey(null), 1800);
+                  notify(tr('Enlace de tienda copiado.', 'Store link copied.', '店铺链接已复制。'));
+                }}
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                {linkCopiedKey === 'at' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{linkCopiedKey === 'at' ? tr('Copiado', 'Copied', '已复制') : tr('Copiar Enlace', 'Copy Link', '复制链接')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(subdomainUrl);
+                  setLinkCopiedKey('subdomain');
+                  setTimeout(() => setLinkCopiedKey(null), 1800);
+                  notify(tr('Formato subdominio copiado.', 'Subdomain URL copied.', '子域名格式已复制。'));
+                }}
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-zinc-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Globe className="w-3.5 h-3.5 text-amber-400" />
+                <span>{linkCopiedKey === 'subdomain' ? tr('Copiado', 'Copied', '已复制') : tr('Copiar Subdominio', 'Copy Subdomain', '复制子域名')}</span>
+              </button>
+              <a
+                href={intents.whatsapp}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 border border-emerald-500/35 text-emerald-300 text-xs font-semibold flex items-center gap-1.5"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-zinc-300 text-xs font-semibold cursor-pointer"
+              >
+                {tr('Personalizar URL / Redes', 'Customize URL / Social', '自定义链接 / 社交')}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {statusMessage && (
         <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-200">
@@ -2368,6 +2637,46 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       {displayInstructions && (
                         <p className="text-zinc-400 text-[11px]">{displayInstructions}</p>
                       )}
+                      {opt.qrImageUrl && (
+                        <div className="pt-1.5 flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMerchantZoomQr({
+                                qrUrl: opt.qrImageUrl!,
+                                title: displayOptName,
+                                subtitle: `${exactPayAmount}`,
+                                accountDetails: opt.accountDetails,
+                              });
+                            }}
+                            className="bg-white p-1.5 rounded-lg border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                          >
+                            <img
+                              src={opt.qrImageUrl}
+                              alt={displayOptName}
+                              referrerPolicy="no-referrer"
+                              className="w-16 h-16 object-contain"
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMerchantZoomQr({
+                                qrUrl: opt.qrImageUrl!,
+                                title: displayOptName,
+                                subtitle: `${exactPayAmount}`,
+                                accountDetails: opt.accountDetails,
+                              });
+                            }}
+                            className="text-[11px] text-amber-300 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{tr('Escanear / Ampliar QR', 'Scan / Zoom QR', '扫码 / 放大二维码')}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -2502,6 +2811,68 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       {activeSelectedSubscriptionOption.instructions && (
                         <div className="text-[11px] text-zinc-400">
                           {translateCommonPaymentInstruction(activeSelectedSubscriptionOption.instructions, lang)}
+                        </div>
+                      )}
+                      {activeSelectedSubscriptionOption.qrImageUrl && (
+                        <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-3 border-t border-white/[0.06] mt-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMerchantZoomQr({
+                                qrUrl: activeSelectedSubscriptionOption.qrImageUrl!,
+                                title: translatePaymentMethodLabel(
+                                  activeSelectedSubscriptionOption.value,
+                                  lang
+                                ),
+                                subtitle: formatSubscriptionOptionAmount(
+                                  activeSelectedSubscriptionOption.currency,
+                                  netSubscriptionUSD
+                                ),
+                                accountDetails: activeSelectedSubscriptionOption.accountDetails,
+                              })
+                            }
+                            className="bg-white p-2 rounded-xl border border-white/20 w-fit hover:scale-105 transition-transform cursor-pointer"
+                          >
+                            <img
+                              src={activeSelectedSubscriptionOption.qrImageUrl}
+                              alt={activeSelectedSubscriptionOption.value}
+                              referrerPolicy="no-referrer"
+                              className="w-28 h-28 object-contain"
+                            />
+                          </button>
+                          <div className="space-y-1">
+                            <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>{tr('Código QR Oficial Listo para Escanear', 'Official QR Code Ready to Scan', '官方收款二维码（可直接扫码）')}</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400">
+                              {tr(
+                                'Abre Binance o Bybit, escanea el QR y pega el Order ID o referencia arriba.',
+                                'Open Binance or Bybit, scan the QR, and enter the Order ID or reference above.',
+                                '打开 Binance 或 Bybit 扫码转账，并在上方填入订单号或参考号。'
+                              )}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMerchantZoomQr({
+                                  qrUrl: activeSelectedSubscriptionOption.qrImageUrl!,
+                                  title: translatePaymentMethodLabel(
+                                    activeSelectedSubscriptionOption.value,
+                                    lang
+                                  ),
+                                  subtitle: formatSubscriptionOptionAmount(
+                                    activeSelectedSubscriptionOption.currency,
+                                    netSubscriptionUSD
+                                  ),
+                                  accountDetails: activeSelectedSubscriptionOption.accountDetails,
+                                })
+                              }
+                              className="text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                            >
+                              {tr('Ampliar QR en pantalla completa', 'Zoom QR fullscreen', '全屏放大二维码')}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3969,6 +4340,105 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
             </div>
           </div>
 
+          {/* Store Subdomain URL Customization */}
+          <div className="bg-[#09090b] border border-emerald-500/25 rounded-xl p-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5" />
+                <span>
+                  {tr(
+                    'URL Subdominio Personalizado de Tu Tienda',
+                    'Custom Store Subdomain URL',
+                    '自定义店铺子域名链接'
+                  )}
+                </span>
+              </label>
+              {slugAvailability === 'checking' && (
+                <span className="text-[11px] text-zinc-400">{tr('Verificando...', 'Checking...', '检测中...')}</span>
+              )}
+              {slugAvailability === 'available' && (
+                <span className="text-[11px] text-emerald-400 font-semibold">
+                  ✓ {tr('Disponible', 'Available', '可用')}
+                </span>
+              )}
+              {slugAvailability === 'taken' && (
+                <span className="text-[11px] text-red-400 font-semibold">
+                  ✕ {tr('Ya está en uso por otra tienda', 'Already taken by another store', '已被其他店铺使用')}
+                </span>
+              )}
+              {slugAvailability === 'invalid' && (
+                <span className="text-[11px] text-amber-400 font-semibold">
+                  {tr('Usa 2–60 caracteres: minúsculas, números y guiones', 'Use 2–60 chars: lowercase, numbers & hyphens', '请使用 2–60 个字符：小写字母、数字和连字符')}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="flex items-center bg-[#111114] border border-white/[0.1] rounded-xl overflow-hidden">
+                <span className="px-3 py-2.5 text-xs font-mono text-zinc-400 bg-zinc-900/70 border-r border-white/[0.08] shrink-0">
+                  /@
+                </span>
+                <input
+                  type="text"
+                  maxLength={60}
+                  value={regSlug}
+                  onChange={(e) => {
+                    setRegSlugManuallyEdited(true);
+                    setRegSlug(normalizeStoreSubdomainSlug(e.target.value));
+                  }}
+                  placeholder="mi-tienda"
+                  className="w-full px-3 py-2.5 bg-transparent text-xs font-mono text-white focus:outline-none"
+                />
+              </div>
+              <div className="px-3 py-2.5 rounded-xl bg-[#111114] border border-white/[0.08] text-[11px] font-mono text-zinc-300 flex items-center justify-between gap-2">
+                <span className="truncate">{getStoreSubdomainDisplay(regSlug || activeStore.slug)}</span>
+                <span className="text-emerald-400 shrink-0">/ @{regSlug || activeStore.slug}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Store Social Networks Configuration */}
+          <div className="bg-[#09090b] border border-white/[0.08] rounded-xl p-4 space-y-3">
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  {tr(
+                    'Redes Sociales de Tu Tienda (Visibles en Directorio y Perfil)',
+                    'Store Social Networks (Visible in Directory & Storefront)',
+                    '店铺社交媒体账号（展示在商城目录与店铺主页）'
+                  )}
+                </span>
+              </h3>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                {tr(
+                  'Ingresa @usuario o la URL completa (ej: @mimarca o https://instagram.com/mimarca).',
+                  'Enter @handle or full URL (e.g. @mybrand or https://instagram.com/mybrand).',
+                  '输入 @账号 或完整网址（例如 @mybrand 或 https://instagram.com/mybrand）。'
+                )}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {SOCIAL_PLATFORMS.map((soc) => (
+                <div key={`set-soc-${soc.key}`}>
+                  <label className="text-[11px] text-zinc-400 block mb-1">{soc.label}</label>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    value={regSocialLinks[soc.key] || ''}
+                    onChange={(e) =>
+                      setRegSocialLinks((prev) => ({
+                        ...prev,
+                        [soc.key]: e.target.value,
+                      }))
+                    }
+                    placeholder={soc.placeholder}
+                    className="w-full px-3 py-2 bg-[#111114] border border-white/[0.08] rounded-lg text-xs text-white"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Store-level Default Clothing / Apparel Sizes Settings */}
           <div className="bg-[#09090b] border border-amber-500/25 rounded-xl p-4 space-y-3">
             <label className="flex items-start gap-2.5 text-xs cursor-pointer">
@@ -4158,7 +4628,8 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                       [
                         { name: 'Pago Móvil', currency: 'Bs' as PlatformPaymentCurrency, appliesIgtf: false },
                         { name: 'Transferencia Banesco', currency: 'Bs' as PlatformPaymentCurrency, appliesIgtf: false },
-                        { name: 'Binance Pay', currency: 'USDT' as PlatformPaymentCurrency, appliesIgtf: false },
+                        { name: 'Binance Pay (QR)', currency: 'USDT' as PlatformPaymentCurrency, appliesIgtf: false },
+                        { name: 'Bybit Pay (QR)', currency: 'USDT' as PlatformPaymentCurrency, appliesIgtf: false },
                         { name: 'Zinli', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
                         { name: 'Zelle', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
                         { name: 'Efectivo USD', currency: 'USD' as PlatformPaymentCurrency, appliesIgtf: true },
@@ -4272,6 +4743,20 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   className="w-full px-3 py-2.5 min-h-[42px] bg-[#09090b] border border-white/[0.1] rounded-xl text-xs text-white"
                 />
               </div>
+
+              <QrUploadField
+                value={stPmQrImageUrl}
+                onChange={setStPmQrImageUrl}
+                accent="emerald"
+                onZoom={(qrUrl) =>
+                  setMerchantZoomQr({
+                    qrUrl,
+                    title: stPmName || 'QR',
+                    subtitle: activeStore.storeName,
+                    accountDetails: stPmDetails,
+                  })
+                }
+              />
 
               <div className="space-y-2.5 pt-1">
                 <label className="flex items-center gap-2.5 text-xs text-zinc-200 cursor-pointer">
@@ -4398,6 +4883,32 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                         {method.instructions && (
                           <div className="text-zinc-400 text-[11px]">{translateCommonPaymentInstruction(method.instructions, lang)}</div>
                         )}
+                        {method.qrImageUrl && (
+                          <div className="pt-1.5 flex items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setMerchantZoomQr({
+                                  qrUrl: method.qrImageUrl!,
+                                  title: translatePaymentMethodLabel(method.name, lang),
+                                  subtitle: activeStore.storeName,
+                                  accountDetails: method.accountDetails,
+                                })
+                              }
+                              className="bg-white p-1.5 rounded-lg border border-white/20 hover:scale-105 transition-transform cursor-pointer"
+                            >
+                              <img
+                                src={method.qrImageUrl}
+                                alt={method.name}
+                                referrerPolicy="no-referrer"
+                                className="w-14 h-14 object-contain"
+                              />
+                            </button>
+                            <span className="text-[11px] text-emerald-300 font-semibold">
+                              {tr('QR activo para clientes (clic para ampliar)', 'Active QR for buyers (click to zoom)', '已对买家开启二维码（点击放大）')}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -4424,6 +4935,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                             setStPmHolder(method.accountHolder);
                             setStPmDetails(method.accountDetails);
                             setStPmInstructions(method.instructions || '');
+                            setStPmQrImageUrl(method.qrImageUrl || '');
                             setStPmAppliesIgtf(Boolean(method.appliesIgtf));
                             setStPmActive(method.isActive);
                           }}
@@ -4483,6 +4995,15 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
           />
         </div>
       )}
+
+      <QrZoomModal
+        isOpen={Boolean(merchantZoomQr)}
+        qrUrl={merchantZoomQr?.qrUrl}
+        title={merchantZoomQr?.title || 'QR'}
+        subtitle={merchantZoomQr?.subtitle}
+        accountDetails={merchantZoomQr?.accountDetails}
+        onClose={() => setMerchantZoomQr(null)}
+      />
     </section>
   );
 };

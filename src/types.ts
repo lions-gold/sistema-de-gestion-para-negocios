@@ -292,6 +292,7 @@ export interface PlatformPaymentMethod {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   isActive: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -307,6 +308,7 @@ export interface StoreSubscriptionPaymentMethod {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   isActive: boolean;
   createdAt?: unknown;
   updatedAt?: unknown;
@@ -332,6 +334,7 @@ export interface StorePaymentMethod {
   accountHolder: string;
   accountDetails: string;
   instructions?: string;
+  qrImageUrl?: string;
   appliesIgtf: boolean;
   isActive: boolean;
   createdAt?: unknown;
@@ -352,10 +355,22 @@ export interface PlatformBillingSettings {
   pagoMovil: string;
   binancePay: string;
   bybitPay: string;
+  binanceQrUrl?: string;
+  bybitQrUrl?: string;
   supportWhatsapp: string;
   warehousePosEnabled?: boolean;
   referralRewardUSD?: number;
   updatedAt?: unknown;
+}
+
+export interface StoreSocialLinks {
+  instagram?: string;
+  tiktok?: string;
+  facebook?: string;
+  x?: string;
+  youtube?: string;
+  telegram?: string;
+  website?: string;
 }
 
 export interface StoreTenant {
@@ -369,6 +384,7 @@ export interface StoreTenant {
   businessWhatsapp: string;
   category?: string;
   description?: string;
+  socialLinks?: StoreSocialLinks;
   status: StoreStatus;
   subscriptionPriceUSD: number;
   nationalShippingEnabled: boolean;

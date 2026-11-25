@@ -3,7 +3,6 @@ import { User } from 'firebase/auth';
 import {
   AlertTriangle,
   BarChart3,
-  CheckCircle2,
   CheckSquare,
   Compass,
   Copy,
@@ -11,7 +10,6 @@ import {
   Mail,
   RefreshCw,
   Send,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Square,

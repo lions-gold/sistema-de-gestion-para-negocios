@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
-  AlertTriangle,
-  BellOff,
   CheckCircle2,
   Clock,
   Compass,

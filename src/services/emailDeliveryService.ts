@@ -207,6 +207,7 @@ export interface DispatchStoreEmailParams {
   storeName: string;
   exchangeRate: number;
   config: StoreEmailConfig;
+  testRecipientEmail?: string;
   triggerEvent?: string;
   products?: Product[];
   sale?: Sale;
@@ -227,10 +228,29 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
   queuedOffline?: boolean;
   message: string;
   deliveryChannel?: 'smtp' | 'resend';
+  latencyMs?: number;
+  messageId?: string;
+  testedAt?: string;
+  recipientEmail?: string;
+  stage?: 'syntax' | 'network' | 'auth' | 'api_key' | 'sender' | 'unauthorized';
   log: StockAlertEmailLog;
 }> {
-  const { action, storeId, storeName, exchangeRate, config, triggerEvent, products = [], sale, salesSummary } =
-    params;
+  const {
+    action,
+    storeId,
+    storeName,
+    exchangeRate,
+    config,
+    testRecipientEmail,
+    triggerEvent,
+    products = [],
+    sale,
+    salesSummary,
+  } = params;
+  const effectiveRecipientEmail =
+    action === 'test' && testRecipientEmail?.trim()
+      ? testRecipientEmail.trim()
+      : config.recipientEmail;
 
   const nowStr = new Date().toLocaleDateString('es-VE', {
     day: '2-digit',
@@ -267,7 +287,7 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     const entry: StockAlertEmailLog = {
       id: `mail-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: nowStr,
-      recipientEmail: config.recipientEmail,
+      recipientEmail: effectiveRecipientEmail,
       subject,
       triggerEvent:
         triggerEvent ||
@@ -348,6 +368,7 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     storeId,
     storeName,
     exchangeRate,
+    testRecipientEmail: action === 'test' ? effectiveRecipientEmail : undefined,
     triggerEvent,
     config: {
       provider: config.provider,
@@ -402,6 +423,11 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     let data: {
       ok?: boolean;
       deliveryChannel?: 'smtp' | 'resend';
+      latencyMs?: number;
+      messageId?: string;
+      testedAt?: string;
+      recipientEmail?: string;
+      stage?: 'syntax' | 'network' | 'auth' | 'api_key' | 'sender' | 'unauthorized';
       message?: string;
       error?: string;
     } = {};
@@ -422,6 +448,10 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
       return {
         ok: true,
         deliveryChannel: channel,
+        latencyMs: data.latencyMs,
+        messageId: data.messageId,
+        testedAt: data.testedAt,
+        recipientEmail: data.recipientEmail || effectiveRecipientEmail,
         message: data.message || `Correo enviado vía ${channel.toUpperCase()}.`,
         log,
       };
@@ -431,6 +461,11 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     const log = buildLog('Error de Envío', config.provider, errMsg);
     return {
       ok: false,
+      deliveryChannel: data.deliveryChannel || config.provider,
+      latencyMs: data.latencyMs,
+      testedAt: data.testedAt,
+      recipientEmail: data.recipientEmail || effectiveRecipientEmail,
+      stage: data.stage,
       message: errMsg,
       log,
     };
@@ -439,6 +474,7 @@ export async function dispatchStoreEmail(params: DispatchStoreEmailParams): Prom
     const log = buildLog('Error de Envío', config.provider, msg);
     return {
       ok: false,
+      recipientEmail: effectiveRecipientEmail,
       message: msg,
       log,
     };
