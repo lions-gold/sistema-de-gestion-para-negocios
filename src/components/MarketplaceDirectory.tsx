@@ -54,6 +54,7 @@ import {
 import { mapGoogleAuthError } from '../services/authService';
 import { GoogleAuthButton } from './GoogleAuthButton';
 import { QrZoomModal } from './QrCodeModalAndField';
+import { StoreQrShareModal } from './StoreQrShareModal';
 import { exportStoreOrderInvoicePDF } from '../utils/pdfExport';
 import { useLanguage } from '../i18n/LanguageContext';
 import { normalizeVenezuelanPhone } from '../utils/venezuelaTime';
@@ -149,6 +150,7 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     subtitle?: string;
     accountDetails?: string;
   } | null>(null);
+  const [qrShareStore, setQrShareStore] = useState<StoreTenant | null>(null);
 
   // Per-store isolated shopping carts persisted in localStorage
   const [cartsByStore, setCartsByStore] = useState<Record<string, StoreCartItem[]>>(() => {
@@ -237,7 +239,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
       (s) =>
         s.slug === initialStoreSlug ||
         (cleanTarget && normalizeStoreSubdomainSlug(s.slug) === cleanTarget) ||
-        s.id === initialStoreSlug
+        s.id === initialStoreSlug ||
+        (cleanTarget && s.id.toLowerCase() === cleanTarget)
     );
     if (match) {
       setSelectedStore(match);
@@ -825,6 +828,16 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                       <Share2 className="w-3.5 h-3.5 text-amber-400" />
                     )}
                     <span>{copiedSlug ? t.marketplace.linkCopied : t.marketplace.copyStoreLink}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setQrShareStore(selectedStore)}
+                    className="px-3 py-2 rounded-lg bg-amber-400/15 hover:bg-amber-400/25 border border-amber-400/40 text-xs font-bold text-amber-300 flex items-center gap-1.5 min-h-[44px] cursor-pointer"
+                    title={tr('Generar QR personalizado para redes sociales', 'Generate custom QR for social sharing', '生成店铺社交分享二维码')}
+                  >
+                    <QrCode className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tr('QR Tienda', 'Store QR', '店铺二维码')}</span>
                   </button>
 
                   <button
@@ -2104,6 +2117,13 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           accountDetails={zoomQrData?.accountDetails}
           onClose={() => setZoomQrData(null)}
         />
+
+        <StoreQrShareModal
+          isOpen={Boolean(qrShareStore)}
+          store={qrShareStore}
+          onClose={() => setQrShareStore(null)}
+          onVisitStore={(st) => setSelectedStore(st)}
+        />
       </section>
     );
   }
@@ -2436,15 +2456,36 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                   </div>
                 </div>
 
-                <div className="px-5 py-3.5 bg-[#09090b]/45 border-t border-white/[0.08] flex items-center justify-between text-xs font-bold text-amber-400 group-hover:text-amber-300">
-                  <span>{t.marketplace.visitCatalogBtn}</span>
-                  <ShoppingCart className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                <div className="px-5 py-3.5 bg-[#09090b]/45 border-t border-white/[0.08] flex items-center justify-between gap-2 text-xs font-bold text-amber-400 group-hover:text-amber-300">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>{t.marketplace.visitCatalogBtn}</span>
+                    <ShoppingCart className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrShareStore(store);
+                    }}
+                    title={tr('Compartir QR de esta tienda', 'Share this store QR', '分享此店铺二维码')}
+                    className="px-2.5 py-1.5 rounded-lg bg-[#111114] border border-white/[0.12] hover:border-amber-400/50 text-zinc-200 hover:text-amber-300 text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                    <span>QR</span>
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      <StoreQrShareModal
+        isOpen={Boolean(qrShareStore)}
+        store={qrShareStore}
+        onClose={() => setQrShareStore(null)}
+        onVisitStore={(st) => setSelectedStore(st)}
+      />
     </section>
   );
 };

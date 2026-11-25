@@ -47,6 +47,7 @@ import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
 import { SizeTagBuilder } from './SizeTagBuilder';
 import { LanguageSettings } from './LanguageSettings';
 import { QrUploadField, QrZoomModal } from './QrCodeModalAndField';
+import { StoreQrShareModal } from './StoreQrShareModal';
 import { normalizeSizeList, buildCartLineKey } from '../utils/clothingSizes';
 import {
   buildSocialShareIntents,
@@ -244,6 +245,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
   const [regCategory, setRegCategory] = useState('Comercio General');
   const [regDescription, setRegDescription] = useState('');
   const [regSocialLinks, setRegSocialLinks] = useState<StoreSocialLinks>({});
+  const [showStoreQrModal, setShowStoreQrModal] = useState(false);
   const [regNationalEnabled, setRegNationalEnabled] = useState(true);
   const [regNationalCouriers, setRegNationalCouriers] = useState('MRW, Zoom, Tealca');
   const [regLocalEnabled, setRegLocalEnabled] = useState(true);
@@ -2224,6 +2226,14 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               >
                 <Globe className="w-3.5 h-3.5 text-amber-400" />
                 <span>{linkCopiedKey === 'subdomain' ? tr('Copiado', 'Copied', '已复制') : tr('Copiar Subdominio', 'Copy Subdomain', '复制子域名')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStoreQrModal(true)}
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>{tr('QR de Tienda', 'Store QR', '店铺二维码')}</span>
               </button>
               <a
                 href={intents.whatsapp}
@@ -4394,6 +4404,23 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 <span className="text-emerald-400 shrink-0">/ @{regSlug || activeStore.slug}</span>
               </div>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <span className="text-[11px] text-zinc-400">
+                {tr(
+                  'Genera tu tarjeta QR exclusiva con el enlace directo de tu tienda para redes e impresos.',
+                  'Generate a custom QR card with your store link for social bios and print.',
+                  '生成带有店铺专属直达链接的二维码海报，适合社交媒体或线下打印。'
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowStoreQrModal(true)}
+                className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 text-xs font-bold inline-flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>{tr('Generar QR de Tu Tienda', 'Generate Store QR', '生成店铺二维码')}</span>
+              </button>
+            </div>
           </div>
 
           {/* Store Social Networks Configuration */}
@@ -5003,6 +5030,13 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         subtitle={merchantZoomQr?.subtitle}
         accountDetails={merchantZoomQr?.accountDetails}
         onClose={() => setMerchantZoomQr(null)}
+      />
+
+      <StoreQrShareModal
+        isOpen={showStoreQrModal}
+        store={activeStore || null}
+        onClose={() => setShowStoreQrModal(false)}
+        onVisitStore={(st) => onOpenStorefront(st.slug)}
       />
     </section>
   );
