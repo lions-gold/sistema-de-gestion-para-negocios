@@ -41,6 +41,8 @@ import {
   QrCode,
   Share2,
   Link2,
+  ShieldCheck,
+  Lock,
 } from 'lucide-react';
 import { MerchantVectorTab } from './MerchantVectorTab';
 import { EmailProviderConfigPanel } from './EmailProviderConfigPanel';
@@ -51,9 +53,8 @@ import { StoreQrShareModal } from './StoreQrShareModal';
 import { normalizeSizeList, buildCartLineKey } from '../utils/clothingSizes';
 import {
   buildSocialShareIntents,
-  getStoreShareUrl,
   getStoreSubdomainDisplay,
-  isSharedHostingOrLocalHost,
+  getStoreUrlBundle,
   isValidStoreSubdomainSlug,
   normalizeStoreSubdomainSlug,
   sanitizeSocialLinksMap,
@@ -2159,45 +2160,67 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
         </div>
       </div>
 
-      {/* Shareable Subdomain URL Banner for Social Media */}
+      {/* Certified Shareable Storefront & Subdomain URL Banner */}
       {(() => {
-        const liveAtUrl = getStoreShareUrl(activeStore.slug, 'live_at');
-        const subdomainPreview = getStoreSubdomainDisplay(activeStore.slug);
-        const subdomainUrl = getStoreShareUrl(activeStore.slug, 'subdomain_preview');
+        const urlBundle = getStoreUrlBundle(activeStore.slug);
+        const liveAtUrl = urlBundle.canonicalUrl;
         const intents = buildSocialShareIntents(liveAtUrl, activeStore.storeName);
-        const isSharedEnv =
-          typeof window !== 'undefined' && isSharedHostingOrLocalHost(window.location.hostname);
 
         return (
           <div className="bg-[#111114] border border-emerald-500/25 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <div className="space-y-1 min-w-0">
-              <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+            <div className="space-y-1.5 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-emerald-300">
                 <Link2 className="w-3.5 h-3.5 shrink-0" />
                 <span>
                   {tr(
-                    'Enlace Subdominio de Tu Tienda para Redes Sociales',
-                    'Store Subdomain Link for Social Media Sharing',
-                    '用于社交媒体分享的店铺专属链接'
+                    'Enlace Web & Subdominio Certificado de Tu Tienda',
+                    'Certified Web & Subdomain Link for Your Store',
+                    '店铺专属 HTTPS 认证链接'
                   )}
                 </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                  <Lock className="w-3 h-3 shrink-0" />
+                  <span>
+                    {urlBundle.isHttpsCertified
+                      ? tr('HTTPS / TLS Certificado', 'HTTPS / TLS Certified', 'HTTPS 安全认证')
+                      : tr('HTTP Local', 'Local HTTP', '本地调试')}
+                  </span>
+                </span>
               </div>
+
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-mono text-white bg-[#09090b] border border-white/[0.08] px-2.5 py-1 rounded-lg break-all">
-                  {liveAtUrl}
-                </span>
-                <span className="text-zinc-500 text-[11px] font-mono">
-                  · {subdomainPreview}
+                <a
+                  href={liveAtUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if (activeStore.status !== 'active') return;
+                    e.preventDefault();
+                    onOpenStorefront(activeStore.slug);
+                  }}
+                  className="font-mono text-white hover:text-amber-300 bg-[#09090b] border border-white/[0.08] px-2.5 py-1 rounded-lg break-all inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <span>{liveAtUrl}</span>
+                  <ExternalLink className="w-3 h-3 text-amber-400 shrink-0" />
+                </a>
+                <span className="text-zinc-400 text-[11px] font-mono break-all">
+                  · {urlBundle.alternateUrl}
                 </span>
               </div>
-              {isSharedEnv && (
-                <p className="text-[11px] text-zinc-400">
-                  {tr(
-                    'Comparte el enlace /@' + activeStore.slug + ' ahora mismo en Instagram, TikTok, WhatsApp o Facebook. También soporta subdominio directo al vincular dominio propio.',
-                    'Share the /@' + activeStore.slug + ' link right away in Instagram, TikTok, WhatsApp, or Facebook bios. Also routes wildcard subdomains on custom domains.',
-                    '可立即将 /@' + activeStore.slug + ' 链接放入 Instagram、TikTok、WhatsApp 或 Facebook 简介；绑定自定义域名后亦可直接启用子域名访问。'
-                  )}
-                </p>
-              )}
+
+              <p className="text-[11px] text-zinc-400">
+                {!urlBundle.isWildcardTlsSupported
+                  ? tr(
+                      `Usa ${liveAtUrl} o ${urlBundle.alternateUrl} (certificados con HTTPS válido). Al conectar tu propio dominio raíz con DNS/SSL wildcard operará también como https://${urlBundle.wildcardCustomPattern}.`,
+                      `Use ${liveAtUrl} or ${urlBundle.alternateUrl} (valid HTTPS SSL certificate). When linked to a custom root domain with wildcard DNS/SSL it also resolves https://${urlBundle.wildcardCustomPattern}.`,
+                      `请使用 ${liveAtUrl} 或 ${urlBundle.alternateUrl}（已配置有效 HTTPS 证书）；绑定带有泛域名解析与证书的自有域名后，亦可通过 https://${urlBundle.wildcardCustomPattern} 访问。`
+                    )
+                  : tr(
+                      `Subdominio wildcard HTTPS activo: https://${urlBundle.wildcardCustomPattern} y enlace directo ${liveAtUrl}.`,
+                      `HTTPS wildcard subdomain active: https://${urlBundle.wildcardCustomPattern} and direct link ${liveAtUrl}.`,
+                      `HTTPS 泛域名已生效：https://${urlBundle.wildcardCustomPattern} 及直达链接 ${liveAtUrl}。`
+                    )}
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -2207,7 +2230,7 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                   navigator.clipboard?.writeText(liveAtUrl);
                   setLinkCopiedKey('at');
                   setTimeout(() => setLinkCopiedKey(null), 1800);
-                  notify(tr('Enlace de tienda copiado.', 'Store link copied.', '店铺链接已复制。'));
+                  notify(tr('Enlace HTTPS oficial copiado.', 'Certified HTTPS link copied.', '已复制官方 HTTPS 链接。'));
                 }}
                 className="min-h-[38px] px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
               >
@@ -2217,15 +2240,29 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard?.writeText(subdomainUrl);
+                  navigator.clipboard?.writeText(urlBundle.alternateUrl);
                   setLinkCopiedKey('subdomain');
                   setTimeout(() => setLinkCopiedKey(null), 1800);
-                  notify(tr('Formato subdominio copiado.', 'Subdomain URL copied.', '子域名格式已复制。'));
+                  notify(tr('Enlace alterno certificado copiado.', 'Certified alternate link copied.', '已复制备用认证链接。'));
                 }}
                 className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-zinc-200 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
-                <Globe className="w-3.5 h-3.5 text-amber-400" />
-                <span>{linkCopiedKey === 'subdomain' ? tr('Copiado', 'Copied', '已复制') : tr('Copiar Subdominio', 'Copy Subdomain', '复制子域名')}</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>
+                  {linkCopiedKey === 'subdomain'
+                    ? tr('Copiado', 'Copied', '已复制')
+                    : urlBundle.isWildcardTlsSupported
+                      ? tr('Copiar Subdominio', 'Copy Subdomain', '复制子域名')
+                      : tr('Copiar Link Alterno', 'Copy Alternate Link', '复制备用链接')}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenStorefront(activeStore.slug)}
+                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#09090b] hover:bg-zinc-900 border border-white/[0.1] text-zinc-100 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                <span>{tr('Abrir Tienda', 'Open Store', '打开店铺')}</span>
               </button>
               <button
                 type="button"
@@ -4400,8 +4437,11 @@ export const MerchantPortal: React.FC<MerchantPortalProps> = ({
                 />
               </div>
               <div className="px-3 py-2.5 rounded-xl bg-[#111114] border border-white/[0.08] text-[11px] font-mono text-zinc-300 flex items-center justify-between gap-2">
-                <span className="truncate">{getStoreSubdomainDisplay(regSlug || activeStore.slug)}</span>
-                <span className="text-emerald-400 shrink-0">/ @{regSlug || activeStore.slug}</span>
+                <span className="truncate flex items-center gap-1.5">
+                  <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+                  <span className="truncate">{getStoreUrlBundle(regSlug || activeStore.slug).canonicalUrl}</span>
+                </span>
+                <span className="text-emerald-400 shrink-0">HTTPS</span>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

@@ -66,8 +66,7 @@ import {
 import {
   buildSocialShareIntents,
   getSocialPlatformEntries,
-  getStoreShareUrl,
-  getStoreSubdomainDisplay,
+  getStoreUrlBundle,
   normalizeStoreSubdomainSlug,
 } from '../utils/socialLinks';
 import { translateCategoryLabel } from '../utils/categoryI18n';
@@ -176,6 +175,10 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
   const [orderError, setOrderError] = useState<string | null>(null);
   const [botTrapWebsite, setBotTrapWebsite] = useState('');
   const checkoutMountedAtRef = useRef<number>(Date.now());
+  const prevInitialSlugRef = useRef<string | undefined>(initialStoreSlug);
+  const [storesLoaded, setStoresLoaded] = useState(false);
+  const [resolvingSlugTarget, setResolvingSlugTarget] = useState<string | null>(null);
+  const [slugNotFoundTarget, setSlugNotFoundTarget] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<{
     order: StoreOrder;
     items: StoreCartItem[];
@@ -226,14 +229,26 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
     const unsub = subscribeActiveStores((activeList) => {
       setStores(activeList);
+      setStoresLoaded(true);
       saveCachedStores(activeList);
     });
     return () => unsub();
   }, []);
 
-  // Resolve initialStoreSlug if provided
+  // Resolve initialStoreSlug (certified /@slug, /tienda/slug, ?tienda=slug, or wildcard subdomain)
   useEffect(() => {
-    if (!initialStoreSlug) return;
+    const prevSlug = prevInitialSlugRef.current;
+    prevInitialSlugRef.current = initialStoreSlug;
+
+    if (!initialStoreSlug) {
+      if (prevSlug) {
+        setSelectedStore(null);
+        setResolvingSlugTarget(null);
+        setSlugNotFoundTarget(null);
+      }
+      return;
+    }
+
     const cleanTarget = normalizeStoreSubdomainSlug(initialStoreSlug.replace(/^@/, ''));
     const match = stores.find(
       (s) =>
@@ -244,12 +259,42 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
     );
     if (match) {
       setSelectedStore(match);
-    } else if (!isAppEffectivelyOffline()) {
-      fetchStoreByIdOrSlug(cleanTarget || initialStoreSlug).then((found) => {
-        if (found && found.status === 'active') setSelectedStore(found);
-      });
+      setResolvingSlugTarget(null);
+      setSlugNotFoundTarget(null);
+      return;
     }
-  }, [initialStoreSlug, stores]);
+
+    if (isAppEffectivelyOffline()) {
+      if (storesLoaded) {
+        setResolvingSlugTarget(null);
+        setSlugNotFoundTarget(cleanTarget || initialStoreSlug);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    setSlugNotFoundTarget(null);
+    setResolvingSlugTarget(cleanTarget || initialStoreSlug);
+    fetchStoreByIdOrSlug(cleanTarget || initialStoreSlug)
+      .then((found) => {
+        if (cancelled) return;
+        if (found) {
+          setSelectedStore(found);
+          setSlugNotFoundTarget(null);
+        } else if (storesLoaded) {
+          setSlugNotFoundTarget(cleanTarget || initialStoreSlug);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setResolvingSlugTarget(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialStoreSlug, stores, storesLoaded]);
 
   // Subscribe to selected store's active products and configured payment methods (with offline cache)
   useEffect(() => {
@@ -799,6 +844,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
               setSelectedStore(null);
               setIsCartOpen(false);
               setCompletedOrder(null);
+              setSlugNotFoundTarget(null);
+              setResolvingSlugTarget(null);
             }}
             className="px-3.5 py-2 rounded-lg bg-[#111114] border border-white/[0.08] hover:border-amber-500/40 text-zinc-300 hover:text-white text-xs sm:text-sm font-medium flex items-center gap-2 transition-colors min-h-[44px]"
           >
@@ -808,8 +855,8 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
 
           <div className="flex flex-wrap items-center gap-2">
             {(() => {
-              const shareUrl = getStoreShareUrl(selectedStore.slug, 'live_at');
-              const subdomainLabel = getStoreSubdomainDisplay(selectedStore.slug);
+              const urlBundle = getStoreUrlBundle(selectedStore.slug);
+              const shareUrl = urlBundle.canonicalUrl;
               const shareIntents = buildSocialShareIntents(shareUrl, selectedStore.storeName);
               return (
                 <>
@@ -843,16 +890,18 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText(subdomainLabel);
+                      navigator.clipboard?.writeText(urlBundle.alternateUrl);
                       setCopiedSubdomainSlug(true);
                       setTimeout(() => setCopiedSubdomainSlug(false), 2000);
                     }}
-                    className="hidden sm:inline-flex px-3 py-2 rounded-lg bg-[#111114] border border-amber-500/25 hover:border-amber-400/50 text-xs text-amber-300 font-mono items-center gap-1.5 min-h-[44px] cursor-pointer"
-                    title={tr('Copiar dirección tipo subdominio', 'Copy subdomain address', '复制子域名链接')}
+                    className="hidden sm:inline-flex px-3 py-2 rounded-lg bg-[#111114] border border-emerald-500/25 hover:border-emerald-400/50 text-xs text-emerald-300 font-mono items-center gap-1.5 min-h-[44px] cursor-pointer"
+                    title={tr('Copiar enlace HTTPS directo de tienda', 'Copy certified HTTPS store URL', '复制已认证的 HTTPS 店铺直达链接')}
                   >
-                    <Link2 className="w-3.5 h-3.5 shrink-0" />
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
                     <span className="truncate max-w-[180px]">
-                      {copiedSubdomainSlug ? tr('¡Subdominio copiado!', 'Copied!', '已复制!') : subdomainLabel}
+                      {copiedSubdomainSlug
+                        ? tr('¡Enlace HTTPS copiado!', 'HTTPS link copied!', 'HTTPS 链接已复制!')
+                        : `/@${urlBundle.slug}`}
                     </span>
                   </button>
 
@@ -2312,6 +2361,48 @@ export const MarketplaceDirectory: React.FC<MarketplaceDirectoryProps> = ({
           </div>
         )}
       </div>
+
+      {/* Direct Storefront Link Resolution Feedback */}
+      {resolvingSlugTarget && (
+        <div className="bg-[#111114] border border-amber-400/30 rounded-xl p-4 flex items-center gap-3 text-xs sm:text-sm text-zinc-200">
+          <div className="w-5 h-5 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin shrink-0" />
+          <span>
+            {tr(
+              `Cargando tienda verificada /@${resolvingSlugTarget}...`,
+              `Opening verified store /@${resolvingSlugTarget}...`,
+              `正在打开认证店铺 /@${resolvingSlugTarget}...`
+            )}
+          </span>
+        </div>
+      )}
+
+      {!resolvingSlugTarget && slugNotFoundTarget && (
+        <div className="bg-[#111114] border border-amber-500/35 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+          <div className="space-y-0.5 text-zinc-300">
+            <div className="font-semibold text-amber-300">
+              {tr(
+                `No pudimos abrir /@${slugNotFoundTarget}`,
+                `Could not open /@${slugNotFoundTarget}`,
+                `无法打开 /@${slugNotFoundTarget}`
+              )}
+            </div>
+            <p className="text-xs text-zinc-400">
+              {tr(
+                'El enlace no coincide con una tienda activa o aún está pendiente de activación.',
+                'The link does not match an active store or is still pending activation.',
+                '该链接未匹配到已启用的店铺，或该店铺仍在等待审核启用。'
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSlugNotFoundTarget(null)}
+            className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/[0.1] text-xs font-semibold text-zinc-200 cursor-pointer"
+          >
+            {tr('Ver directorio completo', 'View full directory', '浏览全部认证店铺')}
+          </button>
+        </div>
+      )}
 
       {/* Active Stores Grid */}
       {filteredStores.length === 0 ? (

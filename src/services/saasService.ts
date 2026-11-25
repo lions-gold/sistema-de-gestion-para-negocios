@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import {
+  auth,
   db,
   handleFirestoreError,
   OperationType,
@@ -2926,11 +2927,44 @@ export async function fetchStoreByIdOrSlug(slugOrId: string): Promise<StoreTenan
     );
     const snap = await getDocs(q);
     if (!snap.empty) return snap.docs[0].data() as StoreTenant;
-    return null;
+
+    // If owner is signed in, allow previewing their store by slug even while pending activation
+    const currentUid = auth.currentUser?.uid;
+    if (currentUid) {
+      const ownerQ = query(
+        collection(db, 'stores'),
+        where('slug', '==', normalizedSlug),
+        where('ownerUid', '==', currentUid)
+      );
+      const ownerSnap = await getDocs(ownerQ);
+      if (!ownerSnap.empty) return ownerSnap.docs[0].data() as StoreTenant;
+    }
   } catch (error) {
     console.warn('Error resolviendo tienda por slug:', error);
-    return null;
   }
+
+  // Fallback to server-side cached active store resolution endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch(
+        `/api/stores/resolve?slug=${encodeURIComponent(normalizedSlug)}`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      if (resp.ok) {
+        const json = (await resp.json()) as {
+          found?: boolean;
+          store?: StoreTenant | null;
+        };
+        if (json.found && json.store) {
+          return json.store;
+        }
+      }
+    } catch {
+      // ignore network fallback error
+    }
+  }
+
+  return null;
 }
 
 // -----------------------------------------------------------------------------

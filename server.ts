@@ -38,6 +38,12 @@ import {
   issueAntiBotChallenge,
   verifyAntiBotChallenge,
 } from './lib/securityShieldServer';
+import {
+  extractStoreSlugFromRequest,
+  injectStorefrontSeoIntoHtml,
+  listActiveStoresForSitemap,
+  resolveActiveStoreServer,
+} from './lib/storefrontSeoServer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -444,6 +450,38 @@ app.post('/api/security/verify-human', (req, res) => {
   return res.json({ ok: true });
 });
 
+// Storefront Subdomain / Slug TLS & Active-Store Resolution Endpoint
+app.get('/api/stores/resolve', async (req, res) => {
+  const rawSlug =
+    typeof req.query.slug === 'string' ? req.query.slug : '';
+  const candidateSlug =
+    rawSlug.trim() ||
+    extractStoreSlugFromRequest(
+      req.path,
+      req.query as Record<string, unknown>,
+      req.headers.host || ''
+    ) ||
+    '';
+
+  const host = req.headers.host || 'ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app';
+  const proto = String(req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https')).split(',')[0].trim();
+  const baseOrigin = `${proto}://${host}`;
+
+  if (!candidateSlug) {
+    return res.status(400).json({ ok: false, found: false, error: 'Slug de tienda requerido.' });
+  }
+
+  const store = await resolveActiveStoreServer(candidateSlug);
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  return res.json({
+    ok: true,
+    found: Boolean(store),
+    tlsCertified: proto === 'https' || host.includes('.run.app'),
+    canonicalUrl: store ? `${baseOrigin}/@${store.slug}` : `${baseOrigin}/@${candidateSlug}`,
+    store,
+  });
+});
+
 // Explicit JSON 404 for unknown API routes
 app.all('/api/*', (_req, res) => {
   res.status(404).json({ error: 'Endpoint no encontrado en Smith Solutions E-Commerce API' });
@@ -515,10 +553,10 @@ Sitemap: ${baseUrl}/sitemap.xml
   );
 });
 
-// Serve dynamic sitemap.xml with live origin and current date
-app.get('/sitemap.xml', (req, res) => {
+// Serve dynamic sitemap.xml with live origin, current date, and all active store URLs
+app.get('/sitemap.xml', async (req, res) => {
   const host = req.headers.host || 'ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app';
-  const proto = req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https');
+  const proto = String(req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https')).split(',')[0].trim();
   const baseUrl = `${proto}://${host}`;
   const today = new Date().toISOString().split('T')[0];
 
@@ -533,7 +571,14 @@ app.get('/sitemap.xml', (req, res) => {
     { path: '/rentabilidad', priority: '0.85', changefreq: 'daily' },
   ];
 
-  const urlsXml = routes
+  const activeStores = await listActiveStoresForSitemap();
+  const storeRoutes = activeStores.map((s) => ({
+    path: `/@${s.slug}`,
+    priority: '0.9',
+    changefreq: 'daily',
+  }));
+
+  const urlsXml = [...routes, ...storeRoutes]
     .map(
       (r) => `  <url>
     <loc>${baseUrl}${r.path}</loc>
@@ -557,6 +602,10 @@ async function startServer() {
 
   if (process.env.NODE_ENV === 'production') {
     const distDir = path.resolve(__dirname, 'dist');
+    const distIndexHtml = fs.existsSync(path.join(distDir, 'index.html'))
+      ? fs.readFileSync(path.join(distDir, 'index.html'), 'utf8')
+      : '';
+
     app.use(
       '/assets',
       express.static(path.join(distDir, 'assets'), {
@@ -567,6 +616,7 @@ async function startServer() {
     app.use(
       express.static(distDir, {
         maxAge: '1h',
+        index: false,
         setHeaders: (res, filePath) => {
           if (filePath.endsWith('.html')) {
             res.setHeader('Cache-Control', 'no-cache');
@@ -574,9 +624,28 @@ async function startServer() {
         },
       })
     );
-    app.get('*', (_req, res) => {
+    app.get('*', async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(path.join(distDir, 'index.html'));
+      const host = req.headers.host || 'ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app';
+      const proto = String(req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https')).split(',')[0].trim();
+      const baseOrigin = `${proto}://${host}`;
+      const storeSlug = extractStoreSlugFromRequest(
+        req.path,
+        req.query as Record<string, unknown>,
+        host
+      );
+      if (storeSlug && distIndexHtml) {
+        const resolvedStore = await resolveActiveStoreServer(storeSlug);
+        if (resolvedStore) {
+          const personalizedHtml = injectStorefrontSeoIntoHtml(
+            distIndexHtml,
+            resolvedStore,
+            baseOrigin
+          );
+          return res.type('text/html').send(personalizedHtml);
+        }
+      }
+      return res.sendFile(path.join(distDir, 'index.html'));
     });
   } else {
     const { createServer: createViteServer } = await import('vite');
@@ -592,6 +661,51 @@ async function startServer() {
       },
       appType: 'spa',
     });
+
+    // Inject per-store OpenGraph & Canonical tags on direct storefront links in dev mode too
+    app.use(async (req, res, next) => {
+      if (
+        req.method !== 'GET' ||
+        req.path.startsWith('/api/') ||
+        req.path.startsWith('/@vite') ||
+        req.path.startsWith('/@fs') ||
+        req.path.startsWith('/@react-refresh') ||
+        req.path.includes('.')
+      ) {
+        return next();
+      }
+      const accept = String(req.headers.accept || '');
+      if (!accept.includes('text/html') && accept !== '*/*' && accept !== '') {
+        return next();
+      }
+      const host = req.headers.host || `localhost:${PORT}`;
+      const storeSlug = extractStoreSlugFromRequest(
+        req.path,
+        req.query as Record<string, unknown>,
+        host
+      );
+      if (!storeSlug) return next();
+
+      try {
+        const resolvedStore = await resolveActiveStoreServer(storeSlug);
+        if (!resolvedStore) return next();
+
+        const rawHtml = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf8');
+        const transformed = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        const proto = String(req.headers['x-forwarded-proto'] || (host.includes('localhost') ? 'http' : 'https')).split(',')[0].trim();
+        const personalized = injectStorefrontSeoIntoHtml(
+          transformed,
+          resolvedStore,
+          `${proto}://${host}`
+        );
+        res.status(200).setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.send(personalized);
+      } catch {
+        return next();
+      }
+    });
+
     app.use(vite.middlewares);
   }
 

@@ -258,8 +258,61 @@ export function getStoreSubdomainDisplay(slug: string, hostname?: string): strin
     .toLowerCase()
     .split(':')[0]
     .replace(/^www\./, '');
-  const root = isSharedHostingOrLocalHost(host) ? host : getRootPlatformHost(host);
+  if (isSharedHostingOrLocalHost(host)) {
+    return `${host}/@${cleanSlug}`;
+  }
+  const root = getRootPlatformHost(host);
   return `${cleanSlug}.${root}`;
+}
+
+export interface StoreUrlBundle {
+  slug: string;
+  canonicalUrl: string;
+  alternateUrl: string;
+  queryUrl: string;
+  subdomainDisplay: string;
+  wildcardCustomPattern: string;
+  isWildcardTlsSupported: boolean;
+  isHttpsCertified: boolean;
+}
+
+export function getStoreUrlBundle(
+  slug: string,
+  customOrigin?: string
+): StoreUrlBundle {
+  const cleanSlug = normalizeStoreSubdomainSlug(slug) || 'mi-tienda';
+  const origin = (
+    customOrigin ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app')
+  ).replace(/\/+$/, '');
+
+  let hostname = '';
+  try {
+    hostname = new URL(origin).hostname.toLowerCase();
+  } catch {
+    hostname = '';
+  }
+
+  const sharedHost = isSharedHostingOrLocalHost(hostname);
+  const rootDomain = getRootPlatformHost(hostname);
+  const canonicalUrl = `${origin}/@${cleanSlug}`;
+  const pathAliasUrl = `${origin}/tienda/${cleanSlug}`;
+  const queryUrl = `${origin}/?tienda=${cleanSlug}`;
+  const wildcardCustomPattern = `${cleanSlug}.${rootDomain}`;
+  const alternateUrl = sharedHost ? pathAliasUrl : `https://${wildcardCustomPattern}`;
+
+  return {
+    slug: cleanSlug,
+    canonicalUrl,
+    alternateUrl,
+    queryUrl,
+    subdomainDisplay: sharedHost ? `${hostname || rootDomain}/@${cleanSlug}` : wildcardCustomPattern,
+    wildcardCustomPattern,
+    isWildcardTlsSupported: !sharedHost,
+    isHttpsCertified: origin.startsWith('https://') || !sharedHost,
+  };
 }
 
 export function getStoreShareUrl(
@@ -267,29 +320,19 @@ export function getStoreShareUrl(
   mode: 'live_at' | 'live_tienda' | 'subdomain_preview' = 'live_at',
   customOrigin?: string
 ): string {
-  const cleanSlug = normalizeStoreSubdomainSlug(slug) || 'mi-tienda';
-  const origin =
-    customOrigin ||
-    (typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://ais-pre-hdtyonewfttsukmm6b3ynl-909389987801.us-east1.run.app');
+  const bundle = getStoreUrlBundle(slug, customOrigin);
 
   if (mode === 'subdomain_preview') {
-    const hostname = (() => {
-      try {
-        return new URL(origin).hostname;
-      } catch {
-        return '';
-      }
-    })();
-    return `https://${getStoreSubdomainDisplay(cleanSlug, hostname)}`;
+    // Only emit https://slug.domain when wildcard DNS/SSL is supported;
+    // on Cloud Run / shared hosts always emit a TLS-certified storefront URL.
+    return bundle.alternateUrl;
   }
 
   if (mode === 'live_tienda') {
-    return `${origin}/tienda/${cleanSlug}`;
+    return `${bundle.canonicalUrl.replace(`/@${bundle.slug}`, '')}/tienda/${bundle.slug}`;
   }
 
-  return `${origin}/@${cleanSlug}`;
+  return bundle.canonicalUrl;
 }
 
 export function buildSocialShareIntents(storeUrl: string, storeName: string) {
@@ -306,3 +349,4 @@ export function buildSocialShareIntents(storeUrl: string, storeName: string) {
     )}`,
   };
 }
+
